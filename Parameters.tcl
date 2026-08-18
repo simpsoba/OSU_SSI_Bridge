@@ -262,7 +262,8 @@ set nSeg_below_tip 5;                     # <-- EDIT  (-) L5 below tip (15 ft)
 # mesh size -- horizontal quad width in this ring
 # x end     -- outer |x| where this width stops (next row starts there)
 # x end = previous x end + n * mesh size (integer n), or the last cell is skinny.
-# Last x end is L_half (near-field outer face).
+# Last x end is L_half (near-field outer face). Uncomment one list.
+# production: 3 ft SSI to 12 ft; ~35 x-stations (Shin, both FF faces)
 set soilDxBands [list \
 	[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
 	[list [expr { 7.0*$foot}] [expr { 40.0*$foot}]] \
@@ -270,6 +271,20 @@ set soilDxBands [list \
 	[list [expr {20.0*$foot}] [expr {140.0*$foot}]] \
 	[list [expr {30.0*$foot}] [expr {200.0*$foot}]] \
 	];                                        # <-- EDIT
+# coarse: same inner SSI; ~25 x-stations. 12+2*14=40, 40+3*20=100, 100+2*50=200
+# set soilDxBands [list \
+# 	[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
+# 	[list [expr {14.0*$foot}] [expr { 40.0*$foot}]] \
+# 	[list [expr {20.0*$foot}] [expr {100.0*$foot}]] \
+# 	[list [expr {50.0*$foot}] [expr {200.0*$foot}]] \
+# 	]
+# even coarser: 3 ft only to outer pile (±s); ~19 x-stations.
+# set soilDxBands [list \
+# 	[list [expr { 3.0*$foot}] [expr {  6.0*$foot}]] \
+# 	[list [expr {12.0*$foot}] [expr { 30.0*$foot}]] \
+# 	[list [expr {30.0*$foot}] [expr { 90.0*$foot}]] \
+# 	[list [expr {55.0*$foot}] [expr {200.0*$foot}]] \
+# 	]
 set L_half [lindex [lindex $soilDxBands end] 1];  # m, NF outer face
 
 # Far-field column: Shin uses one thick column of width w_FF; ASDEA uses
