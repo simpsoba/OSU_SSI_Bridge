@@ -224,8 +224,20 @@ if {![info exists eqFreeVibT] || $eqFreeVibT eq "" || $eqFreeVibT <= 0} {
 set eqNstepsAll [expr {$eqNsteps + $fvNsteps}]
 
 wipeAnalysis
+
+
+####################################################
+# YOU SHOULD DEFINE THE OPENFRESCO EXPERIMENTAL ELEMENT HERE
+
+####################################################
+
+
+
 # partition splits the frozen EQ mesh (METIS). Gravity stayed replicated.
-partition
+partition; # use for non-OpenFresco simulations
+
+# use the following one if OpenFresco
+# partition -keepOnRank 0 1 $ExpEleTag
 if {$pid == 0} {
 	puts [format "----- partition  rank 0/%d  local nodes=%d  eles=%d -----" \
 		$np [llength [getNodeTags]] [llength [getEleTags]]]
@@ -265,6 +277,11 @@ if {!$runEQ} {
 
 	source [file join $analysisDir EQRecorders.tcl]
 
+	####################################################
+	# YOU SHOULD DEFINE OPENFRESCO RECORDERS HERE
+
+	####################################################
+	
 	if {$pid == 0} {
 		puts [format "----- EQ (OpenSeesMP + Mumps)  dt=%.6g s  T=%.4g+%.4g s  nSteps=%d  rec=%d -----" \
 			$dtAnalysis $Trec $eqFreeVibT $eqNsteps $recordersON]

@@ -2,6 +2,8 @@
 # Edit knobs here. IDs: TAGS CONVENTION. Driver: Run.tcl.
 # Units: N, m, s
 #
+# Where to edit (Rayleigh groups, soil mesh, GM, mass, pier SP, elastic,
+# fibers, free vib): README.md.
 # User-changeable knobs: `# <-- EDIT` (physics, switches, block bases).
 # Grep:  grep -n "EDIT\|USER INPUT" Parameters.tcl analysis/RayleighDamping.tcl
 # Run.tcl also marks `runEQ` / `plotFigures`. Derived values are not EDIT.

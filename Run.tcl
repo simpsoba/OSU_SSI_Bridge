@@ -223,16 +223,19 @@ if {!$runEQ} {
 	}
 	set eqNstepsAll [expr {$eqNsteps + $fvNsteps}]
 
+
+	####################################################
+	# YOU SHOULD DEFINE THE OPENFRESCO EXPERIMENTAL ELEMENT HERE
+
+	####################################################
+	
 	wipeAnalysis
 	numberer Plain
 	# numberer RCM
-	system CuDSS
-	# system UmfPack
+	# system CuDSS
+	system UmfPack
 	# system BandGeneral
-	if {[info exists env(REGEN_SYSTEM)] && $env(REGEN_SYSTEM) ne ""} {
-		system $env(REGEN_SYSTEM)
-		puts [format "Run: EQ system override %s" $env(REGEN_SYSTEM)]
-	}
+	# system ProfileSPD
 	# Note: because of the sp-roller condition, Plain constraint handler cannot be used for the EQ Analysis
 	# constraints Transformation
 	# constraints Plain
@@ -245,12 +248,20 @@ if {!$runEQ} {
 	# algorithm Newton
 	# integrator TRBDF2
 	# integrator Newmark 0.5 0.25
-	integrator MKRAlphaExplicitMultiSOE 0.5
+	integrator MKRAlphaExplicitMultiSOE 0.5 -incrementalAccel
+	# integrator MKRAlphaExplicitMultiSOE 0.5
+	# integrator CudaMKRAlpha 0.5
 	# integrator AlphaOSGeneralized 0.5
 	analysis Transient
 
 	source [file join $analysisDir EQRecorders.tcl]
 
+	####################################################
+	# YOU SHOULD DEFINE OPENFRESCO RECORDERS HERE
+
+	####################################################
+	
+	
 	puts [format "----- EQ  dt=%.6g s  T=%.4g+%.4g s  nSteps=%d  rec=%d -----" \
 		$dtAnalysis $Trec $eqFreeVibT $eqNsteps $recordersON]
 
