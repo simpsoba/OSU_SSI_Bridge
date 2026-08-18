@@ -238,111 +238,118 @@ if {!$runEQ} {
 		puts "RunParallel: gravity + partition done (runEQ=0, no EQ)"
 	}
 } else {
-# numberer $type
-numberer ParallelPlain
-# numberer ParallelRCM
-# system $type
-# system DistributedCuDSS
-# system ParallelProfileSPD
-system Mumps
-# constraints $type
-constraints Plain
-# constraints Auto
-# constraints Penalty 1.0e18 1.0e18
-# test $type $tol $maxIter $flag
-test EnergyIncr 1e-8 25 0
-# algorithm $type
-algorithm Linear
-# integrator MKRAlphaExplicitMultiSOE $rhoInf
-integrator MKRAlphaExplicitMultiSOE 0.5
-# integrator AlphaOSGeneralized 0.0
-# integrator CudaMKRAlpha 0.5
-# analysis $type
-analysis Transient
+	# numberer $type
+	numberer ParallelPlain
+	# numberer ParallelRCM
+	# system $type
+	# system DistributedCuDSS
+	# system ParallelProfileSPD
+	system Mumps
+	# constraints $type
+	# Note: because of the sp-roller condition, Plain constraint handler cannot be used for the EQ Analysis
+	# off the relative displacement of its own two nodes.
+	# constraints Plain
+	constraints Auto
+	# constraints Penalty 1.0e18 1.0e18
+	# test $type $tol $maxIter $flag
+	test EnergyIncr 1e-8 25 0
+	# algorithm $type
+	algorithm Linear
+	# integrator MKRAlphaExplicitMultiSOE $rhoInf
+	# integrator MKRAlphaExplicitMultiSOE 0.5
+	integrator MKRAlphaExplicitMultiSOE 0.5 -incrementalAccel
+	# integrator AlphaOSGeneralized 0.0
+	# integrator CudaMKRAlpha 0.5
+	# analysis $type
+	analysis Transient
 
-source [file join $analysisDir EQRecorders.tcl]
+	source [file join $analysisDir EQRecorders.tcl]
 
-if {$pid == 0} {
-	puts [format "----- EQ (OpenSeesMP + Mumps)  dt=%.6g s  T=%.4g+%.4g s  nSteps=%d  rec=%d -----" \
-		$dtAnalysis $Trec $eqFreeVibT $eqNsteps $recordersON]
-}
-
-set ownsPierTop 0
-if {[lsearch -exact [getNodeTags] $nodeTag_pierTop_deckBC] >= 0} {
-	set ownsPierTop 1
-}
-if {$pid == 0 && !$ownsPierTop} {
-	puts "  pier top not on rank 0 -- progress is t/step only"
-}
-
-set t0 [clock microseconds]
-set ok 0
-set nFail 0
-set dtHalf [expr {0.5*$dtAnalysis}]
-set dtQ [expr {0.25*$dtAnalysis}]
-set dtPrint $eqPrintDt
-set tPrint $dtPrint
-for {set i 1} {$i <= $eqNstepsAll} {incr i} {
-	if {$fvNsteps > 0 && $i == [expr {$eqNsteps + 1}] && $pid == 0} {
-		puts [format "----- free vibration %.4g s (%d steps) -----" \
-			$eqFreeVibT $fvNsteps]
+	if {$pid == 0} {
+		puts [format "----- EQ (OpenSeesMP + Mumps)  dt=%.6g s  T=%.4g+%.4g s  nSteps=%d  rec=%d -----" \
+			$dtAnalysis $Trec $eqFreeVibT $eqNsteps $recordersON]
 	}
-	set ok [analyze 1 $dtAnalysis]
-	if {$ok != 0} {
-		incr nFail
-		if {$pid == 0} {
-			puts [format "  recover at step %d  t~%.4g s" $i [getTime]]
+
+	set ownsPierTop 0
+	if {[lsearch -exact [getNodeTags] $nodeTag_pierTop_deckBC] >= 0} {
+		set ownsPierTop 1
+	}
+	if {$pid == 0 && !$ownsPierTop} {
+		puts "  pier top not on rank 0 -- progress is t/step only"
+	}
+
+	set t0 [clock microseconds]
+	set ok 0
+	set nFail 0
+	set dtHalf [expr {0.5*$dtAnalysis}]
+	set dtQ [expr {0.25*$dtAnalysis}]
+	set dtPrint $eqPrintDt
+	set tPrint $dtPrint
+	for {set i 1} {$i <= $eqNstepsAll} {incr i} {
+		if {$fvNsteps > 0 && $i == [expr {$eqNsteps + 1}] && $pid == 0} {
+			puts [format "----- free vibration %.4g s (%d steps) -----" \
+				$eqFreeVibT $fvNsteps]
 		}
-		set ok [analyze 1 $dtHalf]
-		if {$ok == 0} {
-			set ok [analyze 1 $dtHalf]
-		}
+		set ok [analyze 1 $dtAnalysis]
 		if {$ok != 0} {
+			incr nFail
 			if {$pid == 0} {
-				puts [format "  recover dt=%.6g s at step %d  t~%.4g s" $dtQ $i [getTime]]
+				puts [format "  recover at step %d  t~%.4g s" $i [getTime]]
 			}
-			set ok 0
-			for {set k 1} {$k <= 4} {incr k} {
-				set ok [analyze 1 $dtQ]
-				if {$ok != 0} { break }
+			set ok [analyze 1 $dtHalf]
+			if {$ok == 0} {
+				set ok [analyze 1 $dtHalf]
+			}
+			if {$ok != 0} {
+				if {$pid == 0} {
+					puts [format "  recover dt=%.6g s at step %d  t~%.4g s" $dtQ $i [getTime]]
+				}
+				set ok 0
+				for {set k 1} {$k <= 4} {incr k} {
+					set ok [analyze 1 $dtQ]
+					if {$ok != 0} { break }
+				}
+			}
+			if {$ok != 0} {
+				error [format "RunParallel.tcl: analyze failed at step %d / %d (t~%.4g s) after dt/2, dt/4x4" \
+					$i $eqNstepsAll [getTime]]
 			}
 		}
-		if {$ok != 0} {
-			error [format "RunParallel.tcl: analyze failed at step %d / %d (t~%.4g s) after dt/2, dt/4x4" \
-				$i $eqNstepsAll [getTime]]
+		if {$eqPrintON && $pid == 0} {
+			set tNow [getTime]
+			set elapsed [expr {([clock microseconds] - $t0)/1.0e6}]
+			while {$tNow >= $tPrint} {
+				if {$ownsPierTop} {
+					puts [format "  analysis t=%.3f s  elapsed=%.2f s  pier top ux=%.4e m  uy=%.4e m  step %d / %d" \
+						$tNow $elapsed \
+						[nodeDisp $nodeTag_pierTop_deckBC 1] [nodeDisp $nodeTag_pierTop_deckBC 2] \
+						$i $eqNstepsAll]
+				} else {
+					puts [format "  analysis t=%.3f s  elapsed=%.2f s  step %d / %d" \
+						$tNow $elapsed $i $eqNstepsAll]
+				}
+				set tPrint [expr {$tPrint + $dtPrint}]
+			}
 		}
 	}
-	if {$eqPrintON && $pid == 0} {
-		set tNow [getTime]
-		set elapsed [expr {([clock microseconds] - $t0)/1.0e6}]
-		while {$tNow >= $tPrint} {
-			if {$ownsPierTop} {
-				puts [format "  analysis t=%.3f s  elapsed=%.2f s  pier top ux=%.4e m  uy=%.4e m  step %d / %d" \
-					$tNow $elapsed \
-					[nodeDisp $nodeTag_pierTop_deckBC 1] [nodeDisp $nodeTag_pierTop_deckBC 2] \
-					$i $eqNstepsAll]
-			} else {
-				puts [format "  analysis t=%.3f s  elapsed=%.2f s  step %d / %d" \
-					$tNow $elapsed $i $eqNstepsAll]
-			}
-			set tPrint [expr {$tPrint + $dtPrint}]
-		}
-	}
-}
-set elapsed [expr {([clock microseconds] - $t0)/1.0e6}]
-set soilEQDone 1
+	set elapsed [expr {([clock microseconds] - $t0)/1.0e6}]
+	set soilEQDone 1
 
-if {$pid == 0} {
-	puts [format "----- EQ done  recoveries=%d -----" $nFail]
-	puts [format "  analysis t=%.4g s  elapsed=%.2f s  (EQ %.4g s + freeVib %.4g s)" \
-		[getTime] $elapsed $Trec $eqFreeVibT]
-}
-if {$pid == 0 && $ownsPierTop} {
-	puts [format "  pier top ux=%.4e m  uy=%.4e m" \
-		[nodeDisp $nodeTag_pierTop_deckBC 1] [nodeDisp $nodeTag_pierTop_deckBC 2]]
-}
-if {$pid == 0} {
-	puts [format "  eqOutDir=%s  (per-rank files *.\$pid)" $eqOutDir]
-	puts "RunParallel: gravity + EQ done"
-}
+	if {$pid == 0} {
+		puts [format "----- EQ done  recoveries=%d -----" $nFail]
+		puts [format "  analysis t=%.4g s  elapsed=%.2f s  (EQ %.4g s + freeVib %.4g s)" \
+			[getTime] $elapsed $Trec $eqFreeVibT]
+	}
+	if {$pid == 0 && $ownsPierTop} {
+		puts [format "  pier top ux=%.4e m  uy=%.4e m" \
+			[nodeDisp $nodeTag_pierTop_deckBC 1] [nodeDisp $nodeTag_pierTop_deckBC 2]]
+	}
+	if {$pid == 0} {
+		if {$recordersON == 0} {
+			puts "  recordersON=0"
+		} else {
+			puts [format "  eqOutDir=%s  (per-rank files *.\$pid)" $eqOutDir]
+		}
+		puts "RunParallel: gravity + EQ done"
+	}
 }

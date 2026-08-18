@@ -36,7 +36,7 @@ set H_pier [expr {$H_cyl*$cylinderSF}];   # m
 set soilConstitutive "inelastic";         # <-- EDIT  inelastic | elastic
 # elastic -> ElasticIsotropic3D from skeleton Gr,Br (FSP on sands; needs getCopy)
 set pileSpring "inelastic";               # <-- EDIT  inelastic | elastic | none
-set soilEleType "quad";                   # <-- EDIT  quad | SSPquad
+set soilEleType "SSPquad";                   # <-- EDIT  quad | SSPquad
 # SSPquad: no ele rho -- mass from nDMaterial getRho() (PIMY/PDMY/ElasticIsotropic3D rho).
 # Body forces still set on the element (b1,b2).
 
@@ -174,7 +174,7 @@ set nSeg_pile 20;                         # <-- EDIT  (-) segments -> dy = 3 ft 
 set nIP_pile 3;                           # <-- EDIT  (-) dispBeamColumn integration points
 
 # Fiber strips (dispBeamColumn); denser at extreme fibers
-set nFiberY_pile    15;                   # <-- EDIT  (-) total tube strips
+set nFiberY_pile    21;                   # <-- EDIT  (-) total tube strips
 set nFiberEdge_pile 5;                    # <-- EDIT  (-) strips in each extreme band
 
 # Steel (Steel01 for pile Fiber)
@@ -261,11 +261,12 @@ set nSeg_below_tip 5;                     # <-- EDIT  (-) L5 below tip (15 ft)
 #   {mesh size    x end for that size}
 # mesh size -- horizontal quad width in this ring
 # x end     -- outer |x| where this width stops (next row starts there)
+# x end = previous x end + n * mesh size (integer n), or the last cell is skinny.
 # Last x end is L_half (near-field outer face).
 set soilDxBands [list \
 	[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
-	[list [expr { 7.0*$foot}] [expr { 30.0*$foot}]] \
-	[list [expr {15.0*$foot}] [expr { 80.0*$foot}]] \
+	[list [expr { 7.0*$foot}] [expr { 40.0*$foot}]] \
+	[list [expr {15.0*$foot}] [expr {100.0*$foot}]] \
 	[list [expr {20.0*$foot}] [expr {140.0*$foot}]] \
 	[list [expr {30.0*$foot}] [expr {200.0*$foot}]] \
 	];                                        # <-- EDIT
@@ -312,12 +313,14 @@ set eqTmax "";                            # <-- EDIT  s (empty = full record)
 # Lysmer/ASDEA then only radiate. 0 -> stop when the earthquake record ends.
 set eqFreeVibT 60.0;                      # <-- EDIT  s
 set nModesEigen 10;                       # <-- EDIT  (-) modes after gravity (runEQ 0)
-# recordersON (EQ; both Run.tcl and RunParallel.tcl):
+# recordersON (EQ; both Run.tcl and RunParallel.tcl). Every recorder samples at
+# -dT gmVelDT (the PEER step), not at every dtAnalysis step:
 #   0  off
-#   1  full window: |x|<=eqWindowX nodes + quads; all pile springs and pile beams
-#   2  lean: structure + x=0 soil column + x=0 quad column;
-#      center pile all springs/beams (no outer-pile SSI recorders)
-#      (cap face + soffit, pier hinges, pier top, soil-base primary in 1 and 2)
+#   1  full window: |x|<=eqWindowX nodes + quads; all pile beams, all SSI springs
+#   2  lean: pier nodes 1/2/4/5 (UX UY RZ), both pier rotational springs, the
+#      soil-base primary node, and nine SSI horizons on the center pile
+#      (first / mid / last station of L2, L3, L5: spring + pile segment +
+#      x=0 quad at the same y). No cap springs, no pier accel.
 set recordersON 2;                        # <-- EDIT  0 | 1 | 2
 set eqWindowX 10.0;                       # <-- EDIT  m, |x| <= this for deformed-shape dump (recordersON 1)
 

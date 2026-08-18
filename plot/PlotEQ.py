@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EQ window postprocess (serial dumps: window_nodes.txt, window_disp.out, …).
+"""EQ window postprocess (serial dumps: window_nodes.txt, disp_nodes.txt, … ).
 
   python3 plot/PlotEQ.py
   python3 plot/PlotEQ.py /path/to/eqOutDir
@@ -88,15 +88,33 @@ def read_meta(eq: Path) -> dict[str, str]:
     return meta
 
 
-def read_nodes(eq: Path) -> tuple[list[int], dict[int, tuple[float, float]]]:
+def read_node_file(path: Path) -> tuple[list[int], dict[int, tuple[float, float]]]:
     tags: list[int] = []
     xy: dict[int, tuple[float, float]] = {}
-    for ln in _skip_hash(eq / "window_nodes.txt"):
+    for ln in _skip_hash(path):
         a, b, c = ln.split()[:3]
         t = int(a)
         tags.append(t)
         xy[t] = (float(b), float(c))
     return tags, xy
+
+
+def read_nodes(eq: Path) -> tuple[list[int], dict[int, tuple[float, float]]]:
+    """Geometry: every node with coordinates (window_nodes.txt)."""
+    return read_node_file(eq / "window_nodes.txt")
+
+
+def read_disp_nodes(eq: Path) -> list[int]:
+    """Column order of window_disp*.out.
+
+    recordersON=2 records displacement for the pier and the center pile only, so
+    disp_nodes.txt is a subset of window_nodes.txt. Older dumps have no such
+    file and every window node owns a column.
+    """
+    p = eq / "disp_nodes.txt"
+    if not p.is_file():
+        return read_nodes(eq)[0]
+    return read_node_file(p)[0]
 
 
 def read_eles(eq: Path) -> tuple[list[list[int]], list[list[int]]]:
@@ -136,7 +154,7 @@ def load_window_disp(
     uy = np.hstack([p[:n] for p in uy_parts])
     if ux.shape[1] != len(tags):
         raise SystemExit(
-            f"PlotEQ: window disp cols {ux.shape[1]} != nNodes {len(tags)}"
+            f"PlotEQ: window disp cols {ux.shape[1]} != nDispNodes {len(tags)}"
         )
     return t, ux, uy
 
@@ -305,9 +323,7 @@ def mark_last_sample(ax, t, t_eq: float | None) -> None:
 
 
 def hyst_loop(ax, x, y, xlabel: str, ylabel: str, title: str) -> None:
-    n = len(x)
-    step = max(1, n // 2500)
-    ax.plot(x[::step], y[::step], color=BROWN, lw=0.85, rasterized=True)
+    ax.plot(x, y, color=BROWN, lw=0.85, rasterized=True)
     ax.axhline(0.0, color="#9e9e9e", lw=0.6)
     ax.axvline(0.0, color="#9e9e9e", lw=0.6)
     ax.set_xlabel(xlabel)
@@ -581,6 +597,8 @@ def plot_pile_section(out: Path, eq: Path, meta: dict, xy: dict) -> None:
         r"$\Delta\kappa$ (1/m)" if SUBTRACT_T0 else r"$\kappa$ (1/m)",
         "Mz (kN·m)", 3,
         which=pile_hyst_order(stations, n_ele),
+        share_x=True,
+        share_y=True,
     )
     print(f"PlotEQ: wrote {out / 'hyst_pile_mk.png'}")
 
@@ -924,6 +942,7 @@ def plot_quad_shear_hyst(
     hyst_grid(
         out, "hyst_tau_gamma.png", U, F, 0, titles,
         r"$\gamma_{xy}$ ($\times 10^{-3}$)", r"$\tau_{xy}$ (kPa)", 3,
+        share_x=True,
     )
     print(
         f"PlotEQ: wrote {out / 'hyst_tau_gamma.png'}  "
@@ -1195,6 +1214,9 @@ def plot_spring_envelopes(
     g = []
     for ip in sorted(ips_idx):
         idx = np.array(ips_idx[ip], dtype=int)
+        # MP stitch order follows rank, not depth (lean: iy 13,14,17,0,3,...).
+        order = np.argsort([int(stations[i]["iy"]) for i in idx])
+        idx = idx[order]
         y = np.array([float(stations[i]["y"]) for i in idx])
         g.append((pile_name(ip), idx, y))
     y0 = g[0][2]
@@ -1221,21 +1243,34 @@ def plot_spring_envelopes(
     if Up.shape[2] > 1:
         u_tz = env_minmax(Up, 1)
         f_tz = env_minmax(Fp, 1)
-        qz_mask = np.array([is_qz_station(s) for s in stations[:n_per]])
-        z50_ten = np.where(qz_mask, 0.0, z50)
-        tult_ten = np.where(qz_mask, 0.0, tult)
-        plot_depth_env(
-            out, "spring_env_tz_defo.png", y0, z50_ten,
-            "u_tz min / max (m)",
-            r"$\pm z_{50}$ shaft; $z_{50}$ compression at tip",
-            as_groups(u_tz), cap_neg=-z50,
-        )
-        plot_depth_env(
-            out, "spring_env_tz_force.png", y0, tult_ten,
-            "t min / max (N)",
-            r"$\pm t_\mathrm{ult}$ shaft; $q_\mathrm{ult}$ compression at tip",
-            as_groups(f_tz), cap_neg=-tult,
-        )
+        shaft_g = []
+        for name, idx, y in g:
+            keep = [j for j, i in enumerate(idx) if not is_qz_station(stations[i])]
+            if not keep:
+                continue
+            idx_s = idx[keep]
+            y_s = y[keep]
+            shaft_g.append((name, idx_s, y_s))
+        if shaft_g:
+            y_s0 = shaft_g[0][2]
+            i_s0 = shaft_g[0][1]
+            z50_s = np.array([float(stations[i]["z50"]) for i in i_s0])
+            tult_s = np.array([float(stations[i]["tult"]) for i in i_s0])
+
+            def as_shaft(minmax):
+                umin, umax = minmax
+                return [(nm, yi, umin[idx], umax[idx]) for nm, idx, yi in shaft_g]
+
+            plot_depth_env(
+                out, "spring_env_tz_defo.png", y_s0, z50_s,
+                "u_tz min / max (m)", r"$\pm z_{50}$ (shaft t-z)",
+                as_shaft(u_tz),
+            )
+            plot_depth_env(
+                out, "spring_env_tz_force.png", y_s0, tult_s,
+                "t min / max (N)", r"$\pm t_\mathrm{ult}$ (shaft t-z)",
+                as_shaft(f_tz),
+            )
         tip = [i for i, s in enumerate(stations) if is_qz_station(s)]
         if tip:
             xp = []
@@ -1354,15 +1389,21 @@ def hyst_grid(
     ylabel: str,
     ncol: int,
     which: list[int] | None = None,
+    share_x: bool = False,
+    share_y: bool = False,
 ) -> None:
     if which is None:
         which = list(range(U.shape[1]))
     n = len(which)
     if n == 0:
         return
-    step = max(1, U.shape[0] // 1500)
-    Us = U[::step]
-    Fs = F[::step]
+    xlim = ylim = None
+    if share_x:
+        xm = max(float(np.nanmax(np.abs(U[:, i, icomp]))) for i in which)
+        xlim = (-1.05 * (xm if xm > 0 else 1.0), 1.05 * (xm if xm > 0 else 1.0))
+    if share_y:
+        ym = max(float(np.nanmax(np.abs(F[:, i, icomp]))) for i in which)
+        ylim = (-1.05 * (ym if ym > 0 else 1.0), 1.05 * (ym if ym > 0 else 1.0))
     nrow = int(np.ceil(n / ncol))
     fig, axes = plt.subplots(
         nrow, ncol, figsize=(3.0 * ncol, 1.55 * nrow), squeeze=False
@@ -1370,9 +1411,13 @@ def hyst_grid(
     for k, i in enumerate(which):
         r, c = divmod(k, ncol)
         ax = axes[r][c]
-        ax.plot(Us[:, i, icomp], Fs[:, i, icomp], color=BROWN, lw=0.55, rasterized=True)
+        ax.plot(U[:, i, icomp], F[:, i, icomp], color=BROWN, lw=0.55, rasterized=True)
         ax.set_title(titles[i] if i < len(titles) else f"ele {i}", fontsize=8)
         ax.grid(True, ls=":", alpha=0.35)
+        if xlim is not None:
+            ax.set_xlim(*xlim)
+        if ylim is not None:
+            ax.set_ylim(*ylim)
         if r == nrow - 1:
             ax.set_xlabel(xlabel, fontsize=8)
         if c == 0:
@@ -1404,17 +1449,20 @@ def plot_hyst(out: Path, eq: Path, js: dict | None, meta: dict) -> None:
     hyst_grid(
         out, "hyst_pile_py.png", Up, Fp, 0, titles, "u_py (m)", "p (N)", 3,
         which=pile_hyst_order(stations, Up.shape[1]),
+        share_x=True,
     )
     if Up.shape[2] > 1:
         hyst_grid(
             out, "hyst_pile_tz.png", Up, Fp, 1, titles,
             "u_tz (m)", "t (N)", 3, which=pile_hyst_order(stations, Up.shape[1], qz=False),
+            share_x=True,
         )
         qz_i = pile_hyst_order(stations, Up.shape[1], qz=True)
         if qz_i:
             hyst_grid(
                 out, "hyst_pile_qz.png", Up, Fp, 1, titles,
                 "u_qz (m)", "q (N)", 3, which=qz_i,
+                share_x=True,
             )
 
     face_e, sof_e = split_cap_eles(eq)
@@ -1436,11 +1484,13 @@ def plot_hyst(out: Path, eq: Path, js: dict | None, meta: dict) -> None:
         hyst_grid(
             out, "hyst_cap_py.png", Uc, Fc, 0, tcap, "u_py (m)", "p (N)", 2,
             which=cap_ord,
+            share_x=True,
         )
         if Uc.shape[2] > 1:
             hyst_grid(
                 out, "hyst_cap_tz.png", Uc, Fc, 1, tcap, "u_tz (m)", "t (N)", 2,
                 which=cap_ord,
+                share_x=True,
             )
     if sof_e and (eq / "cap_springs_soffit_force.out").is_file():
         _, Fq, Uq = load_spring_pt(
@@ -1455,7 +1505,10 @@ def plot_hyst(out: Path, eq: Path, js: dict | None, meta: dict) -> None:
             else soffit_x_default(len(sof_e), sizes)
         )
         tsof = [f"qz x={x:.2f}" for x in xq]
-        hyst_grid(out, "hyst_soffit_qz.png", Uq, Fq, ic, tsof, "u_qz (m)", "q (N)", 4)
+        hyst_grid(
+            out, "hyst_soffit_qz.png", Uq, Fq, ic, tsof, "u_qz (m)", "q (N)", 4,
+            share_x=True,
+        )
 
 
 def frame_steps(t: np.ndarray) -> np.ndarray:
@@ -1814,12 +1867,13 @@ def main() -> int:
 
     meta = read_meta(eq)
     tags, xy = read_nodes(eq)
-    idx = {t: i for i, t in enumerate(tags)}
+    disp_tags = read_disp_nodes(eq)
+    idx = {t: i for i, t in enumerate(disp_tags)}
     lines, quads = read_eles(eq)
     disp_files = meta.get("dispFiles", "window_disp.out").split()
     need_disp = DO_HIST or DO_ENVELOPE or DO_FRAMES
     if need_disp:
-        t, ux, uy = load_window_disp(eq, tags, disp_files)
+        t, ux, uy = load_window_disp(eq, disp_tags, disp_files)
         if SUBTRACT_T0:
             ux = maybe_t0(ux)
             uy = maybe_t0(uy)
@@ -1828,7 +1882,9 @@ def main() -> int:
 
     out = eq / "plots"
     out.mkdir(parents=True, exist_ok=True)
-    groups = pile_groups(xy)
+    # Pile groups drive the ux history and envelope, so key them off the nodes
+    # that own a displacement column.
+    groups = pile_groups({tg: xy[tg] for tg in disp_tags if tg in xy})
     js = load_spring_json(meta)
     if js is None:
         print("PlotEQ: pile_springs.json not found -- spring capacity overlays skipped")
@@ -1855,7 +1911,15 @@ def main() -> int:
     if DO_QUAD_HYST:
         plot_quad_shear_hyst(out, eq, meta, xy)
     if DO_FRAMES:
-        plot_frames(out, t, ux, uy, tags, xy, lines, quads, js)
+        # Soil patches need a displacement per corner; without them the frames
+        # would mix a deformed structure with an undeformed mesh.
+        if len(disp_tags) < len(tags):
+            print(
+                f"PlotEQ: {len(tags) - len(disp_tags)} window nodes have no disp"
+                " column (recordersON=2) -- skip frames"
+            )
+        else:
+            plot_frames(out, t, ux, uy, disp_tags, xy, lines, quads, js)
 
     return 0
 

@@ -26,6 +26,7 @@ from paths import HERE, elevation_dir, eq_dir
 EQ_OUT = eq_dir(4, "Shin", "SSPquad", "lumpedPlasticity", "parallel")
 
 # Recorders that live on one rank (copy the first non-empty shard).
+# pier_node_$tag.out is one file per pier node, so each one is also single-rank.
 ONE_RANK = (
     "pier_hinge_force.out",
     "pier_hinge_defo.out",
@@ -55,6 +56,8 @@ TEXT_UNIQUE_ELE = (
     "pile_springs_eles.txt",
     "cap_springs_eles.txt",
 )
+
+# window_nodes.txt and disp_nodes.txt are stitched with the disp columns instead.
 
 
 def rank_files(eq: Path, name: str) -> dict[int, Path]:
@@ -102,6 +105,16 @@ def load_np(eq: Path) -> tuple[int, dict[int, dict[str, str]]]:
             "wipes files in eqOutDir before a new run."
         )
     return np_run, metas
+
+
+def one_rank_names(eq: Path) -> list[str]:
+    """ONE_RANK plus the pier_node_$tag.out files this run happened to write."""
+    names = list(ONE_RANK)
+    for p in sorted(eq.glob("pier_node_*.out.*")):
+        stem = p.name.rsplit(".", 1)[0]
+        if stem not in names:
+            names.append(stem)
+    return names
 
 
 def shard_or_none(eq: Path, name: str, pid: int) -> Path | None:
@@ -152,47 +165,81 @@ def load_rank_disp(
     return peq.load_window_disp(eq, tags, disp_files)
 
 
-def stitch_nodes_disp(
-    eq: Path, dest: Path, np_run: int, metas: dict[int, dict[str, str]]
-) -> tuple[int, int]:
-    """Unique window nodes (drop ghosts). Matching ux/uy columns -> window_disp.out."""
+def parse_node_shard(path: Path) -> tuple[str | None, list[int], list[tuple[str, str]]]:
+    """One window_nodes.txt / disp_nodes.txt shard: header, tags, (x, y) strings."""
     header = None
     tags: list[int] = []
-    xy: dict[int, tuple[str, str]] = {}
+    xy: list[tuple[str, str]] = []
+    for ln in path.read_text().splitlines():
+        s = ln.strip()
+        if not s:
+            continue
+        if s.startswith("#"):
+            if header is None:
+                header = ln.rstrip()
+            continue
+        a, b, c = s.split()[:3]
+        tags.append(int(a))
+        xy.append((b, c))
+    return header, tags, xy
+
+
+def write_node_file(
+    path: Path, header: str | None, tags: list[int], xy: dict[int, tuple[str, str]]
+) -> None:
+    with path.open("w") as f:
+        if header:
+            f.write(header + "\n")
+        for tg in tags:
+            b, c = xy[tg]
+            f.write(f"{tg} {b} {c}\n")
+
+
+def stitch_nodes_disp(
+    eq: Path, dest: Path, np_run: int, metas: dict[int, dict[str, str]]
+) -> tuple[int, int, int]:
+    """Unique nodes (drop ghosts): geometry -> window_nodes.txt, columns ->
+    disp_nodes.txt + window_disp.out. recordersON=2 records displacement for a
+    subset of the geometry, so the two lists differ."""
+    geom_header = None
+    disp_header = None
+    geom_tags: list[int] = []
+    disp_tags: list[int] = []
+    geom_xy: dict[int, tuple[str, str]] = {}
+    disp_xy: dict[int, tuple[str, str]] = {}
     n_raw = 0
     ux_keep: list[np.ndarray] = []
     uy_keep: list[np.ndarray] = []
     t = None
     for pid in range(np_run):
-        npth = shard_or_none(eq, "window_nodes.txt", pid)
-        if npth is None:
+        gpth = shard_or_none(eq, "window_nodes.txt", pid)
+        if gpth is None:
             raise SystemExit(f"PlotEQParallel: missing window_nodes.txt.{pid}")
-        rank_tags: list[int] = []
-        rank_xy: list[tuple[str, str]] = []
-        for ln in npth.read_text().splitlines():
-            s = ln.strip()
-            if not s:
+        hdr, gtags, gxy = parse_node_shard(gpth)
+        if geom_header is None:
+            geom_header = hdr
+        n_raw += len(gtags)
+        for i, tg in enumerate(gtags):
+            if tg in geom_xy:
                 continue
-            if s.startswith("#"):
-                if header is None:
-                    header = ln.rstrip()
-                continue
-            a, b, c = s.split()[:3]
-            rank_tags.append(int(a))
-            rank_xy.append((b, c))
-        n_raw += len(rank_tags)
+            geom_xy[tg] = gxy[i]
+            geom_tags.append(tg)
+        dpth = shard_or_none(eq, "disp_nodes.txt", pid) or gpth
+        dhdr, dtags, dxy = parse_node_shard(dpth)
+        if disp_header is None:
+            disp_header = dhdr
         dfs = metas[pid].get("dispFiles", "").split()
         dfs = [f for f in dfs if (eq / f).is_file()]
         keep_idx: list[int] = []
-        for i, tg in enumerate(rank_tags):
-            if tg in xy:
+        for i, tg in enumerate(dtags):
+            if tg in disp_xy:
                 continue
-            xy[tg] = rank_xy[i]
-            tags.append(tg)
+            disp_xy[tg] = dxy[i]
+            disp_tags.append(tg)
             keep_idx.append(i)
-        if not rank_tags or not dfs or not keep_idx:
+        if not dtags or not dfs or not keep_idx:
             continue
-        ti, uxr, uyr = load_rank_disp(eq, rank_tags, dfs)
+        ti, uxr, uyr = load_rank_disp(eq, dtags, dfs)
         if t is None:
             t = ti
         n = min(len(t), len(ti), uxr.shape[0])
@@ -200,29 +247,25 @@ def stitch_nodes_disp(
         sel = np.asarray(keep_idx, dtype=int)
         ux_keep.append(uxr[:n][:, sel])
         uy_keep.append(uyr[:n][:, sel])
-    n_u = len(tags)
-    with (dest / "window_nodes.txt").open("w") as f:
-        if header:
-            f.write(header + "\n")
-        for tg in tags:
-            b, c = xy[tg]
-            f.write(f"{tg} {b} {c}\n")
+    write_node_file(dest / "window_nodes.txt", geom_header, geom_tags, geom_xy)
+    write_node_file(dest / "disp_nodes.txt", disp_header, disp_tags, disp_xy)
     if not ux_keep:
         raise SystemExit("PlotEQParallel: no window disp on any rank")
     n = min(p.shape[0] for p in ux_keep)
     ux = np.hstack([p[:n] for p in ux_keep])
     uy = np.hstack([p[:n] for p in uy_keep])
     t = t[:n]
-    if ux.shape[1] != n_u:
+    n_disp = len(disp_tags)
+    if ux.shape[1] != n_disp:
         raise SystemExit(
-            f"PlotEQParallel: disp cols {ux.shape[1]} != unique nodes {n_u}"
+            f"PlotEQParallel: disp cols {ux.shape[1]} != unique disp nodes {n_disp}"
         )
-    mixed = np.empty((n, 1 + 2 * n_u))
+    mixed = np.empty((n, 1 + 2 * n_disp))
     mixed[:, 0] = t
     mixed[:, 1::2] = ux
     mixed[:, 2::2] = uy
     np.savetxt(dest / "window_disp.out", mixed, fmt="%.10g")
-    return n_raw, n_u
+    return n_raw, len(geom_tags), n_disp
 
 
 def hstack_recorders(eq: Path, dest: Path, name: str, np_run: int) -> None:
@@ -311,9 +354,13 @@ def write_meta(
     sig: list[str],
     eps: list[str],
     np_run: int,
+    pier_files: list[str] | None = None,
+    n_disp: int = 0,
 ) -> None:
     skip = {
         "dispFiles",
+        "pierNodeFiles",
+        "nDispNodes",
         "pid",
         "np",
         "fileSuffix",
@@ -332,9 +379,13 @@ def write_meta(
             continue
         lines.append(f"{k} {v}")
     lines.append(f"nWindowNodes {n_nodes}")
+    lines.append(f"nDispNodes {n_disp}")
     lines.append(f"nWindowEles {n_eles}")
     lines.append(f"nWindowQuads {n_quads}")
+    lines.append("dispNodesFile disp_nodes.txt")
     lines.append("dispFiles window_disp.out")
+    if pier_files:
+        lines.append(f"pierNodeFiles {' '.join(pier_files)}")
     lines.append(f"np {np_run}")
     if sig:
         lines.append("quadEleFile window_quads.txt")
@@ -372,9 +423,10 @@ def sketch_quad_xy(meta: dict) -> dict[int, list[tuple[float, float]]]:
 
 
 def fill_lean_quad_geom(dest: Path, meta: dict) -> int:
-    """Add sketch corners to the stitched serial dump so PlotEQ can find 4 nodes.
+    """Add sketch corners so PlotEQ can find 4 nodes per window quad.
 
-    recordersON=2 lists x=0-face quads; the other two corners are off-axis.
+    Only needed for dumps whose window_nodes.txt misses a quad corner. Geometry
+    only: these tags get no displacement column.
     """
     sketch = sketch_quad_xy(meta)
     qtags = peq.read_window_quad_list(dest)
@@ -408,20 +460,16 @@ def fill_lean_quad_geom(dest: Path, meta: dict) -> int:
     with (dest / "window_eles.txt").open("a") as f:
         for ln in extra_eles:
             f.write(ln + "\n")
-    disp = dest / "window_disp.out"
-    if disp.is_file() and extra_nodes:
-        a = np.loadtxt(disp)
-        if a.ndim == 1:
-            a = a.reshape(1, -1)
-        z = np.zeros((a.shape[0], 2 * len(extra_nodes)))
-        np.savetxt(disp, np.hstack([a, z]), fmt="%.10g")
     return n_fill
 
 
 def stitch(eq: Path, dest: Path, np_run: int, metas: dict[int, dict[str, str]]) -> None:
     dest.mkdir(parents=True, exist_ok=True)
-    n_raw, n_u = stitch_nodes_disp(eq, dest, np_run, metas)
-    print(f"PlotEQParallel: unique nodes {n_u} (dropped {n_raw - n_u} ghosts)")
+    n_raw, n_u, n_disp = stitch_nodes_disp(eq, dest, np_run, metas)
+    print(
+        f"PlotEQParallel: unique nodes {n_u} (dropped {n_raw - n_u} ghosts), "
+        f"disp columns for {n_disp}"
+    )
     n_eles = concat_text(eq, dest, "window_eles.txt", np_run, unique_col0=True)
     for name in TEXT_UNIQUE_ELE:
         if name == "window_eles.txt" or name == "window_quads.txt":
@@ -430,9 +478,14 @@ def stitch(eq: Path, dest: Path, np_run: int, metas: dict[int, dict[str, str]]) 
     sig, eps, n_quads = stitch_quads(eq, dest, np_run, metas)
     for name in HSTACK:
         hstack_recorders(eq, dest, name, np_run)
-    for name in ONE_RANK:
+    pier_files = []
+    for name in one_rank_names(eq):
         copy_one_rank(eq, dest, name, np_run)
-    write_meta(dest, metas[0], n_u, n_eles, n_quads, sig, eps, np_run)
+        if name.startswith("pier_node_") and (dest / name).is_file():
+            pier_files.append(name)
+    write_meta(
+        dest, metas[0], n_u, n_eles, n_quads, sig, eps, np_run, pier_files, n_disp
+    )
     n_fill = fill_lean_quad_geom(dest, metas[0])
     if n_fill:
         print(f"PlotEQParallel: sketch corners for {n_fill} window quads")

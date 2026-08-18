@@ -14,5 +14,5 @@ stay in this folder.
 | `GravityHelpers.tcl` | Spring kine print; nearest soil node |
 | `WaterSurfaceLoad.tcl` | Ponding if `h_water > 0` |
 | `BuildVelSeries.tcl` | Outcrop velocity Path (PEER VT2 or dummy zeros) |
-| `EQRecorders.tcl` | `recordersON` 0 off / 1 full window / 2 lean (center pile + x=0 soil) |
+| `EQRecorders.tcl` | `recordersON` 0 off / 1 full window / 2 lean (pier + 9 SSI + soil base; `-dT` = GM DT). `window_nodes.txt` = geometry, `disp_nodes.txt` = the `window_disp` columns |
 | `EigenAfterGravity.tcl` | Mode JSON/PNG after `eigen` in `Run.tcl` |

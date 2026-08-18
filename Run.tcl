@@ -41,6 +41,14 @@ if {[info exists env(REGEN_PROFILE)] && $env(REGEN_PROFILE) ne ""} {
 if {[info exists env(REGEN_BOUNDARY)] && $env(REGEN_BOUNDARY) ne ""} {
 	set soilBoundary $env(REGEN_BOUNDARY)
 }
+# Same short-run overrides RunParallel.tcl takes (smoke tests without editing
+# Parameters.tcl).
+if {[info exists env(REGEN_EQ_TMAX)] && $env(REGEN_EQ_TMAX) ne ""} {
+	set eqTmax $env(REGEN_EQ_TMAX)
+}
+if {[info exists env(REGEN_FREE_VIB)] && $env(REGEN_FREE_VIB) ne ""} {
+	set eqFreeVibT $env(REGEN_FREE_VIB)
+}
 
 if {$runEQ != 0 && $runEQ != 1} {
 	error "Run.tcl: runEQ must be 0 (gravity) or 1 (gravity+EQ) (got '$runEQ')"
@@ -225,8 +233,10 @@ if {!$runEQ} {
 		system $env(REGEN_SYSTEM)
 		puts [format "Run: EQ system override %s" $env(REGEN_SYSTEM)]
 	}
+	# Note: because of the sp-roller condition, Plain constraint handler cannot be used for the EQ Analysis
 	# constraints Transformation
-	constraints Plain
+	# constraints Plain
+	constraints Auto
 	# constraints Penalty 1.0e18 1.0e18
 	# test NormDispIncr 1.0e-6 25 0
 	test EnergyIncr 1e-8 25 0
@@ -297,6 +307,10 @@ if {!$runEQ} {
 		[getTime] $elapsed $Trec $eqFreeVibT]
 	puts [format "  pier top ux=%.4e m  uy=%.4e m" \
 		[nodeDisp $nodeTag_pierTop_deckBC 1] [nodeDisp $nodeTag_pierTop_deckBC 2]]
-	puts [format "  eqOutDir=%s" $eqOutDir]
+	if {$recordersON == 0} {
+		puts "  recordersON=0"
+	} else {
+		puts [format "  eqOutDir=%s" $eqOutDir]
+	}
 	puts "Run: gravity + EQ done"
 }

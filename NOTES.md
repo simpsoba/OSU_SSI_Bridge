@@ -311,3 +311,7 @@ When soil arrives: extend the dumps. Plotters stay dumb.
 | 2026-08-15 | Gravity: soil Linear 0→1, hold+stage 1, then Linear structure |
 | 2026-08-15 | Gravity ride-along: pile retained, soil constrained (star with pile→dup) |
 | 2026-08-15 | 2D piles: coincident ZL p-y/t-z only (no radial stubs or shaft voids) |
+| 2026-08-17 | `recordersON 2`: soil nodes are geometry only (`disp_nodes.txt` holds the `window_disp` columns) |
+| 2026-08-17 | `uy_dup - uy_pile` = 0.2--0.8 mm is the fold datum shift, not a broken tie: the pile keeps its gravity settlement in `nodeCoord`, the unfolded dup keeps it in `nodeDisp`. coord + disp agree to 6e-8 m |
+| 2026-08-17 | EQ `constraints Auto` (both drivers): ZLS `deformation` = relative nodal disp to 4e-8 m, same as `Transformation`, at `Plain`'s runtime. `Plain` was 1e-3 m off in UY |
+| 2026-08-17 | Why `Plain` fails: no constraint FE_Element, `PlainNumberer` just shares the retained DOF's equation number, so a tied pair cannot hold two different total displacements. The 0.79 mm fold offset then kicks a vertical transient at EQ start (`uy_pile` 1.7e-3 m for the first 0.2--0.5 s, then ~5e-5 m). UX, which has no offset, is clean. The `sp -const -subtractInit` holds fine under all three |
