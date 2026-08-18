@@ -26,6 +26,8 @@ cd /d C:\path\to\OSU_SSI_Bridge
 mpiexec -n 4 C:\projects\RTHS-CUDA\OpenSees\build-mp\Release\OpenSeesMP.exe RunParallel.tcl
 ```
 
+Ranks other than 0 send OpenSees `opserr` (C++ warnings/errors) to `opensees.rankN.log` via `logFile … -noEcho`, and Tcl `puts` to stdout is dropped. Rank 0 still prints to the console. Tcl `error` traces from a failing rank can still show up through MPI.
+
 Named tags live in `Parameters.tcl` (TAGS CONVENTION). Shared nodes (same tag, stacked mass, no `equalDOF`): cap TC = pier base (1); deck soffit BC = pier top (5); pile heads = cap BL / BC / BR.
 
 ### Structure — pier (default `lumpedPlasticity`)

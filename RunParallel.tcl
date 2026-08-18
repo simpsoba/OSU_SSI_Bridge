@@ -24,6 +24,9 @@ if {$np < 2} {
 
 # Rank 0 only writes to the terminal. File channels stay on every rank.
 if {$pid != 0} {
+	# logFile $fileName ?-noEcho? ?-append?
+	# opserr (C++ warnings/errors) to this file only; Tcl puts hijacked below.
+	logFile [file join $runDir [format "opensees.rank%d.log" $pid]] -noEcho
 	rename puts _putsAll
 	proc puts {args} {
 		set start 0
@@ -326,9 +329,11 @@ if {!$runEQ} {
 	test EnergyIncr 1e-8 25 0
 	# algorithm $type
 	algorithm Linear
+	# algorithm KrylovNewton
 	# integrator MKRAlphaExplicitMultiSOE $rhoInf
 	# integrator MKRAlphaExplicitMultiSOE 0.5
 	integrator MKRAlphaExplicitMultiSOE 0.5 -incrementalAccel
+	# integrator TRBDF2
 	# integrator AlphaOSGeneralized 0.0
 	# integrator CudaMKRAlpha 0.5
 	# analysis $type
@@ -397,9 +402,17 @@ if {!$runEQ} {
 				if {$pid == 0} {
 					puts [format "  recover at step %d  t~%.4g s" $i [getTime]]
 				}
-				set ok [analyze 1 $dtHalf]
-				if {$ok == 0} {
+				# test $type $tol $maxIter $flag
+				test NormDispIncr 1.0e-6 25 0
+				if {$pid == 0} {
+					puts [format "  recover NormDispIncr 1e-6 at step %d  t~%.4g s" $i [getTime]]
+				}
+				set ok [analyze 1 $dtAnalysis]
+				if {$ok != 0} {
 					set ok [analyze 1 $dtHalf]
+					if {$ok == 0} {
+						set ok [analyze 1 $dtHalf]
+					}
 				}
 				if {$ok != 0} {
 					if {$pid == 0} {
@@ -411,8 +424,10 @@ if {!$runEQ} {
 						if {$ok != 0} { break }
 					}
 				}
+				# test $type $tol $maxIter $flag
+				test EnergyIncr 1e-8 25 0
 				if {$ok != 0} {
-					error [format "RunParallel.tcl: analyze failed at step %d / %d (t~%.4g s) after dt/2, dt/4x4" \
+					error [format "RunParallel.tcl: analyze failed at step %d / %d (t~%.4g s) after EnergyIncr, NormDispIncr, dt/2, dt/4x4" \
 						$i $eqNstepsAll [getTime]]
 				}
 			}
