@@ -291,8 +291,9 @@ if {!$runEQ} {
 	# constraints Plain
 	constraints Auto
 	# constraints Penalty 1.0e18 1.0e18
-	# test NormDispIncr 1.0e-6 25 0
-	test EnergyIncr 1e-8 25 0
+	# test $type $tol $maxIter $flag
+	test NormDispIncr 1.0e-8 25 0
+	# test EnergyIncr 1e-8 25 0
 	# algorithm KrylovNewton
 	algorithm Linear
 	# algorithm Newton
@@ -372,9 +373,9 @@ if {!$runEQ} {
 					}
 				}
 				# test $type $tol $maxIter $flag
-				test EnergyIncr 1e-8 25 0
+				test NormDispIncr 1.0e-8 25 0
 				if {$ok != 0} {
-					error [format "Run.tcl: analyze failed at step %d / %d (t~%.4g s) after EnergyIncr, NormDispIncr, dt/2, dt/4x4" \
+					error [format "Run.tcl: analyze failed at step %d / %d (t~%.4g s) after NormDispIncr 1e-8/1e-6, dt/2, dt/4x4" \
 						$i $eqNstepsAll [getTime]]
 				}
 			}
