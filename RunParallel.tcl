@@ -51,7 +51,8 @@ wipe
 # runEQ = 1: then EQ
 # exportPartitionMap = 1: after partition, plot/ExportPartitionMap.tcl
 # plotFigures = 1: gravity shape PNG (rank 0)
-# eqPrintON = 1: print analysis t every eqPrintDt s
+# eqPrintON = 1: print analysis t, elapsed, pier top every eqPrintDt s (debug)
+# eqPrintON = 0: silent EQ loop
 set runEQ 1;                              # <-- EDIT  0 | 1
 set exportPartitionMap 0;                 # <-- EDIT  0 | 1
 set plotFigures 0;                        # <-- EDIT  0 | 1  (rank 0)

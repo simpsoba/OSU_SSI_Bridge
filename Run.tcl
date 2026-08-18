@@ -27,8 +27,8 @@ wipe
 # runEQ = 1: gravity then EQ (Lysmer / ASDEA stage 1)
 # plotFigures = 0: analysis only
 # plotFigures = 1: gravity shape PNG; modes too if runEQ 0
-# eqPrintON = 0: silent EQ loop
-# eqPrintON = 1: print analysis t every eqPrintDt s
+# eqPrintON = 0: silent EQ loop (no per-interval wall-clock timings)
+# eqPrintON = 1: print analysis t, elapsed, pier top every eqPrintDt s
 set runEQ 1;                              # <-- EDIT  0 | 1
 set plotFigures 1;                        # <-- EDIT  0 | 1
 set eqPrintON 1;                          # <-- EDIT  0 | 1

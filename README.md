@@ -212,6 +212,10 @@ Figures: `OpenSees PlotModel.tcl` → `plot/out/profile{N}/fibers/`.
 
 `eqFreeVibT` (seconds) in `Parameters.tcl` defines the number of seconds that are run in free vibration after the earthquake ends.
 
+### EQ progress / timings
+
+`eqPrintON` in `Run.tcl` and `RunParallel.tcl` (not `Parameters.tcl`). Default `1` prints analysis time, wall-clock elapsed, and pier-top disp every `eqPrintDt` s (debug). Set `eqPrintON 0` to silence the loop. The one-line `EQ done` summary still prints elapsed at the end.
+
 ### OpenFresco (`expElement`)
 
 Placeholders are in `Run.tcl` and `RunParallel.tcl`. Create the experimental element **before** `numberer` / `system` / `analysis Transient`. Recorders go after that block (next to `EQRecorders.tcl`).
