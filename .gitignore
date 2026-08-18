@@ -1,0 +1,27 @@
+# Local scratch. Model does not source this folder.
+tmp/
+
+# Recorders (empty placeholder; dumps go under plot/out)
+output/
+
+# Figures, EQ dumps, partition maps, JSON copies next to plotters
+plot/out/
+plot/__pycache__/
+plot/*.json
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Logs
+*.log
+
+# Paper PDFs stay local (BibTeX is tracked)
+reference/*.pdf
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+*~
+*.swp

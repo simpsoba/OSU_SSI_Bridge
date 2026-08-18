@@ -1,0 +1,38 @@
+---
+description: Avoid AI-looking prose in chat, notes, commits, and comments
+alwaysApply: true
+---
+
+# Writing style (avoid AI tells)
+
+Write like a careful engineer or journal editor, not like a chatbot.
+Reference: [How to spot AI writing](https://www.economist.com/culture/2026/07/30/how-to-spot-ai-writing) (The Economist, 2026-07-30).
+
+## Prefer
+
+- Short sentences mixed with longer ones. Use commas, parentheses, and the odd semicolon when they help.
+- Plain words: *use*, *show*, *build*, *fix* over *utilize*, *demonstrate*, *leverage*, *address*.
+- Concrete detail (paths, tags, numbers) over vague framing.
+- Direct structure. Lead with the point.
+
+## Avoid (common LLM tells from that piece)
+
+- Long, under-punctuated sentences strung together with **and**.
+- Pretentious Latinate padding and nominalizations (*implementation of*, *utilization of*, *functionality*).
+- Stock rhetoric: **not X but Y**, **not only … but also**, neat **rule-of-three** lists for their own sake.
+- Formulaic cheerleading: *robust*, *comprehensive*, *seamless*, *delve*, *landscape*, *it is worth noting*, *in conclusion*.
+- Over-explained provenance fluff in notes (storage IDs, “copied from…”, meta about the process) unless it helps someone find a file.
+- Meta comments that defend naming or style choices (*“full words so short names stay free”*, *“exact by definition”*, etc.). Put the fact in the code; skip the lecture.
+- Cross-links to other local OpenSees runs/models (`5span`, `simplified*`, `ModelSelector`, EJL paths, …) in code or notes unless the user asks for that link.
+
+## Em dashes
+
+Do not treat em dashes as proof of AI writing (the article argues they are a weak tell now). Use them sparingly when useful; do not sprinkle them for rhythm.
+
+## Citations
+
+Paper refs are fine: Shin et al. (2007), Mackie et al. (2008), Neumann (2021), Neumann et al. (2023), etc. Use *et al.* when there are three or more authors.
+
+## Scope
+
+Applies to chat replies, `NOTES.md` / `README.md`, commit messages, and code comments in this workspace.

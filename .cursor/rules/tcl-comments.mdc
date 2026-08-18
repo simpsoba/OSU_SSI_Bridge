@@ -1,0 +1,45 @@
+---
+description: Comment Tcl like OpenSees public examples (intent, syntax, stages)
+alwaysApply: true
+---
+
+# Comment like OpenSees examples
+
+Match the style of the public OpenSeesPy examples (RC frame EQ, laterally loaded pile, free-field effective stress, PM4Sand cyclic). The advisor must be able to read a block without guessing.
+
+## Stages
+
+Numbered headers with a divider, same grain as McGann/Shin site-response scripts:
+
+```
+# ------------------------------------------------------------
+# 1. SOIL FOLLOW PILE/CAP (soil self-weight)
+# ------------------------------------------------------------
+```
+
+State units once at the file top (N, m, s). Print when a stage finishes.
+
+## Command syntax
+
+Put the OpenSees argument list on the line above the call. Then say what *this* instance does (which nodes, which DOF, why).
+
+```tcl
+# equalDOF $rNodeTag $cNodeTag $dof1 $dof2
+# soil UX,UY follow the coincident pile/cap under self-weight
+equalDOF $retainNd $soilNd 1 2
+
+# node $tag $x $y -mass $mx $my $mRz
+node 3001 [expr {-$xSoffit}] $y0 -mass $deckM(BL) $deckM(BL) $deckIrot(BL)
+```
+
+Do not comment `wipe` / `analyze` as if the name were obscure. Do comment argument order (`pattern` tag vs dir, `rayleigh` four coefs, `equalDOF` retained vs constrained).
+
+## Geometry and names
+
+ASCII sketch with node names or tags when the layout is fixed (pile wiki sketch; our cap TL/ML grid, deck 3004--3006).
+
+Full words: `soilNd`, `retainNd`. No leading `_`. `info exists` guards stay.
+
+## Knobs
+
+Group inputs with a unit and a short meaning (`CSR = 0.2  ;# cyclic stress ratio`). Cite API / Reese / Shin next to a formula, not a lecture.

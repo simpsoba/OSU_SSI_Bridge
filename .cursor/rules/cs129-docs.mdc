@@ -1,0 +1,29 @@
+---
+description: Document like CS129 / DeepLearning.AI labs (goals, Args/Returns, recap)
+alwaysApply: true
+---
+
+# Document like the CS129 notebooks
+
+Those notebooks (DeepLearning.AI C1 labs: goals cell, equation, then `Args`/`Returns` on every helper) are how this model should read. A later reader should know the assignment before the OpenSees call.
+
+## File or stage
+
+Start with **Goals** (what this block does, when it runs, what it leaves behind). Numbered `# ------------------------------------------------------------` sections are the lab headings.
+
+Do not write a course recap ("Congratulations"). A `puts` of tags, counts, or `SumW` is the recap.
+
+## Helpers
+
+Every `proc` gets a short header: one-line purpose, then Args / Returns (units). Inline comments are for the tricky line only (`# protect against overflow`, `# UX only so axial goes through the ZLS`).
+
+```tcl
+# Add mass to a node that already has mass (OpenSees `mass` replaces).
+# Args:    nodeTag  dmx dmy dIrot   (kg, kg.m2)
+# Returns: none (updates the node)
+proc IncrMass {nodeTag args} { ... }
+```
+
+## Code cells
+
+A markdown-style note **before** a branch or formula (why this pier type, why `-subtractInit`). After it, what to check (print, or one sentence). Label a plot or ASCII sketch the same way the labs label "plot 1, single variable".

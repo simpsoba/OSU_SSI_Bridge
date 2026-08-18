@@ -1,0 +1,40 @@
+---
+description: Named Tcl tags; no getNodeTags gravity/mass/fix on the structure
+alwaysApply: true
+---
+
+# Named Tcl assembly
+
+The advisor edits this model by hand. Hidden tags are the failure mode (cannot add gravity).
+
+## Named parts
+
+- Pier: tags live once in `Parameters.tcl` as `nodeTag_pierBase_capTC`, `nodeTag_pierBaseZeroLengthInner`, `nodeTag_pierTopZeroLengthInner`, `nodeTag_pierTop_deckBC`. Use those names on `node` / `element` / `sp`. Cap TC and deck BC alias the outer pair.
+- Deck frame (except the shared soffit): 3001–3010 as in `BuildDeckNodes.tcl`.
+- Cap: named tags in Parameters (TL/ML grid, frame to outer pile axes) and explicit `node` commands. Soil, piles along a shaft, springs: formula + a named base.
+- Adding a structural node: name it, `node …`, `lappend structNodeTags`. Skip if it already exists (shared: cap TC = pierBase_capTC; deck BC = pierTop_deckBC; pile heads = cap BL/BC/BR).
+
+## Gravity, mass, structure BCs
+
+Walk `structNodeTags` (built in `Build*Nodes.tcl`). Do not scan `getNodeTags`.
+
+```tcl
+# bad
+foreach n [getNodeTags] {
+	if {$n >= $tagShift_soil} { continue }
+	load $n 0.0 [expr {-$m*$gravity_accel}] 0.0
+}
+
+# good
+load $nodeTag_pierTop_deckBC 0.0 [expr {-$m*$gravity_accel}] 0.0
+# or, for the assembled structure:
+foreach n $structNodeTags {
+	load $n 0.0 [expr {-$m*$gravity_accel}] 0.0
+}
+```
+
+## Loops that stay
+
+Soil grid, pile `iy = 1..nSeg_pile`, fiber strips, SSI springs along a shaft, EQ time steps, plot dumps.
+
+Next to the loop: the tag formula and an exported list (`nodeTag_pile_tips`, `soilEleTags`).
