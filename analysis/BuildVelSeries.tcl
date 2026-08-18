@@ -1,6 +1,7 @@
 # analysis/BuildVelSeries.tcl
 # Goals: outcrop velocity Path (PEER VT2 or dummy zeros). PEER CM/S -> m/s
 # before Path -factor. Knobs: gmVelFile, gmVelDT, gmScaleFactor.
+# gmStartTime (Run.tcl / RunParallel.tcl): Path -startTime; 0 or unset = omit.
 # Call from Run.tcl (EQ) or the ASDEA mesh.
 #
 # =====================================================================
@@ -13,6 +14,12 @@ if {![info exists tsTag_velBase]} {
 }
 
 catch {remove timeSeries $tsTag_velBase}
+
+# timeSeries Path ... -startTime $t0  (omit when 0: series starts at domain t=0)
+set velStartArgs {}
+if {[info exists gmStartTime] && $gmStartTime ne "" && $gmStartTime > 0} {
+	set velStartArgs [list -startTime $gmStartTime]
+}
 
 set velOk 0
 if {[info exists gmVelFile] && $gmVelFile ne ""} {
@@ -77,8 +84,9 @@ if {[info exists gmVelFile] && $gmVelFile ne ""} {
 			error [format "BuildVelSeries.tcl: NPTS=%d but read %d values from %s" \
 				$nPts [llength $velVals] $gmVelFile]
 		}
-		# timeSeries Path $tag -dt $dt -values {...} -factor $gmScaleFactor
-		timeSeries Path $tsTag_velBase -dt $gmVelDT -values $velVals -factor $gmScaleFactor
+		# timeSeries Path $tag -dt $dt -values {...} -factor $gmScaleFactor ?-startTime $t0?
+		timeSeries Path $tsTag_velBase -dt $gmVelDT -values $velVals \
+			-factor $gmScaleFactor {*}$velStartArgs
 		set gmVelNPTS [llength $velVals]
 		set gmVelDuration [expr {($gmVelNPTS - 1)*$gmVelDT}]
 		set velOk 1
@@ -88,8 +96,13 @@ if {[info exists gmVelFile] && $gmVelFile ne ""} {
 			if {$tokA > $vMax} { set vMax $tokA }
 		}
 		set vMax [expr {$vMax*$gmScaleFactor}]
-		puts [format "----- Vel series  %s  T=%.4g s  |v|nMax=%.4g m/s -----" \
-			[file tail $gmVelFile] $gmVelDuration $vMax]
+		if {[llength $velStartArgs]} {
+			puts [format "----- Vel series  %s  T=%.4g s  |v|nMax=%.4g m/s  startTime=%.4g s -----" \
+				[file tail $gmVelFile] $gmVelDuration $vMax $gmStartTime]
+		} else {
+			puts [format "----- Vel series  %s  T=%.4g s  |v|nMax=%.4g m/s -----" \
+				[file tail $gmVelFile] $gmVelDuration $vMax]
+		}
 	} else {
 		# Filename looks like PEER but header was not
 		if {[string match -nocase "*.VT2" $gmVelFile] \
@@ -100,14 +113,21 @@ if {[info exists gmVelFile] && $gmVelFile ne ""} {
 		if {![info exists gmVelDT] || $gmVelDT <= 0} {
 			error "BuildVelSeries.tcl: gmVelDT must be > 0 when gmVelFile is set"
 		}
-		timeSeries Path $tsTag_velBase -dt $gmVelDT -filePath $gmVelFile -factor $gmScaleFactor
+		# timeSeries Path $tag -dt $dt -filePath $file -factor $gmScaleFactor ?-startTime $t0?
+		timeSeries Path $tsTag_velBase -dt $gmVelDT -filePath $gmVelFile \
+			-factor $gmScaleFactor {*}$velStartArgs
 		set velOk 1
 		if {![info exists gmVelNPTS] || $gmVelNPTS < 2} {
 			error "BuildVelSeries.tcl: set gmVelNPTS (>=2) for plain -filePath series"
 		}
 		set gmVelDuration [expr {($gmVelNPTS - 1)*$gmVelDT}]
-		puts [format "----- Vel series  %s  T=%.4g s -----" \
-			[file tail $gmVelFile] $gmVelDuration]
+		if {[llength $velStartArgs]} {
+			puts [format "----- Vel series  %s  T=%.4g s  startTime=%.4g s -----" \
+				[file tail $gmVelFile] $gmVelDuration $gmStartTime]
+		} else {
+			puts [format "----- Vel series  %s  T=%.4g s -----" \
+				[file tail $gmVelFile] $gmVelDuration]
+		}
 	}
 }
 
@@ -115,8 +135,15 @@ if {!$velOk} {
 	if {![info exists gmVelDT] || $gmVelDT <= 0} {
 		set gmVelDT 0.005
 	}
-	timeSeries Path $tsTag_velBase -dt $gmVelDT -values {0.0 0.0} -factor $gmScaleFactor
+	# timeSeries Path $tag -dt $dt -values {...} -factor $gmScaleFactor ?-startTime $t0?
+	timeSeries Path $tsTag_velBase -dt $gmVelDT -values {0.0 0.0} \
+		-factor $gmScaleFactor {*}$velStartArgs
 	set gmVelNPTS 2
 	set gmVelDuration $gmVelDT
-	puts [format "----- Vel series  dummy zeros  dt=%.4g s -----" $gmVelDT]
+	if {[llength $velStartArgs]} {
+		puts [format "----- Vel series  dummy zeros  dt=%.4g s  startTime=%.4g s -----" \
+			$gmVelDT $gmStartTime]
+	} else {
+		puts [format "----- Vel series  dummy zeros  dt=%.4g s -----" $gmVelDT]
+	}
 }

@@ -16,6 +16,7 @@
 # Serial (getNP = 1) writes $name; OpenSeesMP writes $name.$pid after rank 0
 # clears eqOutDir. plot/PlotEQ.py reads the serial names, plot/PlotEQParallel.py
 # stitches the shards and then calls PlotEQ.py.
+# Drivers call `record` once after this file (and after OpenFresco recorders).
 #
 # 1. RANK, OUTPUT FOLDER, HELPERS
 # 2. MONITOR SET      -- which nodes, quads, pile beams and springs
@@ -126,6 +127,10 @@ proc eqRecEle {name tags args} {
 
 # Recorders live under plot/out next to the figures. Serial and parallel keep
 # separate folders so the two dumps cannot overwrite each other.
+# outDIR in Run.tcl / RunParallel.tcl overrides; "" keeps this auto path.
+if {[info exists outDIR] && $outDIR ne ""} {
+	set eqOutDir $outDIR
+}
 if {![info exists eqOutDir]} {
 	if {$eqNP > 1} {
 		set eqRunKind "parallel"
@@ -654,5 +659,3 @@ if {$eqNP <= 1} {
 } else {
 	puts [format "EQRecorders rank %d: %s  %s" $eqPID $recKind $recCounts]
 }
-
-record

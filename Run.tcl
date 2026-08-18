@@ -29,10 +29,20 @@ wipe
 # plotFigures = 1: gravity shape PNG; modes too if runEQ 0
 # eqPrintON = 0: silent EQ loop (no per-interval wall-clock timings)
 # eqPrintON = 1: print analysis t, elapsed, pier top every eqPrintDt s
+# outDIR: recorder folder (EQ + OpenFresco). "" = auto plot/out/...
+# gmStartTime: Path -startTime (s). 0 = series starts at t=0
+# realTimeON = 0: EQ to eqNstepsAll, recovery on, no OpenFresco
+# realTimeON = 1: OpenFresco, no recovery, realTimeNsteps (needs lumpedPlasticity; ignores eqPrintON)
+# eleTag_exp: OpenFresco generic element (UX on ZLS-J inner)
 set runEQ 1;                              # <-- EDIT  0 | 1
-set plotFigures 1;                        # <-- EDIT  0 | 1
+set plotFigures 0;                        # <-- EDIT  0 | 1
 set eqPrintON 1;                          # <-- EDIT  0 | 1
 set eqPrintDt 5.0;                        # <-- EDIT  s, analysis time between progress lines
+set outDIR trial1;                        # <-- EDIT  folder ("" = auto)
+set gmStartTime 0.0;                      # <-- EDIT  s (0 = omit -startTime)
+set realTimeON 0;                         # <-- EDIT  0 | 1
+set realTimeNsteps 1000000000000;         # <-- EDIT  steps when realTimeON 1
+set eleTag_exp 101;                       # <-- EDIT  OpenFresco generic ele tag
 
 source [file join $root Parameters.tcl]
 if {[info exists env(REGEN_PROFILE)] && $env(REGEN_PROFILE) ne ""} {
@@ -53,16 +63,28 @@ if {[info exists env(REGEN_FREE_VIB)] && $env(REGEN_FREE_VIB) ne ""} {
 if {$runEQ != 0 && $runEQ != 1} {
 	error "Run.tcl: runEQ must be 0 (gravity) or 1 (gravity+EQ) (got '$runEQ')"
 }
+if {$realTimeON != 0 && $realTimeON != 1} {
+	error "Run.tcl: realTimeON must be 0 or 1 (got '$realTimeON')"
+}
+if {$gmStartTime < 0} {
+	error "Run.tcl: gmStartTime must be >= 0 (got '$gmStartTime')"
+}
+if {$realTimeON && $pierEleType ne "lumpedPlasticity"} {
+	error "Run.tcl: realTimeON=1 needs pierEleType lumpedPlasticity (got '$pierEleType')"
+}
+if {$realTimeON && $realTimeNsteps < 1} {
+	error "Run.tcl: realTimeNsteps must be >= 1 when realTimeON=1 (got '$realTimeNsteps')"
+}
 
 if {$recordersON != 0 && $recordersON != 1 && $recordersON != 2} {
 	error "Run.tcl: recordersON must be 0, 1, or 2 (got '$recordersON')"
 }
 
-puts [format "Run: runEQ=%d  recordersON=%d  pier=%s  pile=%s  profile=%s  boundary=%s  constitutive=%s  springs=%s  soilEle=%s" \
-	$runEQ $recordersON $pierEleType $pileEleType $soilProfile $soilBoundary $soilConstitutive $pileSpring $soilEleType]
+puts [format "Run: runEQ=%d  realTimeON=%d  recordersON=%d  pier=%s  pile=%s  profile=%s  boundary=%s  constitutive=%s  springs=%s  soilEle=%s" \
+	$runEQ $realTimeON $recordersON $pierEleType $pileEleType $soilProfile $soilBoundary $soilConstitutive $pileSpring $soilEleType]
 if {$runEQ} {
-	puts [format "  dt=%.6g s  DT_FACTOR=%d  cylinderSF=%.4g" \
-		$dtAnalysis $DT_FACTOR $cylinderSF]
+	puts [format "  dt=%.6g s  DT_FACTOR=%d  cylinderSF=%.4g  gmStartTime=%.4g s  outDIR=%s" \
+		$dtAnalysis $DT_FACTOR $cylinderSF $gmStartTime $outDIR]
 }
 
 # ------------------------------------------------------------
@@ -223,11 +245,39 @@ if {!$runEQ} {
 	}
 	set eqNstepsAll [expr {$eqNsteps + $fvNsteps}]
 
+	# ---
+	# OpenFresco (realTimeON): generic expElement on ZLS-J inner, UX
+	# ---
+	if {$realTimeON} {
+		# model BasicBuilder -ndm $ndm -ndf $ndf
+		# 3-DOF so ZLS-J inner can take the expElement
+		model BasicBuilder -ndm 2 -ndf 3
+		loadPackage OpenFrescoTcl
+		puts "\n-------------------"
+		puts "experimental element on"
 
-	####################################################
-	# YOU SHOULD DEFINE THE OPENFRESCO EXPERIMENTAL ELEMENT HERE
+		set Kexp 1e-2;                      # N/m  -initStif (1 dof)
 
-	####################################################
+		# expControlPoint $tag $dof rsp
+		expControlPoint 1 1 disp
+		expControlPoint 2 1 force
+
+		# expControl SCRAMNetGT $tag -nodeID $id $memSize -trialCP $cp -outCP $cp
+		expControl SCRAMNetGT 1 -nodeID 3 4096 -trialCP 1 -outCP 2
+
+		# expSetup NoTransformation $tag -control $ctrlTag -dir $dof -sizeTrialOut $nTrial $nOut
+		expSetup NoTransformation 1 -control 1 \
+			-dir 1 \
+			-sizeTrialOut 1 1
+
+		# expSite LocalSite $tag $setupTag
+		expSite LocalSite 1 1
+
+		# expElement generic $eleTag -node $nodeTag -dof $dof -site $site -initStif $K
+		# node 4 = $nodeTag_pierTopZeroLengthInner: top node of the stiff element, UX
+		expElement generic $eleTag_exp -node $nodeTag_pierTopZeroLengthInner \
+			-dof 1 -site 1 -initStif $Kexp -noRayleigh -checkTime
+	}
 	
 	wipeAnalysis
 	numberer Plain
@@ -256,72 +306,99 @@ if {!$runEQ} {
 
 	source [file join $analysisDir EQRecorders.tcl]
 
-	####################################################
-	# YOU SHOULD DEFINE OPENFRESCO RECORDERS HERE
-
-	####################################################
+	if {$realTimeON} {
+		if {![file isdirectory $eqOutDir]} {
+			file mkdir $eqOutDir
+		}
+		# recorder Element -file $fileName -time -ele $eleTag $rsp
+		recorder Element -file [file join $eqOutDir Elmt${eleTag_exp}_ctrlDsp.out] \
+			-time -ele $eleTag_exp ctrlDisp
+		recorder Element -file [file join $eqOutDir Elmt${eleTag_exp}_GlbFrc.out] \
+			-time -ele $eleTag_exp forces
+		recorder Element -file [file join $eqOutDir Elmt${eleTag_exp}_BscFrc.out] \
+			-time -ele $eleTag_exp basicForces
+		# expRecorder Setup -file $fileName -time -setup $tag $rsp
+		expRecorder Setup -file [file join $eqOutDir ServerSetup_daqFrc.out] \
+			-time -setup 1 daqForce
+	}
+	record
 	
 	
-	puts [format "----- EQ  dt=%.6g s  T=%.4g+%.4g s  nSteps=%d  rec=%d -----" \
-		$dtAnalysis $Trec $eqFreeVibT $eqNsteps $recordersON]
+	if {$realTimeON} {
+		puts [format "----- EQ  realTimeON  dt=%.6g s  nSteps=%s  rec=%d -----" \
+			$dtAnalysis $realTimeNsteps $recordersON]
+	} else {
+		puts [format "----- EQ  dt=%.6g s  T=%.4g+%.4g s  nSteps=%d  rec=%d -----" \
+			$dtAnalysis $Trec $eqFreeVibT $eqNsteps $recordersON]
+	}
 
 	set t0 [clock microseconds]
 	set ok 0
 	set nFail 0
-	set dtHalf [expr {0.5*$dtAnalysis}]
-	set dtQ [expr {0.25*$dtAnalysis}]
-	set dtPrint $eqPrintDt
-	set tPrint $dtPrint
-	for {set i 1} {$i <= $eqNstepsAll} {incr i} {
-		if {$fvNsteps > 0 && $i == [expr {$eqNsteps + 1}]} {
-			puts [format "----- free vibration %.4g s (%d steps) -----" \
-				$eqFreeVibT $fvNsteps]
+	if {$realTimeON} {
+		for {set i 1} {$i <= $realTimeNsteps} {incr i} {
+			analyze 1 $dtAnalysis
 		}
-		set ok [analyze 1 $dtAnalysis]
-		if {$ok != 0} {
-			incr nFail
-			puts [format "  recover at step %d  t~%.4g s" $i [getTime]]
-			set ok [analyze 1 $dtHalf]
-			if {$ok == 0} {
-				set ok [analyze 1 $dtHalf]
+	} else {
+		set dtHalf [expr {0.5*$dtAnalysis}]
+		set dtQ [expr {0.25*$dtAnalysis}]
+		set dtPrint $eqPrintDt
+		set tPrint $dtPrint
+		for {set i 1} {$i <= $eqNstepsAll} {incr i} {
+			if {$fvNsteps > 0 && $i == [expr {$eqNsteps + 1}]} {
+				puts [format "----- free vibration %.4g s (%d steps) -----" \
+					$eqFreeVibT $fvNsteps]
 			}
+			set ok [analyze 1 $dtAnalysis]
 			if {$ok != 0} {
-				puts [format "  recover dt=%.6g s at step %d  t~%.4g s" $dtQ $i [getTime]]
-				set ok 0
-				for {set k 1} {$k <= 4} {incr k} {
-					set ok [analyze 1 $dtQ]
-					if {$ok != 0} { break }
+				incr nFail
+				puts [format "  recover at step %d  t~%.4g s" $i [getTime]]
+				set ok [analyze 1 $dtHalf]
+				if {$ok == 0} {
+					set ok [analyze 1 $dtHalf]
+				}
+				if {$ok != 0} {
+					puts [format "  recover dt=%.6g s at step %d  t~%.4g s" $dtQ $i [getTime]]
+					set ok 0
+					for {set k 1} {$k <= 4} {incr k} {
+						set ok [analyze 1 $dtQ]
+						if {$ok != 0} { break }
+					}
+				}
+				if {$ok != 0} {
+					error [format "Run.tcl: analyze failed at step %d / %d (t~%.4g s) after dt/2, dt/4x4" \
+						$i $eqNstepsAll [getTime]]
 				}
 			}
-			if {$ok != 0} {
-				error [format "Run.tcl: analyze failed at step %d / %d (t~%.4g s) after dt/2, dt/4x4" \
-					$i $eqNstepsAll [getTime]]
-			}
-		}
-		if {$eqPrintON} {
-			set tNow [getTime]
-			set elapsed [expr {([clock microseconds] - $t0)/1.0e6}]
-			while {$tNow >= $tPrint} {
-				puts [format "  analysis t=%.3f s  elapsed=%.2f s  pier top ux=%.4e m  uy=%.4e m  step %d / %d" \
-					$tNow $elapsed \
-					[nodeDisp $nodeTag_pierTop_deckBC 1] [nodeDisp $nodeTag_pierTop_deckBC 2] \
-					$i $eqNstepsAll]
-				set tPrint [expr {$tPrint + $dtPrint}]
+			if {$eqPrintON} {
+				set tNow [getTime]
+				set elapsed [expr {([clock microseconds] - $t0)/1.0e6}]
+				while {$tNow >= $tPrint} {
+					puts [format "  analysis t=%.3f s  elapsed=%.2f s  pier top ux=%.4e m  uy=%.4e m  step %d / %d" \
+						$tNow $elapsed \
+						[nodeDisp $nodeTag_pierTop_deckBC 1] [nodeDisp $nodeTag_pierTop_deckBC 2] \
+						$i $eqNstepsAll]
+					set tPrint [expr {$tPrint + $dtPrint}]
+				}
 			}
 		}
 	}
 	set elapsed [expr {([clock microseconds] - $t0)/1.0e6}]
 	set soilEQDone 1
 
-	puts [format "----- EQ done  recoveries=%d -----" $nFail]
+	if {$realTimeON} {
+		puts [format "----- EQ done  realTimeON  nSteps=%s -----" $realTimeNsteps]
+	} else {
+		puts [format "----- EQ done  recoveries=%d -----" $nFail]
+	}
 	puts [format "  analysis t=%.4g s  elapsed=%.2f s  (EQ %.4g s + freeVib %.4g s)" \
 		[getTime] $elapsed $Trec $eqFreeVibT]
 	puts [format "  pier top ux=%.4e m  uy=%.4e m" \
 		[nodeDisp $nodeTag_pierTop_deckBC 1] [nodeDisp $nodeTag_pierTop_deckBC 2]]
-	if {$recordersON == 0} {
+	if {$recordersON == 0 && !$realTimeON} {
 		puts "  recordersON=0"
 	} else {
-		puts [format "  eqOutDir=%s" $eqOutDir]
+		puts [format "  outDIR=%s" $eqOutDir]
 	}
 	puts "Run: gravity + EQ done"
 }

@@ -214,21 +214,31 @@ Figures: `OpenSees PlotModel.tcl` → `plot/out/profile{N}/fibers/`.
 
 ### EQ progress / timings
 
-`eqPrintON` in `Run.tcl` and `RunParallel.tcl` (not `Parameters.tcl`). Default `1` prints analysis time, wall-clock elapsed, and pier-top disp every `eqPrintDt` s (debug). Set `eqPrintON 0` to silence the loop. The one-line `EQ done` summary still prints elapsed at the end.
+`eqPrintON` in `Run.tcl` and `RunParallel.tcl` (not `Parameters.tcl`). Default `1` prints analysis time, wall-clock elapsed, and pier-top disp every `eqPrintDt` s (debug). Set `eqPrintON 0` to silence the loop. Ignored when `realTimeON 1`. The one-line `EQ done` summary still prints elapsed at the end.
+
+### Recorder folder / GM start / realTimeON
+
+Same files (`Run.tcl`, `RunParallel.tcl`):
+
+- `outDIR` — recorder folder (`trial1`, `runA`, …). Relative to the process cwd. `""` uses the auto path `plot/out/profile{N}/eq/{serial|parallel}/...`.
+- `gmStartTime` — Path `-startTime` (s). `0` omits it. Domain clock stays at 0 after gravity; the GM is silent until that time.
+- `realTimeON 1` — OpenFresco, no recovery, `realTimeNsteps`, no `eqPrintON`. Default `0` is the usual EQ loop. Needs `pierEleType lumpedPlasticity`. `eleTag_exp` (default 101) is the generic experimental element.
 
 ### OpenFresco (`expElement`)
 
-Placeholders are in `Run.tcl` and `RunParallel.tcl`. Create the experimental element **before** `numberer` / `system` / `analysis Transient`. Recorders go after that block (next to `EQRecorders.tcl`).
+Gated by `realTimeON`. Create the experimental element **before** `numberer` / `system` / `analysis Transient`. Recorders go after `EQRecorders.tcl`.
 
-**Parallel:** `partition` must run **after** the `expElement` exists and **before** the analysis objects. METIS otherwise may put those nodes on another rank. Pin the experimental element on rank 0:
+**Parallel:** pin the pier on rank 0, then create `expElement` on rank 0 after `partition`, then `barrier`:
 
 ```tcl
-# define expElement here (tag $ExpEleTag)
-partition -keepOnRank 0 1 $ExpEleTag
+partition -keepOnRank 0 3 \
+	$eleTag_pier_botSpr $eleTag_pier $eleTag_pier_topSpr
+# rank 0: expElement on $nodeTag_pierTopZeroLengthInner
+# barrier
 # then numberer / system / constraints / analysis Transient
 ```
 
-Without OpenFresco, `RunParallel.tcl` just calls `partition`. Do not create the analysis first: `partition` only sees elements already in the domain, and the numberer is built from the mesh that remains after the split.
+Without OpenFresco (`realTimeON 0`), `RunParallel.tcl` just calls `partition`. Do not create the analysis first: `partition` only sees elements already in the domain, and the numberer is built from the mesh that remains after the split.
 
 ---
 
@@ -236,6 +246,6 @@ Without OpenFresco, `RunParallel.tcl` just calls `partition`. Do not create the 
 
 `OpenSees PlotModel.tcl` (build + dump + Python). JSON only: `set ::plotSkipPython 1` then source `PlotModel.tcl`.
 
-EQ dumps: `plot/out/profile{N}/eq/{serial|parallel}/{BC}/{soilEle}/{pierEleType}/`
+EQ dumps: `outDIR` if set, else `plot/out/profile{N}/eq/{serial|parallel}/{BC}/{soilEle}/{pierEleType}/`
 Modes: `plot/out/profile{N}/elevation/{BC}/modes/{soilEle}/{pierEleType}/`
 Gravity deformed: `…/gravity/{soilEle}/{pierEleType}/gravity_deformed.png`
