@@ -334,11 +334,11 @@ set nModesEigen 10;                       # <-- EDIT  (-) modes after gravity (r
 # -dT gmVelDT (the PEER step), not at every dtAnalysis step:
 #   0  off
 #   1  full window: |x|<=eqWindowX nodes + quads; all pile beams, all SSI springs
-#   2  lean: pier nodes 1/2/4/5 (UX UY RZ), both pier rotational springs, the
-#      soil-base primary node, and nine SSI horizons on the center pile
-#      (first / mid / last station of L2, L3, L5: spring + pile segment +
-#      x=0 quad at the same y). No cap springs, no pier accel.
-set recordersON 2;                        # <-- EDIT  0 | 1 | 2
+#   2  center column: pier nodes 1/2/4/5 (UX UY RZ), both rotational springs,
+#      soil-base primary, the whole center pile, every center-pile spring,
+#      and every x=0 soil quad (grade to base). No cap springs, no pier accel.
+#   3  nine SSI horizons (old 2): first / mid / last station of L2, L3, L5
+set recordersON 2;                        # <-- EDIT  0 | 1 | 2 | 3
 set eqWindowX 10.0;                       # <-- EDIT  m, |x| <= this for deformed-shape dump (recordersON 1)
 
 # ------------------------------------------------------------

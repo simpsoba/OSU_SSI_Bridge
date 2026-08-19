@@ -199,8 +199,8 @@ def stitch_nodes_disp(
     eq: Path, dest: Path, np_run: int, metas: dict[int, dict[str, str]]
 ) -> tuple[int, int, int]:
     """Unique nodes (drop ghosts): geometry -> window_nodes.txt, columns ->
-    disp_nodes.txt + window_disp.out. recordersON=2 records displacement for a
-    subset of the geometry, so the two lists differ."""
+    disp_nodes.txt + window_disp.out. Lean dumps (recordersON=2 or 3) record
+    displacement for a subset of the geometry, so the two lists differ."""
     geom_header = None
     disp_header = None
     geom_tags: list[int] = []
@@ -463,6 +463,18 @@ def fill_lean_quad_geom(dest: Path, meta: dict) -> int:
     return n_fill
 
 
+def merge_rank_meta(metas: dict[int, dict[str, str]]) -> dict[str, str]:
+    """Rank 0 as base; fill keys only a later rank wrote (pile beams, nIP, …)."""
+    base = dict(metas[0])
+    for pid in sorted(metas):
+        if pid == 0:
+            continue
+        for k, v in metas[pid].items():
+            if not str(base.get(k, "")).strip() and str(v).strip():
+                base[k] = v
+    return base
+
+
 def stitch(eq: Path, dest: Path, np_run: int, metas: dict[int, dict[str, str]]) -> None:
     dest.mkdir(parents=True, exist_ok=True)
     n_raw, n_u, n_disp = stitch_nodes_disp(eq, dest, np_run, metas)
@@ -484,7 +496,8 @@ def stitch(eq: Path, dest: Path, np_run: int, metas: dict[int, dict[str, str]]) 
         if name.startswith("pier_node_") and (dest / name).is_file():
             pier_files.append(name)
     write_meta(
-        dest, metas[0], n_u, n_eles, n_quads, sig, eps, np_run, pier_files, n_disp
+        dest, merge_rank_meta(metas), n_u, n_eles, n_quads, sig, eps, np_run,
+        pier_files, n_disp,
     )
     n_fill = fill_lean_quad_geom(dest, metas[0])
     if n_fill:
@@ -518,17 +531,18 @@ def main() -> int:
         stitch(eq, tmp, np_run, metas)
         argv = sys.argv
         sys.argv = [argv[0], str(tmp)]
+        rc = 1
         try:
             rc = peq.main()
         finally:
             sys.argv = argv
-        src = tmp / "plots"
-        dst = eq / "plots"
-        if src.is_dir():
-            if dst.exists():
-                shutil.rmtree(dst)
-            shutil.copytree(src, dst)
-            print(f"PlotEQParallel: plots -> {dst}")
+            src = tmp / "plots"
+            dst = eq / "plots"
+            if src.is_dir():
+                if dst.exists():
+                    shutil.rmtree(dst)
+                shutil.copytree(src, dst)
+                print(f"PlotEQParallel: plots -> {dst}")
         return rc
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

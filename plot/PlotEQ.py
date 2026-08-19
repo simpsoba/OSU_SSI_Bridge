@@ -14,6 +14,7 @@ Writes PNGs to <eqOutDir>/plots/. Edit the block below; leave a switch at 0 to s
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -107,9 +108,10 @@ def read_nodes(eq: Path) -> tuple[list[int], dict[int, tuple[float, float]]]:
 def read_disp_nodes(eq: Path) -> list[int]:
     """Column order of window_disp*.out.
 
-    recordersON=2 records displacement for the pier and the center pile only, so
-    disp_nodes.txt is a subset of window_nodes.txt. Older dumps have no such
-    file and every window node owns a column.
+    recordersON=2 (center column) and 3 (nine SSI) record displacement for the
+    pier and the center pile only, so disp_nodes.txt is a subset of
+    window_nodes.txt. Older dumps have no such file and every window node owns
+    a column.
     """
     p = eq / "disp_nodes.txt"
     if not p.is_file():
@@ -137,7 +139,9 @@ def load_window_disp(
     uy_parts = []
     t = None
     for fn in disp_files:
-        a = np.loadtxt(eq / fn)
+        a = loadtxt_partial(eq / fn)
+        if a.size == 0:
+            continue
         if a.ndim == 1:
             a = a.reshape(1, -1)
         ti = a[:, 0]
@@ -146,6 +150,8 @@ def load_window_disp(
         data = a[:, 1:]
         ux_parts.append(data[:, 0::2])
         uy_parts.append(data[:, 1::2])
+    if not ux_parts:
+        raise SystemExit(f"PlotEQ: no data in disp files {disp_files}")
     n = min(p.shape[0] for p in ux_parts)
     if t is not None and len(t) != n:
         print(f"PlotEQ: WARNING window disp row mismatch; trim to {n}")
@@ -202,12 +208,21 @@ def load_spring_pt(
     return f[:, 0], F, U
 
 
+# cap BL/BC/BR (Parameters.tcl): pile heads, shared with the cap soffit
+PILE_HEAD_TAGS = {1027, 1028, 1029}
+
+
 def pile_groups(xy: dict[int, tuple[float, float]]) -> dict[str, list[int]]:
-    piles = [t for t in xy if 2000 <= t < 3000]
+    piles = [t for t in xy if 2000 <= t < 3000 or t in PILE_HEAD_TAGS]
     if not piles:
         return {}
     xs = sorted({round(xy[t][0], 2) for t in piles})
-    names = list(NAMES[: len(xs)]) if len(xs) <= 3 else [f"p{i}" for i in range(len(xs))]
+    if len(xs) == 1:
+        names = ["C"]
+    elif len(xs) <= 3:
+        names = list(NAMES[: len(xs)])
+    else:
+        names = [f"p{i}" for i in range(len(xs))]
     out: dict[str, list[int]] = {n: [] for n in names}
     for t in piles:
         x = round(xy[t][0], 2)
@@ -309,14 +324,34 @@ def eq_end_time(meta: dict, t: np.ndarray) -> float | None:
     return te
 
 
+def truncated_end(meta: dict, t: np.ndarray | None) -> float | None:
+    """Last sample time if the dump stops before Trec (incomplete run)."""
+    if t is None or len(t) < 2:
+        return None
+    try:
+        trec = float(meta.get("Trec", 0) or 0)
+    except ValueError:
+        return None
+    t_last = float(t[-1])
+    if trec > 0.0 and t_last < trec - 1.0e-3:
+        return t_last
+    return None
+
+
 def mark_eq_end(ax, t_eq: float | None) -> None:
     if t_eq is None:
         return
     ax.axvline(t_eq, color="#78909c", lw=1.0, ls=":", label="EQ end")
 
 
-def mark_last_sample(ax, t, t_eq: float | None) -> None:
+def mark_last_sample(
+    ax, t, t_eq: float | None, t_cut: float | None = None
+) -> None:
     mark_eq_end(ax, t_eq)
+    if t_cut is not None:
+        ax.axvline(float(t_cut), color="#c62828", lw=1.0, ls="--",
+                   label=f"last sample t={float(t_cut):.2f} s")
+        return
     if t_eq is None and t is not None and len(t) > 2 and float(t[-1]) < 80.0:
         ax.axvline(float(t[-1]), color="#c62828", lw=1.0, ls="--",
                    label=f"last sample t={float(t[-1]):.2f} s")
@@ -332,7 +367,10 @@ def hyst_loop(ax, x, y, xlabel: str, ylabel: str, title: str) -> None:
     ax.grid(True, ls=":", alpha=0.45)
 
 
-def plot_hist(out: Path, t, ux, uy, idx, groups, t_eq: float | None = None) -> None:
+def plot_hist(
+    out: Path, t, ux, uy, idx, groups, t_eq: float | None = None,
+    t_cut: float | None = None,
+) -> None:
     fig, ax = plt.subplots(figsize=(10.4, 4.2), constrained_layout=True)
     if PIER_TOP in idx:
         ax.plot(t, ux[:, idx[PIER_TOP]], color=ORANGE, lw=1.4,
@@ -345,10 +383,7 @@ def plot_hist(out: Path, t, ux, uy, idx, groups, t_eq: float | None = None) -> N
             continue
         ax.plot(t, ux[:, idx[tags[0]]], color=COLORS.get(name, "#333"),
                 lw=1.0, label=f"pile {name} head ux")
-    mark_eq_end(ax, t_eq)
-    if t_eq is None and t is not None and len(t) > 2 and float(t[-1]) < 80.0:
-        ax.axvline(float(t[-1]), color="#c62828", lw=1.0, ls="--",
-                   label=f"last sample t={float(t[-1]):.2f} s")
+    mark_last_sample(ax, t, t_eq, t_cut)
     ax.set_xlabel("t (s)")
     ax.set_ylabel("ux (m)")
     ax.legend(fontsize=8, ncol=2)
@@ -362,10 +397,7 @@ def plot_hist(out: Path, t, ux, uy, idx, groups, t_eq: float | None = None) -> N
     if PIER_BOT in idx:
         ax.plot(t, uy[:, idx[PIER_BOT]], color=ORANGE, lw=1.0, ls="--",
                 label="pier bot uy")
-    mark_eq_end(ax, t_eq)
-    if t_eq is None and t is not None and len(t) > 2 and float(t[-1]) < 80.0:
-        ax.axvline(float(t[-1]), color="#c62828", lw=1.0, ls="--",
-                   label=f"last sample t={float(t[-1]):.2f} s")
+    mark_last_sample(ax, t, t_eq, t_cut)
     ax.set_xlabel("t (s)")
     ax.set_ylabel("uy (m)")
     ax.legend(fontsize=8)
@@ -375,7 +407,8 @@ def plot_hist(out: Path, t, ux, uy, idx, groups, t_eq: float | None = None) -> N
 
 
 def plot_pier_hinge(
-    out: Path, eq: Path, meta: dict, t_eq: float | None
+    out: Path, eq: Path, meta: dict, t_eq: float | None,
+    t_cut: float | None = None,
 ) -> None:
     kind = meta.get("pierHinge", "")
     if kind not in ("lumpedPlasticity", "forceBeamColumn"):
@@ -430,7 +463,7 @@ def plot_pier_hinge(
     axes[1, 1].set_xlabel("t (s)")
     axes[0, 0].set_title(f"Pier base hinge  ({kind})")
     for ax in axes.ravel():
-        mark_last_sample(ax, t, t_eq)
+        mark_last_sample(ax, t, t_eq, t_cut)
         ax.grid(True, ls=":", alpha=0.45)
     fig.savefig(out / "hist_hinge.png", dpi=DPI)
     plt.close(fig)
@@ -946,7 +979,7 @@ def plot_quad_shear_hyst(
     )
     print(
         f"PlotEQ: wrote {out / 'hyst_tau_gamma.png'}  "
-        f"n={len(col)}  x≈{xc:.2f} m  (GP mean, Δ from t0={SUBTRACT_T0})"
+        f"n={len(col)}  x~{xc:.2f} m  (GP mean, d from t0={SUBTRACT_T0})"
     )
 
 
@@ -1057,6 +1090,54 @@ def read_pile_spring_eles(eq: Path) -> list[dict]:
             row["ip"] = int(parts[2])
             row["iy"] = int(parts[3])
         out.append(row)
+    return out
+
+
+def parse_lean_stations(meta: dict) -> list[dict]:
+    """window_meta leanStations: {iy y layer isTip iSeg} per SSI horizon."""
+    raw = meta.get("leanStations", "").strip()
+    if not raw:
+        return []
+    out: list[dict] = []
+    for inner in re.findall(r"\{([^}]*)\}", raw):
+        a = inner.split()
+        if len(a) < 5:
+            continue
+        out.append({
+            "iy": int(float(a[0])),
+            "y": float(a[1]),
+            "layer": a[2],
+            "isTip": int(float(a[3])),
+            "iSeg": int(float(a[4])),
+        })
+    return out
+
+
+def stations_for_plot(
+    rows: list[dict], js: dict | None, meta: dict
+) -> list[dict] | None:
+    """Column order. JSON stations if they match; else leanStations + ip/iy."""
+    aligned = align_pile_stations(rows, (js or {}).get("stations") or [])
+    if aligned is not None:
+        return aligned
+    lean = parse_lean_stations(meta)
+    if not lean or not rows:
+        return None
+    by_iy = {int(s["iy"]): s for s in lean}
+    out: list[dict] = []
+    for r in rows:
+        if "iy" not in r or "ip" not in r:
+            return None
+        s = by_iy.get(int(r["iy"]))
+        if s is None:
+            return None
+        out.append({
+            "ip": int(r["ip"]),
+            "iy": int(r["iy"]),
+            "y": float(s["y"]),
+            "isTip": int(s["isTip"]),
+            "layer": s.get("layer", ""),
+        })
     return out
 
 
@@ -1200,12 +1281,15 @@ def plot_spring_envelopes(
         eq, "pile_springs_force.out", "pile_springs_defo.out", len(pile_eles)
     )
     n = len(pile_eles)
-    stations = align_pile_stations(rows, (js or {}).get("stations") or [])
+    stations = stations_for_plot(rows, js, meta)
     if stations is None or len(stations) != n:
         print(
             f"PlotEQ: pile stations {0 if stations is None else len(stations)}"
             f" != nEle {n} -- skip spring env"
         )
+        return
+    if n and ("pult" not in stations[0] or "y50" not in stations[0]):
+        print("PlotEQ: no pult/y50 (need pile_springs.json) -- skip spring env")
         return
 
     ips_idx: dict[int, list[int]] = {}
@@ -1437,7 +1521,7 @@ def plot_hyst(out: Path, eq: Path, js: dict | None, meta: dict) -> None:
     _, Fp, Up = load_spring_pt(
         eq, "pile_springs_force.out", "pile_springs_defo.out", len(pile_eles)
     )
-    stations = align_pile_stations(rows, (js or {}).get("stations") or []) or []
+    stations = stations_for_plot(rows, js, meta) or []
     sizes = load_sketch_sizes(meta)
     titles = []
     for i, e in enumerate(pile_eles):
@@ -1890,11 +1974,17 @@ def main() -> int:
         print("PlotEQ: pile_springs.json not found -- spring capacity overlays skipped")
 
     t_eq = eq_end_time(meta, t) if t is not None else None
+    t_cut = truncated_end(meta, t)
+    if t is not None and len(t) > 1:
+        print(
+            f"PlotEQ: n={len(t)}  t={float(t[0]):.3g}..{float(t[-1]):.3g} s"
+            + (f"  Trec={meta.get('Trec', '?')} s (incomplete)" if t_cut else "")
+        )
     if DO_HIST:
-        plot_hist(out, t, ux, uy, idx, groups, t_eq)
+        plot_hist(out, t, ux, uy, idx, groups, t_eq, t_cut)
         print(f"PlotEQ: wrote {out / 'hist_ux.png'}")
     if DO_HINGE:
-        plot_pier_hinge(out, eq, meta, t_eq)
+        plot_pier_hinge(out, eq, meta, t_eq, t_cut)
     if DO_PILE_SEC:
         plot_pile_section(out, eq, meta, xy)
     if DO_ENVELOPE:
@@ -1916,7 +2006,7 @@ def main() -> int:
         if len(disp_tags) < len(tags):
             print(
                 f"PlotEQ: {len(tags) - len(disp_tags)} window nodes have no disp"
-                " column (recordersON=2) -- skip frames"
+                " column (lean dump) -- skip frames"
             )
         else:
             plot_frames(out, t, ux, uy, disp_tags, xy, lines, quads, js)

@@ -7,11 +7,12 @@
 #   0  off
 #   1  full window: nodes with |x| <= eqWindowX, the quads inside it, every
 #      pile beam, every SSI spring (pile, cap face, cap soffit)
-#   2  lean: the named pier nodes (UX UY RZ), both pier rotational springs,
-#      the soil-base primary node, and nine SSI horizons on the center pile --
-#      first / mid / last spring station of L2, L3, L5, each with its p-y/t-z
-#      spring, its pile segment, and the x=0 soil quad at the same y.
-#      No soil displacement channels; the quad corners need coordinates only.
+#   2  center column: pier nodes (UX UY RZ), both rotational springs, the
+#      soil-base primary node, the whole center pile, every center-pile
+#      spring, and every x=0 soil quad (grade to base). No cap springs.
+#      Quad corners are geometry only (no soil UX).
+#   3  nine SSI horizons (old 2): first / mid / last station of L2, L3, L5
+#      on the center pile, each with its spring, pile segment, and x=0 quad.
 #
 # Serial (getNP = 1) writes $name; OpenSeesMP writes $name.$pid after rank 0
 # clears eqOutDir. plot/PlotEQ.py reads the serial names, plot/PlotEQParallel.py
@@ -37,10 +38,11 @@ if {[llength [info commands getNP]]} {
 if {![info exists recordersON]} {
 	set recordersON 1
 }
-if {$recordersON != 0 && $recordersON != 1 && $recordersON != 2} {
-	error "EQRecorders.tcl: recordersON must be 0, 1, or 2 (got '$recordersON')"
+if {![string is integer -strict $recordersON] || $recordersON < 0 || $recordersON > 3} {
+	error "EQRecorders.tcl: recordersON must be an integer 0..3 (got '$recordersON')"
 }
-set eqRecLean [expr {$recordersON == 2}]
+set eqRecLean [expr {$recordersON == 2 || $recordersON == 3}]
+set eqRecNine [expr {$recordersON == 3}]
 if {$eqNP > 1} {
 	set eqRecSuf [format ".%d" $eqPID]
 } else {
@@ -173,13 +175,12 @@ foreach n [getNodeTags] { set eqLocalNode($n) 1 }
 # ---
 # 2. MONITOR SET
 # ---
-# Nine SSI horizons: first / mid / last spring station of L2, L3, L5 on the
-# center pile. The station index depends on dy_soil and the layer thicknesses,
-# so read it from the spring dump instead of hardcoding tags per profile.
-# Args: none
+# Center-pile SSI stations for lean dumps. iy comes from the spring dump
+# (dy_soil and the layer thicknesses), not a hardcoded tag list.
+# Args: nine (1 = first/mid/last of L2, L3, L5; 0 = every center-pile station)
 # Returns: none (sets eqLeanStations {iy y layer isTip iSeg}, and the lookups
 #          eqLeanStationKey(ip,iy) and eqLeanSegKeep(iSeg))
-proc eqLeanBuildStations {} {
+proc eqLeanBuildStations {nine} {
 	global pileSpringPropsDump n_pile nSeg_pile
 	global eqLeanStations eqLeanStationKey eqLeanSegKeep
 	array unset eqLeanStationKey
@@ -187,27 +188,40 @@ proc eqLeanBuildStations {} {
 	set eqLeanStations {}
 	if {![info exists pileSpringPropsDump]} { return }
 	set ipC [expr {($n_pile - 1)/2}]
-	array unset byLayer
-	foreach rec $pileSpringPropsDump {
-		lassign $rec ip iy y depth nm isTip
-		if {$ip != $ipC} { continue }
-		lappend byLayer($nm) [list $iy $y $isTip]
-	}
-	foreach nm {L2 L3 L5} {
-		if {![info exists byLayer($nm)]} { continue }
-		set rows [lsort -integer -index 0 $byLayer($nm)]
-		set nRow [llength $rows]
-		set pick [list 0 [expr {($nRow - 1)/2}] [expr {$nRow - 1}]]
-		foreach i [lsort -integer -unique $pick] {
-			lassign [lindex $rows $i] iy y isTip
-			# station iy is the i-end of segment iy+1; the tip is the j-end of
-			# the last segment, so it reuses iSeg = nSeg_pile
-			set iSeg [expr {$iy + 1}]
-			if {$iSeg > $nSeg_pile} { set iSeg $nSeg_pile }
-			set eqLeanStationKey($ipC,$iy) 1
-			set eqLeanSegKeep($iSeg) 1
-			lappend eqLeanStations [list $iy $y $nm $isTip $iSeg]
+	set rows {}
+	if {$nine} {
+		array unset byLayer
+		foreach rec $pileSpringPropsDump {
+			lassign $rec ip iy y depth nm isTip
+			if {$ip != $ipC} { continue }
+			lappend byLayer($nm) [list $iy $y $nm $isTip]
 		}
+		foreach nm {L2 L3 L5} {
+			if {![info exists byLayer($nm)]} { continue }
+			set layerRows [lsort -integer -index 0 $byLayer($nm)]
+			set nRow [llength $layerRows]
+			set pick [list 0 [expr {($nRow - 1)/2}] [expr {$nRow - 1}]]
+			foreach i [lsort -integer -unique $pick] {
+				lappend rows [lindex $layerRows $i]
+			}
+		}
+	} else {
+		foreach rec $pileSpringPropsDump {
+			lassign $rec ip iy y depth nm isTip
+			if {$ip != $ipC} { continue }
+			lappend rows [list $iy $y $nm $isTip]
+		}
+	}
+	foreach rec [lsort -integer -index 0 $rows] {
+		lassign $rec iy y nm isTip
+		# station iy is the i-end of segment iy+1; the tip is the j-end of
+		# the last segment, so it reuses iSeg = nSeg_pile
+		set iSeg [expr {$iy + 1}]
+		if {$iSeg > $nSeg_pile} { set iSeg $nSeg_pile }
+		if {[info exists eqLeanStationKey($ipC,$iy)]} { continue }
+		set eqLeanStationKey($ipC,$iy) 1
+		set eqLeanSegKeep($iSeg) 1
+		lappend eqLeanStations [list $iy $y $nm $isTip $iSeg]
 	}
 }
 
@@ -232,7 +246,7 @@ proc eqQuadRowForPile {yPile layer isTip} {
 }
 
 if {$eqRecLean} {
-	eqLeanBuildStations
+	eqLeanBuildStations $eqRecNine
 }
 
 # Pier: nodes 2 and 4 are the zeroLength inner nodes, so they exist only for
@@ -246,15 +260,15 @@ foreach nameVar {nodeTag_pierBase_capTC nodeTag_pierBaseZeroLengthInner \
 }
 
 # Pile beams: eleTag_pile_base + ip*nSeg_pile + (iSeg - 1), shaft by shaft.
-# recordersON=2 keeps the center pile at the nine station segments.
+# recordersON=2: every center-pile segment. 3: the nine station segments.
 set eqPileBeamRows {}
 if {[info exists eleTag_pile_base] && [info exists eleTag_pile_last] \
 		&& $eleTag_pile_last >= $eleTag_pile_base} {
 	set ipCenter [expr {($n_pile - 1)/2}]
 	for {set ip 0} {$ip < $n_pile} {incr ip} {
 		for {set iSeg 1} {$iSeg <= $nSeg_pile} {incr iSeg} {
-			if {$eqRecLean && ($ip != $ipCenter \
-					|| ![info exists eqLeanSegKeep($iSeg)])} {
+			if {$eqRecLean && $ip != $ipCenter} { continue }
+			if {$eqRecNine && ![info exists eqLeanSegKeep($iSeg)]} {
 				continue
 			}
 			set e [expr {$eleTag_pile_base + $ip*$nSeg_pile + $iSeg - 1}]
@@ -275,7 +289,8 @@ set eqPileSprRows {}
 if {[info exists pileSprEleRec]} {
 	foreach rec $pileSprEleRec {
 		lassign $rec e ip iy isTip
-		if {$eqRecLean && ![info exists eqLeanStationKey($ip,$iy)]} { continue }
+		if {$eqRecLean && $ip != [expr {($n_pile - 1)/2}]} { continue }
+		if {$eqRecNine && ![info exists eqLeanStationKey($ip,$iy)]} { continue }
 		if {![eqOwnsEle $e]} { continue }
 		lappend eqPileSprRows [list $e $ip $iy]
 	}
@@ -295,12 +310,13 @@ if {!$eqRecLean && [info exists nPileSprings] && [info exists eleTag_spr_last]} 
 # Quads, geometry nodes (window_nodes.txt) and displacement nodes (window_disp).
 #   1: nodes with |x| <= eqWindowX, then the quads with all four nodes there.
 #      Geometry and displacement are the same set.
-#   2: the x=0 soil column, one quad per station. Geometry carries the quad
-#      corners so a plot script can place each column; only the pier and the
-#      center-pile nodes get a displacement channel. The quad peak and hysteresis
-#      plots read stress and strain, so the corners need coordinates only. Soil
-#      UX at a station follows from u_pile - (spring deformation dir 1); the
-#      vertical needs the dup/pile gravity offset too (see NOTES.md).
+#   2: every x=0 soil quad (grade to base). Geometry carries the quad corners;
+#      only the pier and the center-pile nodes get a displacement channel.
+#   3: one x=0 quad per nine-horizon station (same geometry/disp split as 2).
+#      Quad peak and hysteresis plots read stress and strain, so the corners
+#      need coordinates only. Soil UX at a station follows from
+#      u_pile - (spring deformation dir 1); the vertical needs the dup/pile
+#      gravity offset too (see NOTES.md).
 # soilEleTags index = ix*nSoilRows + iy (BuildSoilMesh.tcl loops ix, then iy).
 set eqQuadEles {}
 set eqGeomNodeTags {}
@@ -314,15 +330,26 @@ if {$eqRecLean} {
 			break
 		}
 	}
-	array unset rowSeen
-	foreach st $eqLeanStations {
-		lassign $st iy y nm isTip iSeg
-		set iyQ [eqQuadRowForPile $y $nm $isTip]
-		if {$ixCenter < 0 || $iyQ < 0 || [info exists rowSeen($iyQ)]} { continue }
-		set rowSeen($iyQ) 1
-		set e [lindex $soilEleTags [expr {$ixCenter*$nSoilRows + $iyQ}]]
-		if {![eqOwnsEle $e]} { continue }
-		lappend eqQuadEles $e
+	if {$eqRecNine} {
+		array unset rowSeen
+		foreach st $eqLeanStations {
+			lassign $st iy y nm isTip iSeg
+			set iyQ [eqQuadRowForPile $y $nm $isTip]
+			if {$ixCenter < 0 || $iyQ < 0 || [info exists rowSeen($iyQ)]} {
+				continue
+			}
+			set rowSeen($iyQ) 1
+			set e [lindex $soilEleTags [expr {$ixCenter*$nSoilRows + $iyQ}]]
+			if {![eqOwnsEle $e]} { continue }
+			lappend eqQuadEles $e
+		}
+	} else {
+		for {set iyQ 0} {$iyQ < $nSoilRows} {incr iyQ} {
+			if {$ixCenter < 0} { break }
+			set e [lindex $soilEleTags [expr {$ixCenter*$nSoilRows + $iyQ}]]
+			if {![eqOwnsEle $e]} { continue }
+			lappend eqQuadEles $e
+		}
 	}
 	set dispNodes $eqPierNodes
 	foreach row $eqPileBeamRows {
@@ -360,8 +387,10 @@ foreach n $eqGeomNodeTags { set eqInWindow($n) 1 }
 # ---
 # Geometry: every node a plot script needs coordinates for.
 set nodesFd [open [eqRecPath window_nodes.txt] w]
-if {$eqRecLean} {
-	puts $nodesFd "# tag x y  (pier, center-pile stations, station quad corners)"
+if {$eqRecNine} {
+	puts $nodesFd "# tag x y  (pier, nine SSI stations, station quad corners)"
+} elseif {$eqRecLean} {
+	puts $nodesFd "# tag x y  (pier, center pile, x=0 soil column)"
 } else {
 	puts $nodesFd "# tag x y  (|x| <= $eqWindowX m)"
 }
@@ -398,8 +427,10 @@ foreach e [getEleTags] {
 close $elesFd
 
 set quadsFd [open [eqRecPath window_quads.txt] w]
-if {$eqRecLean} {
+if {$eqRecNine} {
 	puts $quadsFd {# eleTag layer  (x=0 quad at each SSI station)}
+} elseif {$eqRecLean} {
+	puts $quadsFd {# eleTag layer  (x=0 column, grade to base)}
 } else {
 	puts $quadsFd {# eleTag layer  (all four nodes inside the window)}
 }
@@ -644,8 +675,10 @@ if {[info exists nPrimary]} {
 }
 close $metaFd
 
-if {$eqRecLean} {
-	set recKind "lean"
+if {$eqRecNine} {
+	set recKind "nine SSI"
+} elseif {$eqRecLean} {
+	set recKind "center column"
 } else {
 	set recKind [format "|x|<=%.3g m" $eqWindowX]
 }
@@ -655,11 +688,13 @@ set recCounts [format "nodes=%d (disp %d) eles=%d quads=%d pileBeams=%d pileSpri
 if {$eqNP <= 1} {
 	puts [format "----- EQ recorders  %s  dT=%g s  %s -> %s -----" \
 		$recKind $eqRecDt $recCounts $eqOutDir]
-	if {$eqRecLean} {
+	if {$eqRecNine} {
 		puts "  SSI stations (iy y layer isTip iSeg):"
 		foreach st $eqLeanStations {
 			puts [format "    %s" $st]
 		}
+	} elseif {$eqRecLean} {
+		puts [format "  center-pile stations: %d" [llength $eqLeanStations]]
 	}
 } else {
 	puts [format "EQRecorders rank %d: %s  %s" $eqPID $recKind $recCounts]

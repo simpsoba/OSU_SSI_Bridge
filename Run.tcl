@@ -77,8 +77,8 @@ if {$realTimeON && $realTimeNsteps < 1} {
 	error "Run.tcl: realTimeNsteps must be >= 1 when realTimeON=1 (got '$realTimeNsteps')"
 }
 
-if {$recordersON != 0 && $recordersON != 1 && $recordersON != 2} {
-	error "Run.tcl: recordersON must be 0, 1, or 2 (got '$recordersON')"
+if {![string is integer -strict $recordersON] || $recordersON < 0 || $recordersON > 3} {
+	error "Run.tcl: recordersON must be an integer 0..3 (got '$recordersON')"
 }
 
 puts [format "Run: runEQ=%d  realTimeON=%d  recordersON=%d  pier=%s  pile=%s  profile=%s  boundary=%s  constitutive=%s  springs=%s  soilEle=%s" \
