@@ -570,13 +570,18 @@ puts $metaFd "nWindowQuads $nQuadRec"
 puts $metaFd "dtAnalysis $dtAnalysis"
 puts $metaFd "recDt $eqRecDt"
 puts $metaFd "eqNsteps $eqNsteps"
+set tMeta $Trec
+if {[info exists gmStartTime] && $gmStartTime ne "" && $gmStartTime > 0} {
+	puts $metaFd "gmStartTime $gmStartTime"
+	set tMeta [expr {$tMeta + $gmStartTime}]
+}
 if {[info exists fvNsteps]} {
 	puts $metaFd "freeVibT $eqFreeVibT"
 	puts $metaFd "freeVibNsteps $fvNsteps"
 	puts $metaFd "eqNstepsAll $eqNstepsAll"
-	puts $metaFd "Trec [expr {$Trec + $eqFreeVibT}]"
+	puts $metaFd "Trec [expr {$tMeta + $eqFreeVibT}]"
 } else {
-	puts $metaFd "Trec $Trec"
+	puts $metaFd "Trec $tMeta"
 }
 puts $metaFd "gmVelFile $gmVelFile"
 puts $metaFd "gmScaleFactor $gmScaleFactor"

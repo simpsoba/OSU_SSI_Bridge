@@ -30,7 +30,8 @@ wipe
 # eqPrintON = 0: silent EQ loop (no per-interval wall-clock timings)
 # eqPrintON = 1: print analysis t, elapsed, pier top every eqPrintDt s
 # outDIR: recorder folder (EQ + OpenFresco). "" = auto plot/out/...
-# gmStartTime: Path -startTime (s). 0 = series starts at t=0
+# gmStartTime: Path -startTime (s). 0 = series starts at t=0.
+#   When realTimeON is 0, eqNstepsAll covers startTime + Trec + eqFreeVibT.
 # realTimeON = 0: EQ to eqNstepsAll, recovery on, no OpenFresco
 # realTimeON = 1: OpenFresco, no recovery, realTimeNsteps (needs lumpedPlasticity; ignores eqPrintON)
 # eleTag_exp: OpenFresco generic element (UX on ZLS-J inner)
@@ -234,7 +235,12 @@ if {!$runEQ} {
 	if {$eqTmax ne "" && $eqTmax > 0 && $eqTmax < $Trec} {
 		set Trec $eqTmax
 	}
-	set eqNsteps [expr {int(ceil($Trec/$dtAnalysis))}]
+	# Path is silent until t >= gmStartTime; fold that pad into eqNsteps
+	set tWait 0.0
+	if {[info exists gmStartTime] && $gmStartTime ne "" && $gmStartTime > 0} {
+		set tWait $gmStartTime
+	}
+	set eqNsteps [expr {int(ceil(($tWait + $Trec)/$dtAnalysis))}]
 	if {$eqNsteps < 1} { set eqNsteps 1 }
 	if {![info exists eqFreeVibT] || $eqFreeVibT eq "" || $eqFreeVibT <= 0} {
 		set eqFreeVibT 0.0
@@ -329,8 +335,8 @@ if {!$runEQ} {
 		puts [format "----- EQ  realTimeON  dt=%.6g s  nSteps=%s  rec=%d -----" \
 			$dtAnalysis $realTimeNsteps $recordersON]
 	} else {
-		puts [format "----- EQ  dt=%.6g s  T=%.4g+%.4g s  nSteps=%d  rec=%d -----" \
-			$dtAnalysis $Trec $eqFreeVibT $eqNsteps $recordersON]
+		puts [format "----- EQ  dt=%.6g s  T=%.4g+%.4g+%.4g s (start+EQ+freeVib)  nSteps=%d  rec=%d -----" \
+			$dtAnalysis $tWait $Trec $eqFreeVibT $eqNstepsAll $recordersON]
 	}
 
 	set t0 [clock microseconds]
@@ -400,8 +406,8 @@ if {!$runEQ} {
 	} else {
 		puts [format "----- EQ done  recoveries=%d -----" $nFail]
 	}
-	puts [format "  analysis t=%.4g s  elapsed=%.2f s  (EQ %.4g s + freeVib %.4g s)" \
-		[getTime] $elapsed $Trec $eqFreeVibT]
+	puts [format "  analysis t=%.4g s  elapsed=%.2f s  (start %.4g s + EQ %.4g s + freeVib %.4g s)" \
+		[getTime] $elapsed $tWait $Trec $eqFreeVibT]
 	puts [format "  pier top ux=%.4e m  uy=%.4e m" \
 		[nodeDisp $nodeTag_pierTop_deckBC 1] [nodeDisp $nodeTag_pierTop_deckBC 2]]
 	if {$recordersON == 0 && !$realTimeON} {

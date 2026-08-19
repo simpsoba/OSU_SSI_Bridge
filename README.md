@@ -223,7 +223,7 @@ Figures: `OpenSees PlotModel.tcl` → `plot/out/profile{N}/fibers/`.
 Same files (`Run.tcl`, `RunParallel.tcl`):
 
 - `outDIR` — recorder folder (`trial1`, `runA`, …). Relative to the process cwd. `""` uses the auto path `plot/out/profile{N}/eq/{serial|parallel}/...`.
-- `gmStartTime` — Path `-startTime` (s). `0` omits it. Domain clock stays at 0 after gravity; the GM is silent until that time.
+- `gmStartTime` — Path `-startTime` (s). `0` omits it. Domain clock stays at 0 after gravity; the GM is silent until that time. When `realTimeON` is 0, `eqNstepsAll` covers `gmStartTime + Trec + eqFreeVibT`.
 - `realTimeON 1` — OpenFresco, no recovery, `realTimeNsteps`, no `eqPrintON`. Default `0` is the usual EQ loop. Needs `pierEleType lumpedPlasticity`. `eleTag_exp` (default 101) is the generic experimental element.
 
 ### OpenFresco (`expElement`)
