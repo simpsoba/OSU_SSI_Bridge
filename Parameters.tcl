@@ -246,7 +246,7 @@ set I_deck_frame [expr {$eta_deck_I*$I_deck_mem}];  # m^4
 #     ASDEA -- ASDAbsorbingBoundary2D ring (L/BL/B/BR/R); rock bottom,
 #             layer G0 on sides; setParameter stage 1 after gravity
 #   Refs / Stage0 -fx / Abell setTime: soil/Boundary.md
-set soilProfile 2;                        # <-- EDIT  1 | 2 | 3 | 4
+set soilProfile 4;                        # <-- EDIT  1 | 2 | 3 | 4
 set soilBoundary "Shin";                  # <-- EDIT  Shin | ASDEA
 # soilConstitutive / pileSpring: see Model switches above
 set rho_w 1000.0;                         # <-- EDIT  kg/m^3

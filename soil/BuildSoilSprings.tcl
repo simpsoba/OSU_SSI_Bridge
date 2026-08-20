@@ -296,14 +296,27 @@ set liqSpringMatTags {}
 # Profiles 1–2: spring + continuum pairs for partition -samePart (PyLiq1/sand SSI).
 set ssiPartitionSamePart {}
 
-# Continuum elements touching soil node nd -> {eleA eleB} (B may equal A).
-proc soilElesAtNode {nd} {
-	global soilNodeEles
-	if {[info exists soilNodeEles($nd)] && [llength $soilNodeEles($nd)] > 0} {
-		set eles $soilNodeEles($nd)
-		return [list [lindex $eles 0] [lindex $eles end]]
+# Continuum elements touching soil node nd.
+# If layer is set, only that unit (L2/L3/L5) — so PyLiq1 gets FSP sand,
+# not a neighboring clay quad at a layer interface.
+# Returns {eleA eleB} (B may equal A), or {}.
+proc soilElesAtNode {nd {layer ""}} {
+	global soilNodeEles soilEleLayer
+	if {![info exists soilNodeEles($nd)] || [llength $soilNodeEles($nd)] < 1} {
+		return {}
 	}
-	return {}
+	set eles {}
+	if {$layer ne ""} {
+		foreach ee $soilNodeEles($nd) {
+			if {[info exists soilEleLayer($ee)] && $soilEleLayer($ee) eq $layer} {
+				lappend eles $ee
+			}
+		}
+	}
+	if {[llength $eles] < 1} {
+		set eles $soilNodeEles($nd)
+	}
+	return [list [lindex $eles 0] [lindex $eles end]]
 }
 
 # Record spring/continuum group for METIS -samePart (profiles 1 and 2 only).
@@ -312,7 +325,7 @@ proc ssiSamePartRecord {sprEle soilNd {layer ""}} {
 	if {$soilProfile != 1 && $soilProfile != 2} {
 		return
 	}
-	set pair [soilElesAtNode $soilNd]
+	set pair [soilElesAtNode $soilNd $layer]
 	if {[llength $pair] < 1 && $layer ne ""} {
 		foreach ee $soilEleTags {
 			if {$soilEleLayer($ee) eq $layer} {
@@ -575,8 +588,9 @@ foreach w $sprWork {
 		set z50Ax $z50_tz
 		set pRes [expr {$pRes_frac*$pultS}]
 		set tRes [expr {$pRes_frac*$tultS}]
-		# PyLiq1/TzLiq1 need continuum eles that share this soil node (same MPI rank).
-		set pair [soilElesAtNode $soilNd]
+		# PyLiq1/TzLiq1 need FSP continuum in this layer (same MPI rank).
+		# Prefer same-layer eles at soilNd so interface nodes do not pick clay PIMY.
+		set pair [soilElesAtNode $soilNd $nm]
 		if {[llength $pair] < 1} {
 			set sEle1 [lindex $soilEleTags 0]
 			set sEle2 $sEle1
