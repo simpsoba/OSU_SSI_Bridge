@@ -246,7 +246,7 @@ set I_deck_frame [expr {$eta_deck_I*$I_deck_mem}];  # m^4
 #     ASDEA -- ASDAbsorbingBoundary2D ring (L/BL/B/BR/R); rock bottom,
 #             layer G0 on sides; setParameter stage 1 after gravity
 #   Refs / Stage0 -fx / Abell setTime: soil/Boundary.md
-set soilProfile 4;                        # <-- EDIT  1 | 2 | 3 | 4
+set soilProfile 2;                        # <-- EDIT  1 | 2 | 3 | 4
 set soilBoundary "Shin";                  # <-- EDIT  Shin | ASDEA
 # soilConstitutive / pileSpring: see Model switches above
 set rho_w 1000.0;                         # <-- EDIT  kg/m^3
@@ -281,7 +281,7 @@ if {$soilMesh == 0} {
 		[list [expr { 7.0*$foot}] [expr { 40.0*$foot}]] \
 		[list [expr {15.0*$foot}] [expr {100.0*$foot}]] \
 		[list [expr {20.0*$foot}] [expr {140.0*$foot}]] \
-		[list [expr {30.0*$foot}] [expr {200.0*$foot}]] \
+		[list [expr {20.0*$foot}] [expr {200.0*$foot}]] \
 		]
 } elseif {$soilMesh == 1} {
 	# fine: 3 ft bands to 201 ft NF

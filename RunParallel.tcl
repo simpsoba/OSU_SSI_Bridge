@@ -98,7 +98,7 @@ set postPartitionSystem "DistributedCuDSS";                                # <--
 # EQ constraints (gravity always uses Transformation).
 # ASDEA forces Transformation for EQ no matter what you put here.
 #   "Auto" | "Transformation" | "Plain" | "Penalty 1.0e18 1.0e18"
-set constraintsHandler  "Auto";                                 # <-- EDIT
+set constraintsHandler  "Transformation";                                 # <-- EDIT
 
 # EQ integrator string (name + args). Algorithm/test follow from the name.
 #   "MKRAlphaExplicitMultiSOE 0.5 -incrementalAccel"  -> Linear, no test
