@@ -201,7 +201,7 @@ if {$plotFigures} {
 	}
 }
 
-# Hold the pier base fixed in x and y (current gravity displacement).
+# Hold pier-base UX/UY at gravity disp (holdPierON; see HoldPierBase.tcl).
 source [file join $analysisDir HoldPierBase.tcl]
 
 # IncrMass $nodeTag $dmx $dmy ?$dIrot?

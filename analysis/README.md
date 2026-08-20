@@ -9,7 +9,7 @@ stay in this folder.
 | `SoilGravity.tcl` | Elastic soil gravity, stage 1, plastic gravity (LoadControl here) |
 | `FoldStructNodes.tcl` | Fold beam nodes to soil settlement, then `BuildStructElements.tcl` |
 | `StructureGravityLoads.tcl` | Nodal -mg on the structure |
-| `HoldPierBase.tcl` | After gravity: freeze pier-base UX/UY (`-subtractInit`) |
+| `HoldPierBase.tcl` | After gravity: freeze pier-base UX/UY (`-subtractInit`); gated by `holdPierON` |
 | `RayleighDamping.tcl` | Regions + `αM`, `βKinit` (pier / hinge last) |
 | `GravityHelpers.tcl` | Spring kine print; nearest soil node |
 | `WaterSurfaceLoad.tcl` | Ponding if `h_water > 0` |

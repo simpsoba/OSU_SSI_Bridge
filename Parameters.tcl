@@ -363,6 +363,9 @@ set eqTmax "";                            # <-- EDIT  s (empty = full record)
 # Lysmer/ASDEA then only radiate. 0 -> stop when the earthquake record ends.
 set eqFreeVibT 60.0;                      # <-- EDIT  s
 set nModesEigen 10;                       # <-- EDIT  (-) modes after gravity (runEQ 0)
+# After gravity: pin pier-base UX/UY at the gravity displacement (-subtractInit).
+# 0 = leave free (gravity state only; base can translate with soil/springs in EQ).
+set holdPierON 1;                         # <-- EDIT  0 | 1
 # recordersON (EQ; both Run.tcl and RunParallel.tcl). Every recorder samples at
 # -dT gmVelDT (the PEER step), not at every dtAnalysis step:
 #   0  off

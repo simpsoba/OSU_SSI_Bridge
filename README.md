@@ -193,9 +193,9 @@ After gravity, `Run.tcl` adds 1 kg / 0.1 kg·m² on every node so **M** is not s
 
 ### SP at the pier base (before EQ)
 
-`analysis/HoldPierBase.tcl`, sourced from `Run.tcl` after `loadConst`. `sp -const -subtractInit` holds pier-base UX and UY at the gravity displacement (and the lumped-plasticity inner ZLS node). RZ stays free.
+`analysis/HoldPierBase.tcl`, sourced from `Run.tcl` / `RunParallel.tcl` after `loadConst`. With `holdPierON 1` (default), `sp -const -subtractInit` holds pier-base UX and UY at the gravity displacement (and the lumped-plasticity inner ZLS node). RZ stays free.
 
-To drop the hold, stop sourcing that file (or comment the `sp` lines).
+Set `holdPierON 0` in `Parameters.tcl` to skip the pin: the base keeps its gravity displacement as the initial state but can translate with the soil/springs during eigen/EQ.
 
 ### Elastic vs inelastic
 

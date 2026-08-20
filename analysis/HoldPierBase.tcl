@@ -1,8 +1,17 @@
 # analysis/HoldPierBase.tcl
-# Goals: after gravity loadConst, freeze pier-base UX/UY at the current
-# displacement. RZ stays free. Eigen/EQ then see a pin at the cap center (TC).
+# Goals: after gravity loadConst, optionally freeze pier-base UX/UY at the
+# current displacement. RZ stays free. Eigen/EQ then see a pin at the cap
+# center (TC). Gated by holdPierON in Parameters.tcl (default on).
 #
 # sp $nodeTag $dof $disp -const -subtractInit  ->  hold gravity disp, not snap to 0
+
+if {![info exists holdPierON]} {
+	set holdPierON 1
+}
+if {!$holdPierON} {
+	puts "----- Hold pier base skipped (holdPierON 0) -----"
+	return
+}
 
 timeSeries Constant $tsTag_holdPier
 
