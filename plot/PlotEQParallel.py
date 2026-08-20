@@ -199,7 +199,7 @@ def stitch_nodes_disp(
     eq: Path, dest: Path, np_run: int, metas: dict[int, dict[str, str]]
 ) -> tuple[int, int, int]:
     """Unique nodes (drop ghosts): geometry -> window_nodes.txt, columns ->
-    disp_nodes.txt + window_disp.out. Lean dumps (recordersON=2 or 3) record
+    disp_nodes.txt + window_disp.out. Lean dumps (recordersON=2, 3, or 4) record
     displacement for a subset of the geometry, so the two lists differ."""
     geom_header = None
     disp_header = None

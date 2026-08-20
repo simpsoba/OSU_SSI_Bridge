@@ -129,10 +129,10 @@ def read_nodes(eq: Path) -> tuple[list[int], dict[int, tuple[float, float]]]:
 def read_disp_nodes(eq: Path) -> list[int]:
     """Column order of window_disp*.out.
 
-    recordersON=2|3 (lean) record displacement for the pier and the center
+    recordersON=2|3|4 (lean) record displacement for the pier and the center
     pile only, so disp_nodes.txt is a subset of window_nodes.txt (which also
-    holds center + near-FF quad corners). Older dumps have no such file and
-    every window node owns a column.
+    holds soil-column quad corners; near-FF corners when recordersON>=3).
+    Older dumps have no such file and every window node owns a column.
     """
     p = eq / "disp_nodes.txt"
     if not p.is_file():

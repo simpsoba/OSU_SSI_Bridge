@@ -7,14 +7,14 @@
 #   0  off
 #   1  full window: nodes with |x| <= eqWindowX, the quads inside it, every
 #      pile beam, every SSI spring (pile, cap face, cap soffit)
-#   2  center column: pier nodes (UX UY RZ), both rotational springs, the
-#      soil-base primary node, the whole center pile, every center-pile
-#      spring, every x=0 soil quad (grade to base), plus a near-FF soil
-#      column at eqFFColumnFrac*L_half (same rows). No cap springs.
-#      Quad corners are geometry only (no soil UX).
-#   3  nine SSI horizons (old 2): first / mid / last station of L2, L3, L5
-#      on the center pile, each with spring, pile segment, and matching
-#      x=0 + near-FF quads.
+#   2  center column (2026-08-19 tag): pier nodes (UX UY RZ), both rotational
+#      springs, the soil-base primary node, the whole center pile, every
+#      center-pile spring, every x=0 soil quad (grade to base). No near-FF
+#      column, no cap springs. Quad corners are geometry only (no soil UX).
+#   3  same as 2, plus a near-FF soil column at eqFFColumnFrac*L_half
+#   4  nine SSI horizons: first / mid / last station of L2, L3, L5 on the
+#      center pile, each with spring, pile segment, and matching x=0 +
+#      near-FF quads.
 #
 # Serial (getNP = 1) writes $name; OpenSeesMP writes $name.$pid after rank 0
 # clears eqOutDir. plot/PlotEQ.py reads the serial names, plot/PlotEQParallel.py
@@ -40,11 +40,12 @@ if {[llength [info commands getNP]]} {
 if {![info exists recordersON]} {
 	set recordersON 1
 }
-if {![string is integer -strict $recordersON] || $recordersON < 0 || $recordersON > 3} {
-	error "EQRecorders.tcl: recordersON must be an integer 0..3 (got '$recordersON')"
+if {![string is integer -strict $recordersON] || $recordersON < 0 || $recordersON > 4} {
+	error "EQRecorders.tcl: recordersON must be an integer 0..4 (got '$recordersON')"
 }
-set eqRecLean [expr {$recordersON == 2 || $recordersON == 3}]
-set eqRecNine [expr {$recordersON == 3}]
+set eqRecLean [expr {$recordersON >= 2 && $recordersON <= 4}]
+set eqRecFF [expr {$recordersON == 3 || $recordersON == 4}]
+set eqRecNine [expr {$recordersON == 4}]
 if {$eqNP > 1} {
 	set eqRecSuf [format ".%d" $eqPID]
 } else {
@@ -262,7 +263,7 @@ foreach nameVar {nodeTag_pierBase_capTC nodeTag_pierBaseZeroLengthInner \
 }
 
 # Pile beams: eleTag_pile_base + ip*nSeg_pile + (iSeg - 1), shaft by shaft.
-# recordersON=2: every center-pile segment. 3: the nine station segments.
+# recordersON=2|3: every center-pile segment. 4: the nine station segments.
 set eqPileBeamRows {}
 if {[info exists eleTag_pile_base] && [info exists eleTag_pile_last] \
 		&& $eleTag_pile_last >= $eleTag_pile_base} {
@@ -312,10 +313,10 @@ if {!$eqRecLean && [info exists nPileSprings] && [info exists eleTag_spr_last]} 
 # Quads, geometry nodes (window_nodes.txt) and displacement nodes (window_disp).
 #   1: nodes with |x| <= eqWindowX, then the quads with all four nodes there.
 #      Geometry and displacement are the same set.
-#   2: every x=0 soil quad (grade to base) plus a near-FF column at
-#      eqFFColumnFrac*L_half (same rows). Geometry carries the quad corners;
+#   2: every x=0 soil quad (grade to base). Geometry carries the quad corners;
 #      only the pier and the center-pile nodes get a displacement channel.
-#   3: one x=0 (+ matching near-FF) quad per nine-horizon station.
+#   3: same as 2, plus a near-FF column at eqFFColumnFrac*L_half (same rows).
+#   4: one x=0 (+ matching near-FF) quad per nine-horizon station.
 #      Quad peak and hysteresis plots read stress and strain, so the corners
 #      need coordinates only. Soil UX at a station follows from
 #      u_pile - (spring deformation dir 1); the vertical needs the dup/pile
@@ -385,7 +386,7 @@ if {$eqRecLean} {
 			lappend iyList $iyQ
 		}
 	}
-	# center column (x=0), then near-FF column (same rows)
+	# center column (x=0); near-FF column only for recordersON 3|4
 	foreach iyQ $iyList {
 		if {$ixCenter < 0} { break }
 		set e [lindex $soilEleTags [expr {$ixCenter*$nSoilRows + $iyQ}]]
@@ -393,16 +394,18 @@ if {$eqRecLean} {
 		lappend eqQuadEles $e
 		lappend eqQuadCols center
 	}
-	set eqFFColumnIxChosen [eqFFColumnIx]
-	if {$eqFFColumnIxChosen >= 0 && $eqFFColumnIxChosen != $ixCenter} {
-		set xL [lindex $soilXs $eqFFColumnIxChosen]
-		set xR [lindex $soilXs [expr {$eqFFColumnIxChosen + 1}]]
-		set eqFFColumnXChosen [expr {0.5*($xL + $xR)}]
-		foreach iyQ $iyList {
-			set e [lindex $soilEleTags [expr {$eqFFColumnIxChosen*$nSoilRows + $iyQ}]]
-			if {![eqOwnsEle $e]} { continue }
-			lappend eqQuadEles $e
-			lappend eqQuadCols ff
+	if {$eqRecFF} {
+		set eqFFColumnIxChosen [eqFFColumnIx]
+		if {$eqFFColumnIxChosen >= 0 && $eqFFColumnIxChosen != $ixCenter} {
+			set xL [lindex $soilXs $eqFFColumnIxChosen]
+			set xR [lindex $soilXs [expr {$eqFFColumnIxChosen + 1}]]
+			set eqFFColumnXChosen [expr {0.5*($xL + $xR)}]
+			foreach iyQ $iyList {
+				set e [lindex $soilEleTags [expr {$eqFFColumnIxChosen*$nSoilRows + $iyQ}]]
+				if {![eqOwnsEle $e]} { continue }
+				lappend eqQuadEles $e
+				lappend eqQuadCols ff
+			}
 		}
 	}
 	set dispNodes $eqPierNodes
@@ -446,8 +449,10 @@ foreach n $eqGeomNodeTags { set eqInWindow($n) 1 }
 set nodesFd [open [eqRecPath window_nodes.txt] w]
 if {$eqRecNine} {
 	puts $nodesFd "# tag x y  (pier, nine SSI stations, center+FF quad corners)"
-} elseif {$eqRecLean} {
+} elseif {$eqRecFF} {
 	puts $nodesFd "# tag x y  (pier, center pile, x=0 + near-FF soil columns)"
+} elseif {$eqRecLean} {
+	puts $nodesFd "# tag x y  (pier, center pile, x=0 soil column)"
 } else {
 	puts $nodesFd "# tag x y  (|x| <= $eqWindowX m)"
 }
@@ -755,8 +760,10 @@ close $metaFd
 
 if {$eqRecNine} {
 	set recKind "nine SSI"
-} elseif {$eqRecLean} {
+} elseif {$eqRecFF} {
 	set recKind "center+FF column"
+} elseif {$eqRecLean} {
+	set recKind "center column"
 } else {
 	set recKind [format "|x|<=%.3g m" $eqWindowX]
 }

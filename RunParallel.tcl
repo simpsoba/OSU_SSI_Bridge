@@ -200,8 +200,8 @@ if {$realTimeON && $realTimeNsteps < 1} {
 if {$exportPartitionMap != 0 && $exportPartitionMap != 1} {
 	error "RunParallel.tcl: exportPartitionMap must be 0 or 1 (got '$exportPartitionMap')"
 }
-if {![string is integer -strict $recordersON] || $recordersON < 0 || $recordersON > 3} {
-	error "RunParallel.tcl: recordersON must be an integer 0..3 (got '$recordersON')"
+if {![string is integer -strict $recordersON] || $recordersON < 0 || $recordersON > 4} {
+	error "RunParallel.tcl: recordersON must be an integer 0..4 (got '$recordersON')"
 }
 
 if {$pid == 0} {

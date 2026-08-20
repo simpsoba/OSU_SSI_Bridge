@@ -369,15 +369,16 @@ set holdPierON 1;                         # <-- EDIT  0 | 1
 # -dT gmVelDT (the PEER step), not at every dtAnalysis step:
 #   0  off
 #   1  full window: |x|<=eqWindowX nodes + quads; all pile beams, all SSI springs
-#   2  center column: pier nodes 1/2/4/5 (UX UY RZ), both rotational springs,
-#      soil-base primary, the whole center pile, every center-pile spring,
-#      every x=0 soil quad (grade to base), plus a near-FF soil column at
-#      eqFFColumnFrac*L_half (same rows). No cap springs, no pier accel.
-#   3  nine SSI horizons (old 2): first / mid / last station of L2, L3, L5
-#      (center + near-FF soil columns, same as 2)
-set recordersON 2;                        # <-- EDIT  0 | 1 | 2 | 3
+#   2  center column (2026-08-19 tag): pier nodes 1/2/4/5 (UX UY RZ), both
+#      rotational springs, soil-base primary, the whole center pile, every
+#      center-pile spring, every x=0 soil quad (grade to base). No near-FF
+#      column, no cap springs, no pier accel.
+#   3  same as 2, plus a near-FF soil column at eqFFColumnFrac*L_half
+#   4  nine SSI horizons: first / mid / last station of L2, L3, L5
+#      (center + near-FF soil columns, same as 3)
+set recordersON 2;                        # <-- EDIT  0 | 1 | 2 | 3 | 4
 set eqWindowX 10.0;                       # <-- EDIT  m, |x| <= this for deformed-shape dump (recordersON 1)
-# Lean dumps (recordersON 2|3): second soil-quad column toward the free field.
+# Lean dumps with a second column (recordersON 3|4): soil quads toward the FF.
 # Target |x| = eqFFColumnFrac * L_half on the +x side, nearest NF cell
 # (never the thick Shin FF column beyond L_half).
 set eqFFColumnFrac 0.75;                  # <-- EDIT  (-) fraction of L_half
