@@ -9,10 +9,12 @@
 #      pile beam, every SSI spring (pile, cap face, cap soffit)
 #   2  center column: pier nodes (UX UY RZ), both rotational springs, the
 #      soil-base primary node, the whole center pile, every center-pile
-#      spring, and every x=0 soil quad (grade to base). No cap springs.
+#      spring, every x=0 soil quad (grade to base), plus a near-FF soil
+#      column at eqFFColumnFrac*L_half (same rows). No cap springs.
 #      Quad corners are geometry only (no soil UX).
 #   3  nine SSI horizons (old 2): first / mid / last station of L2, L3, L5
-#      on the center pile, each with its spring, pile segment, and x=0 quad.
+#      on the center pile, each with spring, pile segment, and matching
+#      x=0 + near-FF quads.
 #
 # Serial (getNP = 1) writes $name; OpenSeesMP writes $name.$pid after rank 0
 # clears eqOutDir. plot/PlotEQ.py reads the serial names, plot/PlotEQParallel.py
@@ -310,18 +312,56 @@ if {!$eqRecLean && [info exists nPileSprings] && [info exists eleTag_spr_last]} 
 # Quads, geometry nodes (window_nodes.txt) and displacement nodes (window_disp).
 #   1: nodes with |x| <= eqWindowX, then the quads with all four nodes there.
 #      Geometry and displacement are the same set.
-#   2: every x=0 soil quad (grade to base). Geometry carries the quad corners;
+#   2: every x=0 soil quad (grade to base) plus a near-FF column at
+#      eqFFColumnFrac*L_half (same rows). Geometry carries the quad corners;
 #      only the pier and the center-pile nodes get a displacement channel.
-#   3: one x=0 quad per nine-horizon station (same geometry/disp split as 2).
+#   3: one x=0 (+ matching near-FF) quad per nine-horizon station.
 #      Quad peak and hysteresis plots read stress and strain, so the corners
 #      need coordinates only. Soil UX at a station follows from
 #      u_pile - (spring deformation dir 1); the vertical needs the dup/pile
 #      gravity offset too (see NOTES.md).
 # soilEleTags index = ix*nSoilRows + iy (BuildSoilMesh.tcl loops ix, then iy).
+#
+# Nearest NF cell on +x whose center is closest to frac*L_half (not Shin FF).
+# Args: frac (default eqFFColumnFrac)
+# Returns: ix, or -1
+proc eqFFColumnIx {{frac ""}} {
+	global soilXs L_half eqFFColumnFrac
+	if {$frac eq ""} {
+		if {[info exists eqFFColumnFrac] && $eqFFColumnFrac ne ""} {
+			set frac $eqFFColumnFrac
+		} else {
+			set frac 0.75
+		}
+	}
+	if {![info exists L_half] || $L_half <= 0} { return -1 }
+	set xT [expr {$frac*$L_half}]
+	set bestIx -1
+	set bestD 1.0e99
+	set nBand [expr {[llength $soilXs] - 1}]
+	for {set ix 0} {$ix < $nBand} {incr ix} {
+		set xL [lindex $soilXs $ix]
+		set xR [lindex $soilXs [expr {$ix + 1}]]
+		set xc [expr {0.5*($xL + $xR)}]
+		# stay inside near field (Shin thick FF starts at |x| > L_half)
+		if {$xc > $L_half - 1.0e-6} { continue }
+		if {$xc < 0.0} { continue }
+		set d [expr {abs($xc - $xT)}]
+		if {$d < $bestD} {
+			set bestD $d
+			set bestIx $ix
+		}
+	}
+	return $bestIx
+}
+
 set eqQuadEles {}
+set eqQuadCols {}
 set eqGeomNodeTags {}
 set eqDispNodeTags {}
 array unset eqInWindow
+set eqFFColumnIxChosen -1
+set eqFFColumnXChosen ""
 if {$eqRecLean} {
 	set ixCenter -1
 	for {set ix 0} {$ix < [llength $soilXs] - 1} {incr ix} {
@@ -330,25 +370,39 @@ if {$eqRecLean} {
 			break
 		}
 	}
+	set iyList {}
 	if {$eqRecNine} {
 		array unset rowSeen
 		foreach st $eqLeanStations {
 			lassign $st iy y nm isTip iSeg
 			set iyQ [eqQuadRowForPile $y $nm $isTip]
-			if {$ixCenter < 0 || $iyQ < 0 || [info exists rowSeen($iyQ)]} {
-				continue
-			}
+			if {$iyQ < 0 || [info exists rowSeen($iyQ)]} { continue }
 			set rowSeen($iyQ) 1
-			set e [lindex $soilEleTags [expr {$ixCenter*$nSoilRows + $iyQ}]]
-			if {![eqOwnsEle $e]} { continue }
-			lappend eqQuadEles $e
+			lappend iyList $iyQ
 		}
 	} else {
 		for {set iyQ 0} {$iyQ < $nSoilRows} {incr iyQ} {
-			if {$ixCenter < 0} { break }
-			set e [lindex $soilEleTags [expr {$ixCenter*$nSoilRows + $iyQ}]]
+			lappend iyList $iyQ
+		}
+	}
+	# center column (x=0), then near-FF column (same rows)
+	foreach iyQ $iyList {
+		if {$ixCenter < 0} { break }
+		set e [lindex $soilEleTags [expr {$ixCenter*$nSoilRows + $iyQ}]]
+		if {![eqOwnsEle $e]} { continue }
+		lappend eqQuadEles $e
+		lappend eqQuadCols center
+	}
+	set eqFFColumnIxChosen [eqFFColumnIx]
+	if {$eqFFColumnIxChosen >= 0 && $eqFFColumnIxChosen != $ixCenter} {
+		set xL [lindex $soilXs $eqFFColumnIxChosen]
+		set xR [lindex $soilXs [expr {$eqFFColumnIxChosen + 1}]]
+		set eqFFColumnXChosen [expr {0.5*($xL + $xR)}]
+		foreach iyQ $iyList {
+			set e [lindex $soilEleTags [expr {$eqFFColumnIxChosen*$nSoilRows + $iyQ}]]
 			if {![eqOwnsEle $e]} { continue }
 			lappend eqQuadEles $e
+			lappend eqQuadCols ff
 		}
 	}
 	set dispNodes $eqPierNodes
@@ -376,7 +430,10 @@ if {$eqRecLean} {
 		foreach en $enodes {
 			if {![info exists eqInWindow($en)]} { set inside 0; break }
 		}
-		if {$inside} { lappend eqQuadEles $e }
+		if {$inside} {
+			lappend eqQuadEles $e
+			lappend eqQuadCols window
+		}
 	}
 }
 array unset eqInWindow
@@ -388,9 +445,9 @@ foreach n $eqGeomNodeTags { set eqInWindow($n) 1 }
 # Geometry: every node a plot script needs coordinates for.
 set nodesFd [open [eqRecPath window_nodes.txt] w]
 if {$eqRecNine} {
-	puts $nodesFd "# tag x y  (pier, nine SSI stations, station quad corners)"
+	puts $nodesFd "# tag x y  (pier, nine SSI stations, center+FF quad corners)"
 } elseif {$eqRecLean} {
-	puts $nodesFd "# tag x y  (pier, center pile, x=0 soil column)"
+	puts $nodesFd "# tag x y  (pier, center pile, x=0 + near-FF soil columns)"
 } else {
 	puts $nodesFd "# tag x y  (|x| <= $eqWindowX m)"
 }
@@ -427,17 +484,21 @@ foreach e [getEleTags] {
 close $elesFd
 
 set quadsFd [open [eqRecPath window_quads.txt] w]
-if {$eqRecNine} {
-	puts $quadsFd {# eleTag layer  (x=0 quad at each SSI station)}
-} elseif {$eqRecLean} {
-	puts $quadsFd {# eleTag layer  (x=0 column, grade to base)}
+if {$eqRecLean} {
+	puts $quadsFd {# eleTag layer column  (column: center | ff)}
 } else {
-	puts $quadsFd {# eleTag layer  (all four nodes inside the window)}
+	puts $quadsFd {# eleTag layer column  (column: window)}
 }
+set iQ 0
 foreach e $eqQuadEles {
 	set nm "?"
 	if {[info exists soilEleLayer($e)]} { set nm $soilEleLayer($e) }
-	puts $quadsFd [format "%d %s" $e $nm]
+	set col window
+	if {$iQ < [llength $eqQuadCols]} {
+		set col [lindex $eqQuadCols $iQ]
+	}
+	puts $quadsFd [format "%d %s %s" $e $nm $col]
+	incr iQ
 }
 close $quadsFd
 
@@ -594,6 +655,13 @@ puts $metaFd "pierHinge $pierEleType"
 puts $metaFd "pileEleType $pileEleType"
 puts $metaFd "recordersON $recordersON"
 puts $metaFd "eqWindowX $eqWindowX"
+if {[info exists eqFFColumnFrac]} {
+	puts $metaFd "eqFFColumnFrac $eqFFColumnFrac"
+}
+if {$eqFFColumnIxChosen >= 0} {
+	puts $metaFd "eqFFColumnIx $eqFFColumnIxChosen"
+	puts $metaFd "eqFFColumnX $eqFFColumnXChosen"
+}
 puts $metaFd "nWindowNodes $nGeomNode"
 puts $metaFd "nDispNodes $nDispNode"
 puts $metaFd "nWindowEles $nWinEle"
@@ -688,7 +756,7 @@ close $metaFd
 if {$eqRecNine} {
 	set recKind "nine SSI"
 } elseif {$eqRecLean} {
-	set recKind "center column"
+	set recKind "center+FF column"
 } else {
 	set recKind [format "|x|<=%.3g m" $eqWindowX]
 }
@@ -706,6 +774,14 @@ if {$eqNP <= 1} {
 	} elseif {$eqRecLean} {
 		puts [format "  center-pile stations: %d" [llength $eqLeanStations]]
 	}
+	if {$eqRecLean && $eqFFColumnIxChosen >= 0} {
+		puts [format "  near-FF soil column: ix=%d  x=%.4g m  (%.2g*L_half)" \
+			$eqFFColumnIxChosen $eqFFColumnXChosen $eqFFColumnFrac]
+	}
 } else {
 	puts [format "EQRecorders rank %d: %s  %s" $eqPID $recKind $recCounts]
+	if {$eqRecLean && $eqFFColumnIxChosen >= 0 && $eqPID == 0} {
+		puts [format "EQRecorders: near-FF soil column ix=%d x=%.4g m" \
+			$eqFFColumnIxChosen $eqFFColumnXChosen]
+	}
 }

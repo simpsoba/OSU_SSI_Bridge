@@ -43,7 +43,7 @@ DO_ENVELOPE = 1       # pile-node ux min/max (symmetric)
 DO_SPRING_ENV = 1     # spring defo vs y50/z50, force vs pult/tult/qult
 DO_HYST = 1           # all p-y, t-z, and q-z loops
 DO_QUAD_PEAK = 1      # window peak |tau_xy| and |gamma_xy|
-DO_QUAD_HYST = 1      # tau_xy vs gamma_xy vs depth (one window column)
+DO_QUAD_HYST = 1      # tau_xy vs gamma_xy vs depth (center + near-FF columns)
 DO_HINGE = 1          # pier hinge hist + M-rot, P-axial, P-M, axial-rot
 DO_PILE_SEC = 1       # pile M-kappa hyst; peak M and kappa vs depth
 DO_FRAMES = 1         # window deform snapshots + MP4
@@ -52,7 +52,7 @@ N_FRAMES = 0          # >0 = that many equally spaced; 0 = use FRAME_FPS
 FRAME_FPS = 30        # max PNGs per second of analysis (0 = every recorded sample)
 SCALE = 20.0
 SUBTRACT_T0 = 1       # nodal plots/frames relative to first sample
-HYST_QUAD_X = None    # m, column centroid; None = outermost |x| in the window
+HYST_QUAD_X = None    # fallback if no center/ff tags; None = outermost |x|
 PIER_TOP = 5
 PIER_BOT = 1
 DPI = 140
@@ -129,10 +129,10 @@ def read_nodes(eq: Path) -> tuple[list[int], dict[int, tuple[float, float]]]:
 def read_disp_nodes(eq: Path) -> list[int]:
     """Column order of window_disp*.out.
 
-    recordersON=2 (center column) and 3 (nine SSI) record displacement for the
-    pier and the center pile only, so disp_nodes.txt is a subset of
-    window_nodes.txt. Older dumps have no such file and every window node owns
-    a column.
+    recordersON=2|3 (lean) record displacement for the pier and the center
+    pile only, so disp_nodes.txt is a subset of window_nodes.txt (which also
+    holds center + near-FF quad corners). Older dumps have no such file and
+    every window node owns a column.
     """
     p = eq / "disp_nodes.txt"
     if not p.is_file():
@@ -658,17 +658,21 @@ def plot_pile_section(out: Path, eq: Path, meta: dict, xy: dict) -> None:
 
 
 def read_window_quad_list(eq: Path) -> list[int]:
-    return [t for t, _ in read_window_quads(eq)]
+    return [t for t, _, _ in read_window_quads(eq)]
 
 
-def read_window_quads(eq: Path) -> list[tuple[int, str]]:
-    rows: list[tuple[int, str]] = []
+def read_window_quads(eq: Path) -> list[tuple[int, str, str]]:
+    """(eleTag, layer, column) with column in {center, ff, window, ''}."""
+    rows: list[tuple[int, str, str]] = []
     p = eq / "window_quads.txt"
     if not p.is_file():
         return rows
     for ln in _skip_hash(p):
         a = ln.split()
-        rows.append((int(a[0]), a[1] if len(a) > 1 else ""))
+        tag = int(a[0])
+        layer = a[1] if len(a) > 1 else ""
+        col = a[2] if len(a) > 2 else ""
+        rows.append((tag, layer, col))
     return rows
 
 
@@ -924,32 +928,38 @@ def plot_quad_shear_peaks(
 
 
 def quad_centroids(
-    qrows: list[tuple[int, str]],
+    qrows: list[tuple[int, str, str]],
     ev: dict[int, list[int]],
     xy: dict[int, tuple[float, float]],
-) -> list[tuple[int, str, float, float, int]]:
-    """(eleTag, layer, xc, yc, global index) for window quads with 4 nodes in xy."""
+) -> list[tuple[int, str, float, float, int, str]]:
+    """(eleTag, layer, xc, yc, global index, column) for window quads with 4 nodes in xy."""
     out = []
-    for i, (tag, nm) in enumerate(qrows):
+    for i, (tag, nm, col) in enumerate(qrows):
         nn = ev.get(tag, [])
         if len(nn) < 4 or any(n not in xy for n in nn[:4]):
             continue
         xc = 0.25 * sum(xy[n][0] for n in nn[:4])
         yc = 0.25 * sum(xy[n][1] for n in nn[:4])
-        out.append((tag, nm, xc, yc, i))
+        out.append((tag, nm, xc, yc, i, col))
     return out
 
 
 def quad_depth_column(
-    cents: list[tuple[int, str, float, float, int]],
+    cents: list[tuple[int, str, float, float, int, str]],
     x_target: float | None,
-) -> list[tuple[int, str, float, float, int]]:
-    """One ele per soil row, nearest x_target (default: outermost |x|)."""
+    column: str | None = None,
+) -> list[tuple[int, str, float, float, int, str]]:
+    """One ele per soil row, nearest x_target (default: outermost |x|).
+
+    If column is set (center|ff|...), keep only that recorder column first.
+    """
+    if column:
+        cents = [r for r in cents if r[5] == column]
     if not cents:
         return []
     if x_target is None:
         x_target = max(cents, key=lambda r: abs(r[2]))[2]
-    by_y: dict[float, list[tuple[int, str, float, float, int]]] = {}
+    by_y: dict[float, list[tuple[int, str, float, float, int, str]]] = {}
     for row in cents:
         yk = round(row[3], 6)
         by_y.setdefault(yk, []).append(row)
@@ -976,36 +986,55 @@ def plot_quad_shear_hyst(
         return
     ev = read_ele_nodes(eq)
     cents = quad_centroids(qrows, ev, xy)
-    col = quad_depth_column(cents, HYST_QUAD_X)
-    if not col:
-        print("PlotEQ: no window column for tau-gamma hyst")
-        return
+    cols_present = sorted({r[5] for r in cents if r[5] in ("center", "ff")})
+    if not cols_present:
+        cols_present = [""]
     n_gp = int(float(meta.get("quadNgp", 4)))
     n_ele = len(qrows)
-    keep = [r[4] for r in col]
-    t, tau = load_quad_gp_mean_keep(eq, sig_files, n_ele, n_gp, keep)
-    t2, gam = load_quad_gp_mean_keep(eq, eps_files, n_ele, n_gp, keep)
-    if len(t2) != len(t):
-        n = min(len(t), len(t2))
-        t, tau, gam = t[:n], tau[:n], gam[:n]
-    if SUBTRACT_T0:
-        tau = maybe_t0(tau)
-        gam = maybe_t0(gam)
-    U = np.zeros((len(t), len(col), 1))
-    F = np.zeros_like(U)
-    U[:, :, 0] = gam * 1.0e3
-    F[:, :, 0] = tau / 1.0e3
-    xc = float(np.mean([r[2] for r in col]))
-    titles = [f"{nm or 'quad'}  y={yc:.2f} m" for _, nm, _, yc, _ in col]
-    hyst_grid(
-        out, "hyst_tau_gamma.png", U, F, 0, titles,
-        r"$\gamma_{xy}$ ($\times 10^{-3}$)", r"$\tau_{xy}$ (kPa)", 3,
-        share_x=True,
-    )
-    print(
-        f"PlotEQ: wrote {out / 'hyst_tau_gamma.png'}  "
-        f"n={len(col)}  x~{xc:.2f} m  (GP mean, d from t0={SUBTRACT_T0})"
-    )
+    for col_name in cols_present:
+        if col_name == "center":
+            x_tgt = 0.0
+            fname = "hyst_tau_gamma_center.png"
+            label = "center"
+        elif col_name == "ff":
+            x_tgt = float(meta["eqFFColumnX"]) if meta.get("eqFFColumnX") else None
+            fname = "hyst_tau_gamma_ff.png"
+            label = "near-FF"
+        else:
+            x_tgt = HYST_QUAD_X
+            fname = "hyst_tau_gamma.png"
+            label = "window"
+        col = quad_depth_column(cents, x_tgt, column=col_name or None)
+        if not col:
+            print(f"PlotEQ: no {label} column for tau-gamma hyst")
+            continue
+        keep = [r[4] for r in col]
+        t, tau = load_quad_gp_mean_keep(eq, sig_files, n_ele, n_gp, keep)
+        t2, gam = load_quad_gp_mean_keep(eq, eps_files, n_ele, n_gp, keep)
+        if len(t2) != len(t):
+            n = min(len(t), len(t2))
+            t, tau, gam = t[:n], tau[:n], gam[:n]
+        if SUBTRACT_T0:
+            tau = maybe_t0(tau)
+            gam = maybe_t0(gam)
+        U = np.zeros((len(t), len(col), 1))
+        F = np.zeros_like(U)
+        U[:, :, 0] = gam * 1.0e3
+        F[:, :, 0] = tau / 1.0e3
+        xc = float(np.mean([r[2] for r in col]))
+        titles = [f"{nm or 'quad'}  y={yc:.2f} m" for _, nm, _, yc, _, _ in col]
+        hyst_grid(
+            out, fname, U, F, 0, titles,
+            r"$\gamma_{xy}$ ($\times 10^{-3}$)", r"$\tau_{xy}$ (kPa)", 3,
+            share_x=True,
+        )
+        print(
+            f"PlotEQ: wrote {out / fname}  "
+            f"n={len(col)}  x~{xc:.2f} m  ({label}, GP mean, d from t0={SUBTRACT_T0})"
+        )
+        # Keep legacy name as a copy of the center (or only) column.
+        if col_name in ("", "center") and fname != "hyst_tau_gamma.png":
+            shutil.copy2(out / fname, out / "hyst_tau_gamma.png")
 
 
 def load_spring_json(meta: dict) -> dict | None:

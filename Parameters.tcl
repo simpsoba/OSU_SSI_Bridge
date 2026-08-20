@@ -369,10 +369,16 @@ set nModesEigen 10;                       # <-- EDIT  (-) modes after gravity (r
 #   1  full window: |x|<=eqWindowX nodes + quads; all pile beams, all SSI springs
 #   2  center column: pier nodes 1/2/4/5 (UX UY RZ), both rotational springs,
 #      soil-base primary, the whole center pile, every center-pile spring,
-#      and every x=0 soil quad (grade to base). No cap springs, no pier accel.
+#      every x=0 soil quad (grade to base), plus a near-FF soil column at
+#      eqFFColumnFrac*L_half (same rows). No cap springs, no pier accel.
 #   3  nine SSI horizons (old 2): first / mid / last station of L2, L3, L5
+#      (center + near-FF soil columns, same as 2)
 set recordersON 2;                        # <-- EDIT  0 | 1 | 2 | 3
 set eqWindowX 10.0;                       # <-- EDIT  m, |x| <= this for deformed-shape dump (recordersON 1)
+# Lean dumps (recordersON 2|3): second soil-quad column toward the free field.
+# Target |x| = eqFFColumnFrac * L_half on the +x side, nearest NF cell
+# (never the thick Shin FF column beyond L_half).
+set eqFFColumnFrac 0.75;                  # <-- EDIT  (-) fraction of L_half
 
 # ------------------------------------------------------------
 # Springs
