@@ -267,15 +267,24 @@ set nSeg_below_tip 5;                     # <-- EDIT  (-) L5 below tip (15 ft)
 # Last x end is L_half (near-field outer face).
 #
 # soilMesh: pick one band list
-#    0  production (~35 x-stations with Shin)
-#    1  fine      (3 ft bands to 201 ft NF; ~137 x-stations)
-#    2  finer     (3 ft bands to 270 ft NF)
+#    0  production / 2026-08-19 tag (~35 x-stations; outer 30 ft)
+#    1  production, tighter outer ring (~35 x-stations; outer 20 ft)
+#    2  refined SSI (3 ft to 40 ft), then graded to 200 ft
 #   -1  coarse    (~25 x-stations)
 #   -2  coarser   (~19 x-stations)
-set soilMesh 1;                           # <-- EDIT  -2 | -1 | 0 | 1 | 2
+set soilMesh 0;                           # <-- EDIT  -2 | -1 | 0 | 1 | 2
 
 if {$soilMesh == 0} {
-	# production: 3 ft SSI to 12 ft
+	# production (2026-08-19 tag): 3 ft SSI to 12 ft; outer 30 ft to 200 ft
+	set soilDxBands [list \
+		[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
+		[list [expr { 7.0*$foot}] [expr { 40.0*$foot}]] \
+		[list [expr {15.0*$foot}] [expr {100.0*$foot}]] \
+		[list [expr {20.0*$foot}] [expr {140.0*$foot}]] \
+		[list [expr {30.0*$foot}] [expr {200.0*$foot}]] \
+		]
+} elseif {$soilMesh == 1} {
+	# production, tighter outer: same as 0 but outer 20 ft to 200 ft
 	set soilDxBands [list \
 		[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
 		[list [expr { 7.0*$foot}] [expr { 40.0*$foot}]] \
@@ -283,23 +292,13 @@ if {$soilMesh == 0} {
 		[list [expr {20.0*$foot}] [expr {140.0*$foot}]] \
 		[list [expr {20.0*$foot}] [expr {200.0*$foot}]] \
 		]
-} elseif {$soilMesh == 1} {
-	# fine: 3 ft bands to 201 ft NF
-	set soilDxBands [list \
-		[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr { 39.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr { 99.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr {141.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr {201.0*$foot}]] \
-		]
 } elseif {$soilMesh == 2} {
-	# finer: 3 ft bands to 270 ft NF
+	# refined SSI: 3 ft to 40 ft, then graded to 200 ft
 	set soilDxBands [list \
-		[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr { 39.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr { 99.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr {141.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr {270.0*$foot}]] \
+		[list [expr { 3.0*$foot}] [expr { 40.0*$foot}]] \
+		[list [expr { 7.0*$foot}] [expr {100.0*$foot}]] \
+		[list [expr {15.0*$foot}] [expr {140.0*$foot}]] \
+		[list [expr {20.0*$foot}] [expr {200.0*$foot}]] \
 		]
 } elseif {$soilMesh == -1} {
 	# coarse: same inner SSI; ~25 x-stations

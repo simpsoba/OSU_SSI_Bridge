@@ -12,7 +12,16 @@ if {![info exists soilMesh]} {
 	error "RefreshDerivedKnobs.tcl: soilMesh missing"
 }
 if {$soilMesh == 0} {
-	# production: 3 ft SSI to 12 ft
+	# production (2026-08-19 tag): 3 ft SSI to 12 ft; outer 30 ft to 200 ft
+	set soilDxBands [list \
+		[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
+		[list [expr { 7.0*$foot}] [expr { 40.0*$foot}]] \
+		[list [expr {15.0*$foot}] [expr {100.0*$foot}]] \
+		[list [expr {20.0*$foot}] [expr {140.0*$foot}]] \
+		[list [expr {30.0*$foot}] [expr {200.0*$foot}]] \
+		]
+} elseif {$soilMesh == 1} {
+	# production, tighter outer: same as 0 but outer 20 ft to 200 ft
 	set soilDxBands [list \
 		[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
 		[list [expr { 7.0*$foot}] [expr { 40.0*$foot}]] \
@@ -20,23 +29,13 @@ if {$soilMesh == 0} {
 		[list [expr {20.0*$foot}] [expr {140.0*$foot}]] \
 		[list [expr {20.0*$foot}] [expr {200.0*$foot}]] \
 		]
-} elseif {$soilMesh == 1} {
-	# fine: 3 ft bands to 201 ft NF
-	set soilDxBands [list \
-		[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr { 39.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr { 99.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr {141.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr {201.0*$foot}]] \
-		]
 } elseif {$soilMesh == 2} {
-	# finer: 3 ft bands to 270 ft NF
+	# refined SSI: 3 ft to 40 ft, then graded to 200 ft
 	set soilDxBands [list \
-		[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr { 39.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr { 99.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr {141.0*$foot}]] \
-		[list [expr { 3.0*$foot}] [expr {270.0*$foot}]] \
+		[list [expr { 3.0*$foot}] [expr { 40.0*$foot}]] \
+		[list [expr { 7.0*$foot}] [expr {100.0*$foot}]] \
+		[list [expr {15.0*$foot}] [expr {140.0*$foot}]] \
+		[list [expr {20.0*$foot}] [expr {200.0*$foot}]] \
 		]
 } elseif {$soilMesh == -1} {
 	# coarse: same inner SSI; ~25 x-stations

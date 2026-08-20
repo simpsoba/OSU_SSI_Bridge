@@ -10,7 +10,7 @@
 #   3. Re-run this script for the row you want.
 # Leave cells blank to keep the Parameters.tcl / Run*.tcl default.
 #
-# soilProfile / soilMesh cells may be bare numbers (1) or labeled (1 (FINE));
+# soilProfile / soilMesh cells may be bare numbers (1) or labeled (0 (PRODUCTION));
 # both work. Wave Name lookup (Storm Wave, Big Tsunami): see WaveCatalog.csv
 # (prototype vs lab scale). Not written into Overrides.tcl yet.
 # Rayleigh: T/xi/offFac/stiff + region *ON columns; see analysis/RayleighDamping.tcl.
