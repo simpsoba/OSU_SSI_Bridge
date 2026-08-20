@@ -37,12 +37,8 @@ proc partMapNum {x} {
 # Args: e ni nj (int)
 # Returns: grp string
 proc partMapClassify {e ni nj} {
-	if {[info exists ::eleTag_spr_base] && $e >= $::eleTag_spr_base && $e < 30000} {
-		return "ssi_spring"
-	}
-	if {$e >= 22000 && $e < 30000} { return "ssi_spring" }
-	if {$e >= 35000 && $e < 40000} { return "soil_bnd" }
-	if {$e >= 15000 && $e < 20000} { return "soil" }
+	set g [modelEleGroup $e]
+	if {$g ne ""} { return $g }
 	set ci [nodeCoord $ni]
 	set cj [nodeCoord $nj]
 	set dx [expr {[lindex $ci 0] - [lindex $cj 0]}]

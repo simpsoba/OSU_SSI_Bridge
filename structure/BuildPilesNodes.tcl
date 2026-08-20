@@ -42,11 +42,20 @@ set m_pile_seg  [expr {$rhoL_pile*$dy}];              # kg
 set m_pile_half [expr {0.5*$m_pile_seg}];             # kg
 set Irot_seg    [expr {$rhoL_pile*pow($dy,3)/105.0}]; # kg*m^2
 
+if {$nSeg_pile + 1 > $pileNodeStride} {
+	set pileNodeStride [expr {$nSeg_pile + 1}]
+}
+set pileNodeLast [expr {$nodeTag_pile_base + ($n_pile - 1)*$pileNodeStride + $nSeg_pile}]
+if {$pileNodeLast >= $tagShift_deck} {
+	error [format "BuildPilesNodes.tcl: pile nodes through %d overlap deck (%d). nSeg_pile=%d stride=%d" \
+		$pileNodeLast $tagShift_deck $nSeg_pile $pileNodeStride]
+}
+
 set yHead [expr {-$H_cap}];  # m, cap bottom
 set s $s_pile_cap
 
 # Head tags and x: left, center, right
-# tag (below head) = tagShift_pile + ip*100 + iy  (iy=1..nSeg; heads = cap BL/BC/BR)
+# tag (below head) = pileNodeTag ip iy  (iy=1..nSeg; heads = cap BL/BC/BR)
 set pileHeads [list \
 	[list $nodeTag_cap_BL [expr {-$s}]] \
 	[list $nodeTag_cap_BC 0.0] \
@@ -65,10 +74,10 @@ for {set ip 0} {$ip < $n_pile} {incr ip} {
 	IncrMass $headTag $m_pile_half $m_pile_half $Irot_seg
 
 	# Nodes below head: iy = 1 .. nSeg (tip = nSeg)
-	# tag = tagShift_pile + ip*100 + iy  (heads = cap BL/BC/BR, IncrMass only)
+	# tag = pileNodeTag ip iy  (heads = cap BL/BC/BR, IncrMass only)
 	# node $tag $x $y -mass $mx $my $mRz
 	for {set iy 1} {$iy <= $nSeg_pile} {incr iy} {
-		set nTag [expr {$nodeTag_pile_base + $ip*100 + $iy}]
+		set nTag [pileNodeTag $ip $iy]
 		set y [expr {$yHead - $iy*$dy}]
 
 		if {$iy == $nSeg_pile} {

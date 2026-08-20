@@ -145,14 +145,19 @@ foreach x $posList {
 set soilXs [lsort -real $soilXs]
 set nX [llength $soilXs]
 
-# ---- nodes: tag = nodeTag_soil_base + ix*100 + iy  (ix,iy 0-based) ----
+# ---- nodes: tag = nodeTag_soil_base + ix*nY + iy (stride = nY, no wrap) ----
+# Spring / ASDEA bases move later via ensureAbove max(getNodeTags|getEleTags).
+set soilNodeStride $nY
+set soilNodeLast [soilNodeTag [expr {$nX - 1}] [expr {$nY - 1}]]
+puts [format "----- Soil tags  nX=%d nY=%d stride=%d  nodes %d..%d -----" \
+	$nX $nY $soilNodeStride $nodeTag_soil_base $soilNodeLast]
+
 # node $nodeTag $xCoord $yCoord
 for {set ix 0} {$ix < $nX} {incr ix} {
 	set x [lindex $soilXs $ix]
 	for {set iy 0} {$iy < $nY} {incr iy} {
 		set y [lindex $soilYs $iy]
-		set nTag [expr {$nodeTag_soil_base + $ix*100 + $iy}]
-		node $nTag $x $y
+		node [soilNodeTag $ix $iy] $x $y
 	}
 }
 
@@ -193,10 +198,10 @@ for {set ix 0} {$ix < $nX - 1} {incr ix} {
 		set yT [lindex $soilYs $iy]
 		set yB [lindex $soilYs [expr {$iy + 1}]]
 		set yc [expr {0.5*($yT + $yB)}]
-		set n1 [expr {$nodeTag_soil_base + $ix*100 + $iy}]
-		set n2 [expr {$nodeTag_soil_base + ($ix+1)*100 + $iy}]
-		set n3 [expr {$nodeTag_soil_base + ($ix+1)*100 + ($iy+1)}]
-		set n4 [expr {$nodeTag_soil_base + $ix*100 + ($iy+1)}]
+		set n1 [soilNodeTag $ix $iy]
+		set n2 [soilNodeTag [expr {$ix + 1}] $iy]
+		set n3 [soilNodeTag [expr {$ix + 1}] [expr {$iy + 1}]]
+		set n4 [soilNodeTag $ix [expr {$iy + 1}]]
 		# all four nodes must exist
 		set ok 1
 		foreach nn [list $n1 $n2 $n3 $n4] {
@@ -241,7 +246,7 @@ set eleTag_soil_last $e
 set iyBot [expr {$nY - 1}]
 if {$soilBoundary eq "Shin"} {
 	for {set ix 0} {$ix < $nX} {incr ix} {
-		set nTag [expr {$nodeTag_soil_base + $ix*100 + $iyBot}]
+		set nTag [soilNodeTag $ix $iyBot]
 		if {[lsearch -exact [getNodeTags] $nTag] >= 0} {
 			fix $nTag 1 1
 		}
@@ -263,8 +268,8 @@ if {$soilBoundary eq "Shin"} {
 		[list $ixOuterR $ixInnerR]] {
 		lassign $side ixOuter ixInner
 		for {set iy 0} {$iy < $nY} {incr iy} {
-			set nOuter [expr {$nodeTag_soil_base + $ixOuter*100 + $iy}]
-			set nInner [expr {$nodeTag_soil_base + $ixInner*100 + $iy}]
+			set nOuter [soilNodeTag $ixOuter $iy]
+			set nInner [soilNodeTag $ixInner $iy]
 			if {[lsearch -exact [getNodeTags] $nOuter] < 0} { continue }
 			if {[lsearch -exact [getNodeTags] $nInner] < 0} { continue }
 			if {$iy == $iyBot} {

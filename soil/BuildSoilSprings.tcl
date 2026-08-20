@@ -32,6 +32,29 @@ if {$pileSpring ne "inelastic" && $pileSpring ne "elastic" && $pileSpring ne "no
 	error "BuildSoilSprings.tcl: pileSpring must be inelastic|elastic|none (got '$pileSpring')"
 }
 
+# Keep spring tags above whatever nodes/eles already exist (soil, ASDEA, …).
+set maxN [tcl::mathfunc::max {*}[getNodeTags]]
+if {[ensureAbove nodeTag_sprSoil_base $maxN]} {
+	set tagShift_spr $nodeTag_sprSoil_base
+	set eleTag_spr_base [expr {$tagShift_spr + 2000}]
+	set matTag_py_base [expr {$tagShift_spr + 3000}]
+	set matTag_tz_base [expr {$tagShift_spr + 4000}]
+	puts [format "----- Spring tags  nodes -> %d (above max node %d) -----" \
+		$nodeTag_sprSoil_base $maxN]
+}
+set maxE [tcl::mathfunc::max {*}[getEleTags]]
+if {[ensureAbove eleTag_spr_base $maxE]} {
+	puts [format "----- Spring tags  eles -> %d (above max ele %d) -----" \
+		$eleTag_spr_base $maxE]
+}
+if {![info exists pileNodeStride] || $pileNodeStride < 1} {
+	set pileNodeStride 100
+}
+if {$n_pile * $pileNodeStride > $sprCapFaceOff} {
+	set sprCapFaceOff [expr {$n_pile * $pileNodeStride}]
+	set sprSoffitOff [expr {$sprCapFaceOff + 16}]
+}
+
 set gravSoilLockPairs {}
 set springEqualDOFPairs {}
 array unset gravLockSeen
@@ -57,7 +80,7 @@ proc springTie {rNd dup soilNd} {
 set pi_s 3.141592653589793
 set pci_to_Pa_m [expr {271.447 / 0.0254}]
 
-# ---- helpers (ix,iy 0-based; node tag = nodeTag_soil_base + ix*100 + iy) ----
+# ---- helpers (ix,iy 0-based; node tag = soilNodeTag) ----
 proc soilIxAtX {xT} {
 	global soilXs
 	set best 0
@@ -85,8 +108,7 @@ proc soilIyAtY {yT} {
 }
 
 proc soilNodeAtIxIy {ix iy} {
-	global nodeTag_soil_base
-	return [expr {$nodeTag_soil_base + $ix*100 + $iy}]
+	soilNodeTag $ix $iy
 }
 
 # Soil node at (x, y) m, or -1 if that tag is missing.
@@ -204,12 +226,12 @@ for {set ip 0} {$ip < $n_pile} {incr ip} {
 			set trib [expr {0.5*$dy_soil}]
 			set isTip 0
 		} elseif {$iyP == $nSeg_pile} {
-			set pileNd [expr {$nodeTag_pile_base + $ip*100 + $iyP}]
+			set pileNd [pileNodeTag $ip $iyP]
 			set y [expr {-$H_cap - $iyP*$dy_soil}]
 			set trib [expr {0.5*$dy_soil}]
 			set isTip 1
 		} else {
-			set pileNd [expr {$nodeTag_pile_base + $ip*100 + $iyP}]
+			set pileNd [pileNodeTag $ip $iyP]
 			set y [expr {-$H_cap - $iyP*$dy_soil}]
 			set trib $dy_soil
 			set isTip 0
@@ -333,7 +355,7 @@ if {$pileSpring ne "none"} {
 			puts "WARNING: no soil at pile ip=$ip y=$y -- skip"
 			continue
 		}
-		set dup [expr {$nodeTag_sprSoil_base + $ip*100 + $iyP}]
+		set dup [expr {$nodeTag_sprSoil_base + $ip*$pileNodeStride + $iyP}]
 		lappend dupNodes [list $dup $xP $y]
 		lappend sprWork [list $ip $iyP $xP $pileNd $y $trib $isTip $nm \
 			$pult $y50 $pyType $tult $tzType $useLiq $qult $z50q $qzType \
@@ -376,7 +398,7 @@ foreach row $capFaceNodes {
 		incr iCap
 		continue
 	}
-	set dup [expr {$nodeTag_sprSoil_base + 900 + $iCap}]
+	set dup [expr {$nodeTag_sprSoil_base + $sprCapFaceOff + $iCap}]
 	lappend dupNodes [list $dup $xC $yC]
 	lappend capFaceWork [list $capNd $xC $yC $soilNd $dup $pOne $tOne]
 	incr iCap
@@ -435,7 +457,7 @@ foreach row $sofUse {
 		incr iSof
 		continue
 	}
-	set dup [expr {$nodeTag_sprSoil_base + 920 + $iSof}]
+	set dup [expr {$nodeTag_sprSoil_base + $sprSoffitOff + $iSof}]
 	lappend dupNodes [list $dup $xS $yS]
 	lappend capSoffitWork [list $capNd $xS $yS $soilNd $dup $qOne]
 	incr iSof

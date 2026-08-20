@@ -250,7 +250,7 @@ set soilProfile 4;                        # <-- EDIT  1 | 2 | 3 | 4
 set soilBoundary "Shin";                  # <-- EDIT  Shin | ASDEA
 # soilConstitutive / pileSpring: see Model switches above
 set rho_w 1000.0;                         # <-- EDIT  kg/m^3
-set h_water 0.0;                          # <-- EDIT  m, free water above y=0 (0 = none)
+set h_water 2.4;                          # <-- EDIT  m, free water above y=0 (0 = none)
 # Ponding: consistent Fy on soil top edges only (WaterSurfaceLoad.tcl).
 # No structure hydrostatic. Body forces unchanged (gamma'/gamma).
 set t_soil [expr {150.0*$foot}];          # <-- EDIT  m, near-field OOP thickness
@@ -286,6 +286,22 @@ set soilDxBands [list \
 # 	[list [expr {12.0*$foot}] [expr { 30.0*$foot}]] \
 # 	[list [expr {30.0*$foot}] [expr { 90.0*$foot}]] \
 # 	[list [expr {55.0*$foot}] [expr {200.0*$foot}]] \
+# 	]
+# finer: 3 ft bands to 201 ft NF (~137 x-stations with Shin FF)
+# set soilDxBands [list \
+# 	[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
+# 	[list [expr { 3.0*$foot}] [expr { 39.0*$foot}]] \
+# 	[list [expr { 3.0*$foot}] [expr { 99.0*$foot}]] \
+# 	[list [expr { 3.0*$foot}] [expr {141.0*$foot}]] \
+# 	[list [expr { 3.0*$foot}] [expr {201.0*$foot}]] \
+# 	]
+# even finer: 3 ft bands to 270 ft NF
+# set soilDxBands [list \
+# 	[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
+# 	[list [expr { 3.0*$foot}] [expr { 39.0*$foot}]] \
+# 	[list [expr { 3.0*$foot}] [expr { 99.0*$foot}]] \
+# 	[list [expr { 3.0*$foot}] [expr {141.0*$foot}]] \
+# 	[list [expr { 3.0*$foot}] [expr {270.0*$foot}]] \
 # 	]
 set L_half [lindex [lindex $soilDxBands end] 1];  # m, NF outer face
 
@@ -367,8 +383,10 @@ set alpha_cap_py 0.75;                    # <-- EDIT  (-) Mokwa phi=0 wall adhes
 # =====================================================================
 # TAGS CONVENTION
 # =====================================================================
-# Mesh encodings (soil ixx100+iy, pile ipilex100+iy, spring dups, ASDEA outer)
-# stay in the builders; only the bases are here.
+# Mesh encodings stay in the builders; only the bases are here.
+# Soil: node = tagShift_soil + ix*nY + iy  (BuildSoilMesh sets stride = nY).
+# Springs / ASDEA / Lysmer: if a default base is already taken, that builder
+# moves it to the next thousand above max(getNodeTags) / max(getEleTags).
 #
 # Shared nodes (same tag, stacked mass, no equalDOF):
 #   cap TC = nodeTag_pierBase_capTC; deck soffit BC = nodeTag_pierTop_deckBC;
@@ -380,8 +398,8 @@ set alpha_cap_py 0.75;                    # <-- EDIT  (-) Mokwa phi=0 wall adhes
 #   piles    2000    nodes 2001+/2101+/2201+; eles 2100+
 #   deck     3000    nodes 3001+; eles 3100+
 #   soil     10000   nodes 10000+; quads 15000+
-#   springs  20000   dups + zeroLength; Py/Tz mats
-#   ASDEA/Lysmer mates  30000 / eles 35000
+#   springs  20000   dups + zeroLength; Py/Tz mats  (may move)
+#   ASDEA/Lysmer mates  30000 / eles 35000          (may move)
 set tagShift_cap  1000;                   # <-- EDIT
 set tagShift_pile 2000;                   # <-- EDIT
 set tagShift_deck 3000;                   # <-- EDIT
@@ -448,9 +466,11 @@ set transfTag_cap   [expr {$tagShift_cap + 1}];   # 1001
 set eleTag_cap_base [expr {$tagShift_cap + 101}]; # 1101  first cap element
 
 # ---- Piles ----
-# BuildPilesNodes: node = tagShift_pile + ipile*100 + iy  (iy=1..nSeg)
+# BuildPilesNodes: node = tagShift_pile + ipile*pileNodeStride + iy  (iy=1..nSeg)
 #   left head 1027, nodes 2001...; center 1028 / 2101...; right 1029 / 2201...
+#   pileNodeStride starts at 100 and grows if nSeg_pile >= 100
 set nodeTag_pile_base $tagShift_pile
+set pileNodeStride 100
 set eleTag_pile_base  [expr {$tagShift_pile + 100}];  # 2100
 set transfTag_pile    [expr {$tagShift_pile + 1}];    # 2001
 set secTag_pile       301;                # Fiber or Elastic
@@ -478,20 +498,25 @@ set transfTag_deck    3001
 set eleTag_deck_base  3100
 
 # ---- Soil continuum ----
-# BuildSoilMesh: node = tagShift_soil + ix*100 + iy  (ix,iy 0-based)
+# BuildSoilMesh: node = tagShift_soil + ix*soilNodeStride + iy  (ix,iy 0-based)
 # Layer mats: one solid per soil row at matTag_soil_base+1+iy, FSP +100+iy
 set nodeTag_soil_base $tagShift_soil
 set eleTag_soil_base  [expr {$tagShift_soil + 5000}];  # 15000
 set matTag_soil_base  501;                # solid + FSP wrappers
 set matTag_lysmer_base [expr {$tagShift_soil + 50}];   # 10050  Viscous
+set soilNodeStride 100;                   # overwritten to nY in BuildSoilMesh
 
 # ---- Interface springs ----
-# BuildSoilSprings: pile dup = tagShift_spr + ip*100 + iyP;
-#   cap face +900+i; soffit +920+i
+# BuildSoilSprings: pile dup = tagShift_spr + ip*pileNodeStride + iyP;
+#   cap face +sprCapFaceOff+i; soffit +sprSoffitOff+i
 set nodeTag_sprSoil_base $tagShift_spr
 set eleTag_spr_base      [expr {$tagShift_spr + 2000}];  # 22000
 set matTag_py_base       [expr {$tagShift_spr + 3000}];  # 23000
 set matTag_tz_base       [expr {$tagShift_spr + 4000}];  # 24000
+set sprCapFaceOff 900
+set sprSoffitOff  920
+
+source [file join [file dirname [file normalize [info script]]] soil TagHelpers.tcl]
 
 # ---- Time series / load patterns ----
 set tsTag_velBase         9001;           # -fx / Shin Path

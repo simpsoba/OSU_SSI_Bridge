@@ -150,9 +150,11 @@ To turn a group on or off, swap `$aOff`/`$bOff` with `$alphaM`/`$betaKcomm` on t
 
 ### Soil mesh
 
-`Parameters.tcl`, there is a list called `soilDxBands` that defines the soil mesh. Two coarser lists sit commented below it. Uncomment one list and comment the others.
+`Parameters.tcl`, there is a list called `soilDxBands` that defines the soil mesh. Coarser and finer lists sit commented below it. Uncomment one list and comment the others.
 
 Vertical size is `dy_soil` (keep equal to pile `dy`). Layer materials: `soil/Profiles.md`. Builder: `soil/BuildSoilMesh.tcl`.
+
+Soil node tags are `tagShift_soil + ix*nY + iy`. If a later block’s default base is already taken, that builder moves it to the next thousand above `max(getNodeTags)` / `max(getEleTags)` (springs, ASDEA, Lysmer).
 
 ### Ground motion
 

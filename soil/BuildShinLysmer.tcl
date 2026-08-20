@@ -20,6 +20,18 @@ if {![info exists soil_nX] || ![info exists tsTag_velBase]} {
 # Drop any live analysis so SP/MP edits are not under a Transformation map
 wipeAnalysis
 
+# Keep Lysmer ghost nodes / dashpot eles above everything already built.
+set maxN [tcl::mathfunc::max {*}[getNodeTags]]
+if {[ensureAbove nodeTag_bnd_base $maxN]} {
+	puts [format "----- Lysmer tags  nodes -> %d (above max node %d) -----" \
+		$nodeTag_bnd_base $maxN]
+}
+set maxE [tcl::mathfunc::max {*}[getEleTags]]
+if {[ensureAbove eleTag_bnd_base $maxE]} {
+	puts [format "----- Lysmer tags  eles -> %d (above max ele %d) -----" \
+		$eleTag_bnd_base $maxE]
+}
+
 set nX $soil_nX
 set nY $soil_nY
 set iyBot [expr {$nY - 1}]
@@ -30,7 +42,7 @@ set baseNF {}
 set nL_FF ""
 set nR_FF ""
 for {set ix 0} {$ix < $nX} {incr ix} {
-	set nTag [expr {$nodeTag_soil_base + $ix*100 + $iyBot}]
+	set nTag [soilNodeTag $ix $iyBot]
 	if {[lsearch -exact [getNodeTags] $nTag] < 0} { continue }
 	set x [lindex $soilXs $ix]
 	if {$x <= -$xFF_inner + 1.0e-6} {
@@ -64,7 +76,7 @@ foreach n $baseNF {
 # Release UX on all base nodes (UY SP from gravity remains)
 set nRemoved 0
 for {set ix 0} {$ix < $nX} {incr ix} {
-	set nTag [expr {$nodeTag_soil_base + $ix*100 + $iyBot}]
+	set nTag [soilNodeTag $ix $iyBot]
 	if {[lsearch -exact [getNodeTags] $nTag] < 0} { continue }
 	if {[catch {remove sp $nTag 1} err]} {
 		error "BuildShinLysmer.tcl: remove sp $nTag 1 failed: $err"

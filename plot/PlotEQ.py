@@ -89,6 +89,27 @@ def read_meta(eq: Path) -> dict[str, str]:
     return meta
 
 
+def node_tag_bases(meta: dict | None) -> tuple[int, int, int, int, int]:
+    """(soil, spr, soffit_off, bnd, soil_last) from window_meta."""
+    meta = meta or {}
+
+    def gi(key: str, default: int) -> int:
+        try:
+            return int(float(meta.get(key, default)))
+        except (TypeError, ValueError):
+            return default
+
+    soil = gi("tagShift_soil", 10000)
+    spr = gi("nodeTag_sprSoil_base", 20000)
+    return (
+        soil,
+        spr,
+        gi("sprSoffitOff", 920),
+        gi("nodeTag_bnd_base", 30000),
+        gi("soilNodeLast", spr - 1),
+    )
+
+
 def read_node_file(path: Path) -> tuple[list[int], dict[int, tuple[float, float]]]:
     tags: list[int] = []
     xy: dict[int, tuple[float, float]] = {}
@@ -794,6 +815,7 @@ def plot_window_peak_field(
     lines: list[list[int]],
     cbar_label: str,
     title: str,
+    soil_base: int = 10000,
 ) -> None:
     pts, triangles, face, imap = _quad_triangulation(xy, quads)
     tri = Triangulation(pts[:, 0], pts[:, 1], triangles)
@@ -821,7 +843,7 @@ def plot_window_peak_field(
     ax.tricontour(tri, znode, levels=8, colors="k", linewidths=0.35, alpha=0.45)
     segs = []
     for a, b in lines:
-        if a in xy and b in xy and max(a, b) < 10000:
+        if a in xy and b in xy and max(a, b) < soil_base:
             segs.append([xy[a], xy[b]])
     if segs:
         ax.add_collection(
@@ -868,6 +890,7 @@ def plot_quad_shear_peaks(
     n_gp = int(float(meta.get("quadNgp", 4)))
     n_ele = len(qtags)
     idx = np.asarray(keep, dtype=int)
+    soil_base = node_tag_bases(meta)[0]
     sig_files = meta.get("quadStressFiles", "").split()
     eps_files = meta.get("quadStrainFiles", "").split()
     if sig_files:
@@ -876,6 +899,7 @@ def plot_quad_shear_peaks(
             out, "window_peak_tau_xy.png", xy, quads, tau / 1.0e3, lines,
             r"peak $|\tau_{xy}|$ (kPa)",
             r"peak $|\tau_{xy}|$  (max over $t$ and Gauss pts)",
+            soil_base,
         )
         print(
             f"PlotEQ: wrote {out / 'window_peak_tau_xy.png'}  "
@@ -889,6 +913,7 @@ def plot_quad_shear_peaks(
             out, "window_peak_gamma_xy.png", xy, quads, gam * 1.0e3, lines,
             r"peak $|\gamma_{xy}|$ ($\times 10^{-3}$)",
             r"peak $|\gamma_{xy}|$  (max over $t$ and Gauss pts)",
+            soil_base,
         )
         print(
             f"PlotEQ: wrote {out / 'window_peak_gamma_xy.png'}  "
@@ -1623,6 +1648,7 @@ def plot_frames(
     lines: list[list[int]],
     quads: list[list[int]],
     js: dict | None,
+    meta: dict | None = None,
 ) -> None:
     d = out / "frames"
     d.mkdir(parents=True, exist_ok=True)
@@ -1636,12 +1662,18 @@ def plot_frames(
     X0 = np.array([xy[tg][0] for tg in tags])
     Y0 = np.array([xy[tg][1] for tg in tags])
 
+    soil_base, spr_base, soffit_off, _bnd_base, soil_last = node_tag_bases(meta)
+
     soil_quads = []
     for q in quads:
         if len(q) < 4:
             continue
         nn = q[:4]
-        if min(nn) >= 10000 and max(nn) < 20000 and all(n in idx for n in nn):
+        if (
+            min(nn) >= soil_base
+            and max(nn) <= soil_last
+            and all(n in idx for n in nn)
+        ):
             soil_quads.append(nn)
     q_idx = (
         np.array([[idx[n] for n in q] for q in soil_quads], dtype=int)
@@ -1674,19 +1706,19 @@ def plot_frames(
             continue
         a, b = ln[0], ln[1]
         hi, lo = max(a, b), min(a, b)
-        if 20000 <= hi < 30000:
-            # soil node first so fallback/segment order is soil -> dup
-            spr.append((lo, hi) if lo < 20000 else (a, b))
-        elif hi < 10000:
+        # Spring dups sit at/above spr_base (bnd may be below or above after bumps).
+        if hi >= spr_base:
+            spr.append((lo, hi) if lo < spr_base else (a, b))
+        elif hi < soil_base:
             struct.append((a, b))
     ij_s = _pair_idx(struct, idx)
     ij_z = _pair_idx(spr, idx)
     fb = np.zeros((len(ij_z), 2))
     fb[:, 0] = 1.0
-    spr_base = min((n for n in tags if n >= 20000), default=20000)
+    spr_found = min((n for n in tags if n >= spr_base), default=spr_base)
     for k, (a, b) in enumerate(spr):
-        dup = b if b >= 20000 else a
-        if dup - spr_base >= 920:
+        dup = b if b >= spr_base else a
+        if dup - spr_found >= soffit_off:
             fb[k] = (0.0, 1.0)
 
     amp = float(np.max(np.abs(ux[steps])))
@@ -2009,7 +2041,7 @@ def main() -> int:
                 " column (lean dump) -- skip frames"
             )
         else:
-            plot_frames(out, t, ux, uy, disp_tags, xy, lines, quads, js)
+            plot_frames(out, t, ux, uy, disp_tags, xy, lines, quads, js, meta)
 
     return 0
 

@@ -25,19 +25,8 @@ proc sketchNum {x} {
 # Args: e ni nj (int)
 # Returns: grp string
 proc sketchClassifyEle {e ni nj} {
-	# Tag-based when soil/springs present
-	if {[info exists eleTag_spr_base] && $e >= $eleTag_spr_base && $e < 30000} {
-		return "ssi_spring"
-	}
-	if {$e >= 22000 && $e < 30000} {
-		return "ssi_spring"
-	}
-	if {$e >= 35000 && $e < 40000} {
-		return "soil_bnd"
-	}
-	if {$e >= 15000 && $e < 20000} {
-		return "soil"
-	}
+	set g [modelEleGroup $e]
+	if {$g ne ""} { return $g }
 	set ci [nodeCoord $ni]
 	set cj [nodeCoord $nj]
 	set dx [expr {[lindex $ci 0] - [lindex $cj 0]}]
@@ -91,6 +80,12 @@ if {[info exists soilBoundary]} {
 	puts $outFd "  \"soilBoundary\": null,"
 }
 puts $outFd [format "  \"dy_pile\": %s," [sketchNum [expr {$L_pile/double($nSeg_pile)}]]]
+puts $outFd "  \"tags\": \{"
+puts $outFd [format "    \"soil\": %d, \"spr\": %d, \"bnd\": %d," \
+	$tagShift_soil $nodeTag_sprSoil_base $nodeTag_bnd_base]
+puts $outFd [format "    \"sprSoffitOff\": %d, \"soilNodeStride\": %d, \"soilNodeLast\": %d" \
+	$sprSoffitOff $soilNodeStride $soilNodeLast]
+puts $outFd "  \},"
 
 # Fills: structure widths
 puts $outFd "  \"fills\": \["
@@ -194,7 +189,7 @@ puts $outFd "  \},"
 puts $outFd "  \"nodes\": \["
 set nTags {}
 foreach n [lsort -integer [getNodeTags]] {
-	if {$n >= 10000 && $n < 20000} { continue }
+	if {[isSoilContinuumNode $n]} { continue }
 	lappend nTags $n
 }
 set nNode [llength $nTags]

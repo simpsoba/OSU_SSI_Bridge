@@ -26,15 +26,15 @@ proc gravPrintSpringKine {label} {
 		$label $maxRel $maxPile [llength $springEqualDOFPairs]]
 }
 
-# Nearest existing continuum node (tags in [tagShift_soil, nodeTag_sprSoil_base)).
+# Nearest existing continuum node (tags in [nodeTag_soil_base, soilNodeLast]).
 # Args:    xT yT (m)
 # Returns: node tag, or -1 if none
 proc soilNdNearestExisting {xT yT} {
-	global tagShift_soil nodeTag_sprSoil_base
+	global nodeTag_soil_base soilNodeLast
 	set best -1
 	set bd 1.0e99
 	foreach n [getNodeTags] {
-		if {$n < $tagShift_soil || $n >= $nodeTag_sprSoil_base} { continue }
+		if {![isSoilContinuumNode $n]} { continue }
 		set xy [nodeCoord $n]
 		set d [expr {hypot([lindex $xy 0] - $xT, [lindex $xy 1] - $yT)}]
 		if {$d < $bd} {

@@ -22,6 +22,18 @@ if {![info exists rockG] || ![info exists asdeaNu]} {
 	error "BuildASDEABoundary.tcl: rock / asdeaNu from Parameters"
 }
 
+# Keep ASDEA outer tags above the continuum mesh.
+set maxN [tcl::mathfunc::max {*}[getNodeTags]]
+if {[ensureAbove nodeTag_bnd_base $maxN]} {
+	puts [format "----- ASDEA tags  nodes -> %d (above max node %d) -----" \
+		$nodeTag_bnd_base $maxN]
+}
+set maxE [tcl::mathfunc::max {*}[getEleTags]]
+if {[ensureAbove eleTag_bnd_base $maxE]} {
+	puts [format "----- ASDEA tags  eles -> %d (above max ele %d) -----" \
+		$eleTag_bnd_base $maxE]
+}
+
 set nX $soil_nX
 set nY $soil_nY
 set ixL 0
@@ -36,29 +48,30 @@ if {$w_FF <= 0} {
 }
 set hext $w_FF
 
-# Outer node tags: left/right columns, bottom row, two corners
-#   left  iy:  nodeTag_bnd_base + 1000 + iy
-#   right iy:  nodeTag_bnd_base + 2000 + iy
-#   bottom ix: nodeTag_bnd_base + 3000 + ix
-#   BL: +4000; BR: +4001
+# Outer node tags packed from nY / nX so a dense mesh cannot collide:
+#   left  iy:  nodeTag_bnd_base + iy
+#   right iy:  nodeTag_bnd_base + nY + iy
+#   bottom ix: nodeTag_bnd_base + 2*nY + ix
+#   BL: + 2*nY + nX; BR: +1 after BL
 proc bndNodeExists {tag} {
 	expr {[lsearch -exact [getNodeTags] $tag] >= 0}
 }
 
+set bndLeft0 $nodeTag_bnd_base
+set bndRight0 [expr {$nodeTag_bnd_base + $nY}]
+set bndBot0 [expr {$nodeTag_bnd_base + 2*$nY}]
+set nBL [expr {$bndBot0 + $nX}]
+set nBR [expr {$nBL + 1}]
+
 for {set iy 0} {$iy < $nY} {incr iy} {
 	set y [lindex $soilYs $iy]
-	set nL [expr {$nodeTag_bnd_base + 1000 + $iy}]
-	set nR [expr {$nodeTag_bnd_base + 2000 + $iy}]
-	node $nL [expr {$xL - $hext}] $y
-	node $nR [expr {$xR + $hext}] $y
+	node [expr {$bndLeft0 + $iy}] [expr {$xL - $hext}] $y
+	node [expr {$bndRight0 + $iy}] [expr {$xR + $hext}] $y
 }
 for {set ix 0} {$ix < $nX} {incr ix} {
 	set x [lindex $soilXs $ix]
-	set nB [expr {$nodeTag_bnd_base + 3000 + $ix}]
-	node $nB $x [expr {$yBot - $hext}]
+	node [expr {$bndBot0 + $ix}] $x [expr {$yBot - $hext}]
 }
-set nBL [expr {$nodeTag_bnd_base + 4000}]
-set nBR [expr {$nodeTag_bnd_base + 4001}]
 node $nBL [expr {$xL - $hext}] [expr {$yBot - $hext}]
 node $nBR [expr {$xR + $hext}] [expr {$yBot - $hext}]
 
@@ -77,19 +90,19 @@ for {set iy 0} {$iy < $nY - 1} {incr iy} {
 
 	# Left: N1=outer BL, N2=soil BL, N3=soil TL, N4=outer TL
 	# element ASDAbsorbingBoundary2D $eleTag $n1 $n2 $n3 $n4 $G $v $rho $thickness $bType <-fx $tsTag>
-	set n1 [expr {$nodeTag_bnd_base + 1000 + ($iy + 1)}]
-	set n2 [expr {$nodeTag_soil_base + $ixL*100 + ($iy + 1)}]
-	set n3 [expr {$nodeTag_soil_base + $ixL*100 + $iy}]
-	set n4 [expr {$nodeTag_bnd_base + 1000 + $iy}]
+	set n1 [expr {$bndLeft0 + ($iy + 1)}]
+	set n2 [soilNodeTag $ixL [expr {$iy + 1}]]
+	set n3 [soilNodeTag $ixL $iy]
+	set n4 [expr {$bndLeft0 + $iy}]
 	incr e
 	element ASDAbsorbingBoundary2D $e $n1 $n2 $n3 $n4 $G $nu $rho $thick L
 	lappend soilEleBndTags $e
 
 	# Right: N1=soil BL, N2=outer BR, N3=outer TR, N4=soil TL
-	set n1 [expr {$nodeTag_soil_base + $ixR*100 + ($iy + 1)}]
-	set n2 [expr {$nodeTag_bnd_base + 2000 + ($iy + 1)}]
-	set n3 [expr {$nodeTag_bnd_base + 2000 + $iy}]
-	set n4 [expr {$nodeTag_soil_base + $ixR*100 + $iy}]
+	set n1 [soilNodeTag $ixR [expr {$iy + 1}]]
+	set n2 [expr {$bndRight0 + ($iy + 1)}]
+	set n3 [expr {$bndRight0 + $iy}]
+	set n4 [soilNodeTag $ixR $iy]
 	incr e
 	element ASDAbsorbingBoundary2D $e $n1 $n2 $n3 $n4 $G $nu $rho $thick R
 	lappend soilEleBndTags $e
@@ -101,10 +114,10 @@ set nu $rockNu
 set rho $rockRho
 
 for {set ix 0} {$ix < $nX - 1} {incr ix} {
-	set n1 [expr {$nodeTag_bnd_base + 3000 + $ix}]
-	set n2 [expr {$nodeTag_bnd_base + 3000 + ($ix + 1)}]
-	set n3 [expr {$nodeTag_soil_base + ($ix + 1)*100 + $iyBot}]
-	set n4 [expr {$nodeTag_soil_base + $ix*100 + $iyBot}]
+	set n1 [expr {$bndBot0 + $ix}]
+	set n2 [expr {$bndBot0 + ($ix + 1)}]
+	set n3 [soilNodeTag [expr {$ix + 1}] $iyBot]
+	set n4 [soilNodeTag $ix $iyBot]
 	# skip if soil corner nodes missing (should not happen on base)
 	set ok 1
 	foreach nn [list $n3 $n4] {
@@ -119,19 +132,19 @@ for {set ix 0} {$ix < $nX - 1} {incr ix} {
 
 # BL corner
 set n1 $nBL
-set n2 [expr {$nodeTag_bnd_base + 3000 + $ixL}]
-set n3 [expr {$nodeTag_soil_base + $ixL*100 + $iyBot}]
-set n4 [expr {$nodeTag_bnd_base + 1000 + $iyBot}]
+set n2 [expr {$bndBot0 + $ixL}]
+set n3 [soilNodeTag $ixL $iyBot]
+set n4 [expr {$bndLeft0 + $iyBot}]
 incr e
 element ASDAbsorbingBoundary2D $e $n1 $n2 $n3 $n4 $G $nu $rho $thick BL \
 	-fx $tsTag_velBase
 lappend soilEleBndTags $e
 
 # BR corner
-set n1 [expr {$nodeTag_bnd_base + 3000 + $ixR}]
+set n1 [expr {$bndBot0 + $ixR}]
 set n2 $nBR
-set n3 [expr {$nodeTag_bnd_base + 2000 + $iyBot}]
-set n4 [expr {$nodeTag_soil_base + $ixR*100 + $iyBot}]
+set n3 [expr {$bndRight0 + $iyBot}]
+set n4 [soilNodeTag $ixR $iyBot]
 incr e
 element ASDAbsorbingBoundary2D $e $n1 $n2 $n3 $n4 $G $nu $rho $thick BR \
 	-fx $tsTag_velBase

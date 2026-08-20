@@ -101,7 +101,7 @@ def display_nodes(
     return disp
 
 
-def group_of_node(tag: int) -> str:
+def group_of_node(tag: int, soil: int = 10000, spr: int = 20000) -> str:
     if tag < 1000:
         return "pier"
     if tag < 2000:
@@ -110,10 +110,10 @@ def group_of_node(tag: int) -> str:
         return "pile"
     if tag < 4000:
         return "deck"
-    if tag < 10000:
+    if tag < soil:
         return "pile"
-    if tag < 21000:
-        return "ssi_spring"
+    if tag < spr:
+        return "soil"
     return "ssi_spring"
 
 
@@ -258,6 +258,9 @@ def plot(data: dict, out: Path) -> None:
     pile_type = data.get("pileEleType", "")
     profile = data.get("soilProfile")
     boundary = data.get("soilBoundary") or ""
+    tag_info = data.get("tags") or {}
+    soil_base = int(tag_info.get("soil", 10000))
+    spr_base = int(tag_info.get("spr", 20000))
 
     out.parent.mkdir(parents=True, exist_ok=True)
 
@@ -381,9 +384,9 @@ def plot(data: dict, out: Path) -> None:
 
         ms = 4.0
         for tag, (x, y) in nodes.items():
-            if tag >= 20000:
+            if tag >= spr_base:
                 continue
-            g = group_of_node(tag)
+            g = group_of_node(tag, soil_base, spr_base)
             if g not in STYLE:
                 continue
             a.plot(

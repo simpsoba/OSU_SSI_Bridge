@@ -616,6 +616,16 @@ if {[info exists fvNsteps]} {
 }
 puts $metaFd "gmVelFile $gmVelFile"
 puts $metaFd "gmScaleFactor $gmScaleFactor"
+puts $metaFd "tagShift_soil $tagShift_soil"
+puts $metaFd "nodeTag_sprSoil_base $nodeTag_sprSoil_base"
+puts $metaFd "nodeTag_bnd_base $nodeTag_bnd_base"
+puts $metaFd "sprSoffitOff $sprSoffitOff"
+if {[info exists soilNodeLast]} {
+	puts $metaFd "soilNodeLast $soilNodeLast"
+}
+if {[info exists soilNodeStride]} {
+	puts $metaFd "soilNodeStride $soilNodeStride"
+}
 if {$eqNP > 1} {
 	puts $metaFd "pid $eqPID"
 	puts $metaFd "np $eqNP"
