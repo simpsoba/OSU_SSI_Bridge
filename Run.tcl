@@ -9,6 +9,7 @@
 # Neumann (2021); Neumann et al. (2023). See reference/ and NOTES.md.
 #
 # Knobs: Parameters.tcl (TAGS CONVENTION for IDs). Switches + analysis knobs below.
+# Optional: OpenSees Run.tcl Overrides.tcl  (see overridesON; RunTestMatrix.py --row N)
 
 # Folders next to this file (structure/, soil/, analysis/, plot/).
 set runDir [file dirname [file normalize [info script]]]
@@ -39,6 +40,7 @@ wipe
 #   "twoNodeLink" -- equal-opposite UX forces between beam i/j nodes
 #     lumpedPlasticity: nodes 2--4; elastic/forceBeam: nodes 1--5
 # eleTag_exp: experimental element tag
+# overridesON: apply argv Overrides.tcl (forced to 0 if no file is passed)
 set runEQ 1;                              # <-- EDIT  0 | 1
 set plotFigures 0;                        # <-- EDIT  0 | 1
 set eqPrintON 1;                          # <-- EDIT  0 | 1
@@ -49,6 +51,7 @@ set realTimeON 0;                         # <-- EDIT  0 | 1
 set realTimeNsteps 1000000000000;         # <-- EDIT  steps when realTimeON 1
 set expElementType "generic";             # <-- EDIT  generic | twoNodeLink
 set eleTag_exp 101;                       # <-- EDIT  OpenFresco ele tag
+set overridesON 1;                        # <-- EDIT  0 | 1  (forced to 0 if no argv file)
 
 # ------------------------------------------------------------
 # Analysis knobs (EDIT these strings — include any args)
@@ -104,6 +107,25 @@ if {[info exists env(REGEN_EQ_TMAX)] && $env(REGEN_EQ_TMAX) ne ""} {
 }
 if {[info exists env(REGEN_FREE_VIB)] && $env(REGEN_FREE_VIB) ne ""} {
 	set eqFreeVibT $env(REGEN_FREE_VIB)
+}
+
+# Optional overrides file: OpenSees Run.tcl Overrides.tcl
+set overridesFile ""
+if {[info exists argv] && [llength $argv] >= 1} {
+	set overridesFile [lindex $argv 0]
+}
+if {$overridesFile eq ""} {
+	set overridesON 0
+}
+if {$overridesON && $overridesFile ne ""} {
+	if {![file exists $overridesFile]} {
+		error "Run.tcl: overrides file not found: $overridesFile"
+	}
+	source $overridesFile
+	source [file join $root analysis/RefreshDerivedKnobs.tcl]
+	puts "----- Overrides ON  $overridesFile -----"
+} elseif {$overridesFile ne "" && !$overridesON} {
+	puts "----- Overrides file ignored (overridesON=0)  $overridesFile -----"
 }
 
 if {$runEQ != 0 && $runEQ != 1} {

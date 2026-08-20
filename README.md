@@ -5,6 +5,11 @@
 Parameters of the model are mostly changed in `Parameters.tcl` (`# <-- EDIT`). 
 The main file to run is: `Run.tcl`
 
+Optional campaign row: edit `TestMatrix.csv`, then
+`python RunTestMatrix.py --row N` writes `Overrides.tcl`. Launch with that file as argv
+(`OpenSees Run.tcl Overrides.tcl` or `mpiexec -n N OpenSeesMP RunParallel.tcl Overrides.tcl`).
+Drivers default `overridesON 1`; with no argv file they force it to 0.
+
 To obtain the latest version of the model from GitHub
 ```bash
 git clone git@github.com:simpsoba/OSU_SSI_Bridge.git
@@ -144,9 +149,9 @@ Heads are the cap bottom nodes. Below the head: `node = 2000 + ip*100 + iy` (`ip
 
 `analysis/RayleighDamping.tcl`
 
-Damping is applied by `region`. Soil, far field boundary, SSI springs, piles, cap, and deck get near-zero damping. The pier beam, then the pier hinges (lumped plasticity), get the full `αM`, `βKcomm`. The last region that owns a node wins `αM`, so keep the pier groups last.
+Defaults: soil, boundary, SSI springs, piles, cap, and deck near-zero; pier (then lumped hinges) full. The last region that owns a node wins `αM`, so pier / hinge stay last.
 
-To turn a group on or off, swap `$aOff`/`$bOff` with `$alphaM`/`$betaKcomm` on that `-rayleigh` line.
+Knobs (`rayleighT1`, `rayleighT2`, `ξ`, `rayleighOffFac`, `rayleighStiff` = `committed`|`initial`, and each `rayleigh*ON` 0|1) can be set in `TestMatrix.csv` → `Overrides.tcl`, or left unset so the defaults in `RayleighDamping.tcl` apply. Hand edit: change those defaults, or flip a region’s `*ON`.
 
 ### Soil mesh
 

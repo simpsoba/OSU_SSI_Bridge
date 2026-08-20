@@ -6,6 +6,7 @@
 # Eigen stays on serial Run.tcl. runEQ 0 stops after partition.
 #
 #   mpirun -np N OpenSeesMP RunParallel.tcl
+#   mpirun -np N OpenSeesMP RunParallel.tcl Overrides.tcl
 #
 # Knobs: Parameters.tcl. Switches + analysis knobs below.
 
@@ -66,6 +67,7 @@ wipe
 #   "twoNodeLink" -- equal-opposite UX forces between beam i/j nodes
 #     lumpedPlasticity: nodes 2--4; elastic/forceBeam: nodes 1--5
 # eleTag_exp: experimental element tag
+# overridesON: apply argv Overrides.tcl (forced to 0 if no file is passed)
 set runEQ 1;                              # <-- EDIT  0 | 1
 set exportPartitionMap 0;                 # <-- EDIT  0 | 1
 set plotFigures 0;                        # <-- EDIT  0 | 1  (rank 0)
@@ -77,6 +79,7 @@ set realTimeON 0;                         # <-- EDIT  0 | 1
 set realTimeNsteps 1000000000000;         # <-- EDIT  steps when realTimeON 1
 set expElementType "generic";             # <-- EDIT  generic | twoNodeLink
 set eleTag_exp 101;                       # <-- EDIT  OpenFresco ele tag
+set overridesON 1;                        # <-- EDIT  0 | 1  (forced to 0 if no argv file)
 
 # ------------------------------------------------------------
 # Analysis knobs (EDIT these strings — include any args)
@@ -158,6 +161,27 @@ if {[info exists env(REGEN_RUNEQ)] && $env(REGEN_RUNEQ) ne ""} {
 if {[info exists env(REGEN_EXPORT_PARTITION)] && $env(REGEN_EXPORT_PARTITION) ne ""} {
 	set exportPartitionMap $env(REGEN_EXPORT_PARTITION)
 }
+
+# Optional overrides file: OpenSeesMP RunParallel.tcl Overrides.tcl
+# Every rank sources the same file (same as Parameters.tcl). Read-only is fine.
+set overridesFile ""
+if {[info exists argv] && [llength $argv] >= 1} {
+	set overridesFile [lindex $argv 0]
+}
+if {$overridesFile eq ""} {
+	set overridesON 0
+}
+if {$overridesON && $overridesFile ne ""} {
+	if {![file exists $overridesFile]} {
+		error "RunParallel.tcl: overrides file not found: $overridesFile"
+	}
+	source $overridesFile
+	source [file join $root analysis/RefreshDerivedKnobs.tcl]
+	puts "----- Overrides ON  $overridesFile -----"
+} elseif {$overridesFile ne "" && !$overridesON} {
+	puts "----- Overrides file ignored (overridesON=0)  $overridesFile -----"
+}
+
 if {$runEQ != 0 && $runEQ != 1} {
 	error "RunParallel.tcl: runEQ must be 0 (stop after partition) or 1 (EQ) (got '$runEQ')"
 }

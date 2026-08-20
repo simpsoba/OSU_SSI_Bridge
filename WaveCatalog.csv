@@ -1,0 +1,3 @@
+Name,Wave Start Time,DimScale,Prototype_WaterDepth_m,Prototype_WaveHeight_m,Prototype_Period_s,Model_WaterDepth_m,Model_WaveHeight_m,Model_Period_s,Notes
+Storm Wave,A little before the EQ,2.4,2.4,1.008,6.97,1.0,0.42,4.5,Periodic storm wave; OpenSees h_water uses prototype water depth (2.4 m)
+Big Tsunami,After the EQ,2.4,2.4,1.8,SOLITARY,1.0,0.75,SOLITARY,Solitary tsunami; OpenSees h_water uses prototype water depth (2.4 m)
