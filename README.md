@@ -245,7 +245,7 @@ Same files (`Run.tcl`, `RunParallel.tcl`):
 
 - `outDIR` — recorder folder (`trial1`, `runA`, …). Relative to the process cwd. `""` uses the auto path `plot/out/profile{N}/eq/{serial|parallel}/...`.
 - `gmStartTime` — Path `-startTime` (s). `0` omits it. Domain clock stays at 0 after gravity; the GM is silent until that time. When `realTimeON` is 0, `eqNstepsAll` covers `gmStartTime + Trec + eqFreeVibT`.
-- `realTimeON 1` — OpenFresco, no recovery, `realTimeNsteps`, no `eqPrintON`. Default `0` is the usual EQ loop. Needs `pierEleType lumpedPlasticity`. `eleTag_exp` (default 101) is the generic experimental element.
+- `realTimeON 1` — OpenFresco, no recovery, `realTimeNsteps`, no `eqPrintON`. Default `0` is the usual EQ loop. `expElementType` (`generic` default, or `twoNodeLink`) attaches to the pier beam ends: lumpedPlasticity nodes 2–4, elastic/forceBeam 1–5. `eleTag_exp` (default 101) is the experimental element tag.
 
 ### OpenFresco (`expElement`)
 
@@ -254,9 +254,12 @@ Gated by `realTimeON`. Create the experimental element **before** `numberer` / `
 **Parallel:** pin the pier on rank 0, then create `expElement` on rank 0 after `partition`, then `barrier`:
 
 ```tcl
+# lumpedPlasticity:
 partition -keepOnRank 0 3 \
 	$eleTag_pier_botSpr $eleTag_pier $eleTag_pier_topSpr
-# rank 0: expElement on $nodeTag_pierTopZeroLengthInner
+# elastic / forceBeamColumn:
+# partition -keepOnRank 0 1 $eleTag_pier
+# rank 0: expElement generic (top node) or twoNodeLink (beam i--j)
 # barrier
 # then applySystem / constraints / integrator / analysis Transient
 ```

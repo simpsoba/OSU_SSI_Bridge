@@ -60,8 +60,12 @@ wipe
 # gmStartTime: Path -startTime (s). 0 = series starts at t=0.
 #   When realTimeON is 0, eqNstepsAll covers startTime + Trec + eqFreeVibT.
 # realTimeON = 0: EQ to eqNstepsAll, recovery on, no OpenFresco
-# realTimeON = 1: OpenFresco, no recovery, realTimeNsteps (needs lumpedPlasticity; ignores eqPrintON)
-# eleTag_exp: OpenFresco generic element (UX on ZLS-J inner)
+# realTimeON = 1: OpenFresco, no recovery, realTimeNsteps (ignores eqPrintON)
+# expElementType: OpenFresco element on the pier beam ends (UX)
+#   "generic"     -- single-node force at the beam top (current)
+#   "twoNodeLink" -- equal-opposite UX forces between beam i/j nodes
+#     lumpedPlasticity: nodes 2--4; elastic/forceBeam: nodes 1--5
+# eleTag_exp: experimental element tag
 set runEQ 1;                              # <-- EDIT  0 | 1
 set exportPartitionMap 0;                 # <-- EDIT  0 | 1
 set plotFigures 0;                        # <-- EDIT  0 | 1  (rank 0)
@@ -71,7 +75,8 @@ set outDIR trial1;                        # <-- EDIT  folder ("" = auto)
 set gmStartTime 0.0;                      # <-- EDIT  s (0 = omit -startTime)
 set realTimeON 0;                         # <-- EDIT  0 | 1
 set realTimeNsteps 1000000000000;         # <-- EDIT  steps when realTimeON 1
-set eleTag_exp 101;                       # <-- EDIT  OpenFresco generic ele tag
+set expElementType "generic";             # <-- EDIT  generic | twoNodeLink
+set eleTag_exp 101;                       # <-- EDIT  OpenFresco ele tag
 
 # ------------------------------------------------------------
 # Analysis knobs (EDIT these strings — include any args)
@@ -159,11 +164,11 @@ if {$runEQ != 0 && $runEQ != 1} {
 if {$realTimeON != 0 && $realTimeON != 1} {
 	error "RunParallel.tcl: realTimeON must be 0 or 1 (got '$realTimeON')"
 }
+if {$expElementType ne "generic" && $expElementType ne "twoNodeLink"} {
+	error "RunParallel.tcl: expElementType must be generic or twoNodeLink (got '$expElementType')"
+}
 if {$gmStartTime < 0} {
 	error "RunParallel.tcl: gmStartTime must be >= 0 (got '$gmStartTime')"
-}
-if {$realTimeON && $pierEleType ne "lumpedPlasticity"} {
-	error "RunParallel.tcl: realTimeON=1 needs pierEleType lumpedPlasticity (got '$pierEleType')"
 }
 if {$realTimeON && $realTimeNsteps < 1} {
 	error "RunParallel.tcl: realTimeNsteps must be >= 1 when realTimeON=1 (got '$realTimeNsteps')"
@@ -176,8 +181,8 @@ if {![string is integer -strict $recordersON] || $recordersON < 0 || $recordersO
 }
 
 if {$pid == 0} {
-	puts [format "RunParallel: np=%d  runEQ=%d  realTimeON=%d  recordersON=%d  exportPartitionMap=%d  pier=%s  pile=%s  profile=%s  boundary=%s  constitutive=%s  springs=%s  soilEle=%s  soilMesh=%d" \
-		$np $runEQ $realTimeON $recordersON $exportPartitionMap $pierEleType $pileEleType $soilProfile $soilBoundary $soilConstitutive $pileSpring $soilEleType $soilMesh]
+	puts [format "RunParallel: np=%d  runEQ=%d  realTimeON=%d  expElementType=%s  recordersON=%d  exportPartitionMap=%d  pier=%s  pile=%s  profile=%s  boundary=%s  constitutive=%s  springs=%s  soilEle=%s  soilMesh=%d" \
+		$np $runEQ $realTimeON $expElementType $recordersON $exportPartitionMap $pierEleType $pileEleType $soilProfile $soilBoundary $soilConstitutive $pileSpring $soilEleType $soilMesh]
 	puts [format "  prePartitionSystem=%s  postPartitionSystem=%s  constraints=%s  integrator=%s" \
 		$prePartitionSystem $postPartitionSystem $constraintsHandler $eqIntegrator]
 	if {$runEQ} {
@@ -321,7 +326,7 @@ wipeAnalysis
 # partition splits the frozen EQ mesh (METIS). Gravity stayed replicated.
 # Profiles 1–2: -samePart keeps each SSI spring with continuum at its soil node
 # (needed for PyLiq1/TzLiq1 and sand-column SSI under MPI).
-# realTimeON: pin ZLS-I, eta beam, ZLS-J on rank 0 so node 4 stays local.
+# realTimeON: keep the pier beam (and ZLS hinges) on rank 0 for OpenFresco.
 set partitionArgs {}
 if {($soilProfile == 1 || $soilProfile == 2) \
 		&& [info exists ssiPartitionSamePart] \
@@ -340,8 +345,12 @@ if {($soilProfile == 1 || $soilProfile == 2) \
 }
 if {$realTimeON} {
 	# partition ... -keepOnRank $rank $nEle $ele1 ...
-	partition {*}$partitionArgs -keepOnRank 0 3 \
-		$eleTag_pier_botSpr $eleTag_pier $eleTag_pier_topSpr
+	if {$pierEleType eq "lumpedPlasticity"} {
+		partition {*}$partitionArgs -keepOnRank 0 3 \
+			$eleTag_pier_botSpr $eleTag_pier $eleTag_pier_topSpr
+	} else {
+		partition {*}$partitionArgs -keepOnRank 0 1 $eleTag_pier
+	}
 } else {
 	partition {*}$partitionArgs
 }
@@ -359,17 +368,27 @@ if {!$runEQ} {
 } else {
 	# ---
 	# OpenFresco (realTimeON): rank 0 only, after keepOnRank, before numberer
+	#   generic / twoNodeLink on ends of eleTag_pier (see Run.tcl comments)
 	# ---
 	if {$realTimeON} {
+		if {$pierEleType eq "lumpedPlasticity"} {
+			set expNodeI $nodeTag_pierBaseZeroLengthInner
+			set expNodeJ $nodeTag_pierTopZeroLengthInner
+		} else {
+			set expNodeI $nodeTag_pierBase_capTC
+			set expNodeJ $nodeTag_pierTop_deckBC
+		}
 		if {$pid == 0} {
-			if {[lsearch -exact [getNodeTags] $nodeTag_pierTopZeroLengthInner] < 0} {
-				error "RunParallel.tcl: realTimeON node $nodeTag_pierTopZeroLengthInner missing on rank 0 after keepOnRank"
+			foreach nCheck [list $expNodeI $expNodeJ] {
+				if {[lsearch -exact [getNodeTags] $nCheck] < 0} {
+					error "RunParallel.tcl: realTimeON node $nCheck missing on rank 0 after keepOnRank"
+				}
 			}
 			# model BasicBuilder -ndm $ndm -ndf $ndf
 			model BasicBuilder -ndm 2 -ndf 3
 			loadPackage OpenFrescoTcl
 			puts "\n-------------------"
-			puts "experimental element on"
+			puts "experimental element on ($expElementType)"
 
 			set Kexp 1e-2;                  # N/m  -initStif (1 dof)
 
@@ -388,14 +407,22 @@ if {!$runEQ} {
 			# expSite LocalSite $tag $setupTag
 			expSite LocalSite 1 1
 
-			# expElement generic $eleTag -node $nodeTag -dof $dof -site $site -initStif $K
-			# node 4 = $nodeTag_pierTopZeroLengthInner: top node of the stiff element, UX
-			expElement generic $eleTag_exp -node $nodeTag_pierTopZeroLengthInner \
-				-dof 1 -site 1 -initStif $Kexp -noRayleigh -checkTime
+			if {$expElementType eq "twoNodeLink"} {
+				expElement twoNodeLink $eleTag_exp \
+					$expNodeI $expNodeJ \
+					-dir 1 -site 1 -initStif $Kexp -noRayleigh \
+					-orient 1.0 0.0 0.0  0.0 1.0 0.0
+				puts [format "  twoNodeLink ele %d  nodes %d--%d (UX)" \
+					$eleTag_exp $expNodeI $expNodeJ]
+			} else {
+				expElement generic $eleTag_exp -node $expNodeJ \
+					-dof 1 -site 1 -initStif $Kexp -noRayleigh -checkTime
+				puts [format "  generic ele %d  node %d (UX)" $eleTag_exp $expNodeJ]
+			}
 		}
 		barrier
 	}
-
+	
 	# --- EQ analysis objects (knobs: postPartitionSystem, constraintsHandler, eqIntegrator) ---
 	set intName [lindex $eqIntegrator 0]
 

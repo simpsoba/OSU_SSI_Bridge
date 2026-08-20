@@ -33,8 +33,12 @@ wipe
 # gmStartTime: Path -startTime (s). 0 = series starts at t=0.
 #   When realTimeON is 0, eqNstepsAll covers startTime + Trec + eqFreeVibT.
 # realTimeON = 0: EQ to eqNstepsAll, recovery on, no OpenFresco
-# realTimeON = 1: OpenFresco, no recovery, realTimeNsteps (needs lumpedPlasticity; ignores eqPrintON)
-# eleTag_exp: OpenFresco generic element (UX on ZLS-J inner)
+# realTimeON = 1: OpenFresco, no recovery, realTimeNsteps (ignores eqPrintON)
+# expElementType: OpenFresco element on the pier beam ends (UX)
+#   "generic"     -- single-node force at the beam top (current)
+#   "twoNodeLink" -- equal-opposite UX forces between beam i/j nodes
+#     lumpedPlasticity: nodes 2--4; elastic/forceBeam: nodes 1--5
+# eleTag_exp: experimental element tag
 set runEQ 1;                              # <-- EDIT  0 | 1
 set plotFigures 0;                        # <-- EDIT  0 | 1
 set eqPrintON 1;                          # <-- EDIT  0 | 1
@@ -43,7 +47,8 @@ set outDIR trial1;                        # <-- EDIT  folder ("" = auto)
 set gmStartTime 0.0;                      # <-- EDIT  s (0 = omit -startTime)
 set realTimeON 0;                         # <-- EDIT  0 | 1
 set realTimeNsteps 1000000000000;         # <-- EDIT  steps when realTimeON 1
-set eleTag_exp 101;                       # <-- EDIT  OpenFresco generic ele tag
+set expElementType "generic";             # <-- EDIT  generic | twoNodeLink
+set eleTag_exp 101;                       # <-- EDIT  OpenFresco ele tag
 
 # ------------------------------------------------------------
 # Analysis knobs (EDIT these strings — include any args)
@@ -107,11 +112,11 @@ if {$runEQ != 0 && $runEQ != 1} {
 if {$realTimeON != 0 && $realTimeON != 1} {
 	error "Run.tcl: realTimeON must be 0 or 1 (got '$realTimeON')"
 }
+if {$expElementType ne "generic" && $expElementType ne "twoNodeLink"} {
+	error "Run.tcl: expElementType must be generic or twoNodeLink (got '$expElementType')"
+}
 if {$gmStartTime < 0} {
 	error "Run.tcl: gmStartTime must be >= 0 (got '$gmStartTime')"
-}
-if {$realTimeON && $pierEleType ne "lumpedPlasticity"} {
-	error "Run.tcl: realTimeON=1 needs pierEleType lumpedPlasticity (got '$pierEleType')"
 }
 if {$realTimeON && $realTimeNsteps < 1} {
 	error "Run.tcl: realTimeNsteps must be >= 1 when realTimeON=1 (got '$realTimeNsteps')"
@@ -121,8 +126,8 @@ if {![string is integer -strict $recordersON] || $recordersON < 0 || $recordersO
 	error "Run.tcl: recordersON must be an integer 0..3 (got '$recordersON')"
 }
 
-puts [format "Run: runEQ=%d  realTimeON=%d  recordersON=%d  pier=%s  pile=%s  profile=%s  boundary=%s  constitutive=%s  springs=%s  soilEle=%s  soilMesh=%d" \
-	$runEQ $realTimeON $recordersON $pierEleType $pileEleType $soilProfile $soilBoundary $soilConstitutive $pileSpring $soilEleType $soilMesh]
+puts [format "Run: runEQ=%d  realTimeON=%d  expElementType=%s  recordersON=%d  pier=%s  pile=%s  profile=%s  boundary=%s  constitutive=%s  springs=%s  soilEle=%s  soilMesh=%d" \
+	$runEQ $realTimeON $expElementType $recordersON $pierEleType $pileEleType $soilProfile $soilBoundary $soilConstitutive $pileSpring $soilEleType $soilMesh]
 puts [format "  prePartitionSystem=%s  postPartitionSystem=%s  constraints=%s  integrator=%s" \
 	$prePartitionSystem $postPartitionSystem $constraintsHandler $eqIntegrator]
 if {$runEQ} {
@@ -287,17 +292,27 @@ if {!$runEQ} {
 	set eqNstepsAll [expr {$eqNsteps + $fvNsteps}]
 
 	# ---
-	# OpenFresco (realTimeON): generic expElement on ZLS-J inner, UX
+	# OpenFresco (realTimeON): expElement on pier beam ends (UX)
+	#   generic: force at beam top; twoNodeLink: equal-opposite on i/j
+	#   attachment = ends of eleTag_pier (2--4 lumped; 1--5 otherwise)
 	# ---
 	if {$realTimeON} {
 		# model BasicBuilder -ndm $ndm -ndf $ndf
-		# 3-DOF so ZLS-J inner can take the expElement
 		model BasicBuilder -ndm 2 -ndf 3
 		loadPackage OpenFrescoTcl
 		puts "\n-------------------"
-		puts "experimental element on"
+		puts "experimental element on ($expElementType)"
 
 		set Kexp 1e-2;                      # N/m  -initStif (1 dof)
+
+		# Ends of the numerical pier beam (eleTag_pier).
+		if {$pierEleType eq "lumpedPlasticity"} {
+			set expNodeI $nodeTag_pierBaseZeroLengthInner
+			set expNodeJ $nodeTag_pierTopZeroLengthInner
+		} else {
+			set expNodeI $nodeTag_pierBase_capTC
+			set expNodeJ $nodeTag_pierTop_deckBC
+		}
 
 		# expControlPoint $tag $dof rsp
 		expControlPoint 1 1 disp
@@ -314,10 +329,20 @@ if {!$runEQ} {
 		# expSite LocalSite $tag $setupTag
 		expSite LocalSite 1 1
 
-		# expElement generic $eleTag -node $nodeTag -dof $dof -site $site -initStif $K
-		# node 4 = $nodeTag_pierTopZeroLengthInner: top node of the stiff element, UX
-		expElement generic $eleTag_exp -node $nodeTag_pierTopZeroLengthInner \
-			-dof 1 -site 1 -initStif $Kexp -noRayleigh -checkTime
+		if {$expElementType eq "twoNodeLink"} {
+			# Parallel UX actuator: equal-opposite forces on beam i/j.
+			expElement twoNodeLink $eleTag_exp \
+				$expNodeI $expNodeJ \
+				-dir 1 -site 1 -initStif $Kexp -noRayleigh \
+				-orient 1.0 0.0 0.0  0.0 1.0 0.0
+			puts [format "  twoNodeLink ele %d  nodes %d--%d (UX)" \
+				$eleTag_exp $expNodeI $expNodeJ]
+		} else {
+			# Single-node experimental force at beam top, UX.
+			expElement generic $eleTag_exp -node $expNodeJ \
+				-dof 1 -site 1 -initStif $Kexp -noRayleigh -checkTime
+			puts [format "  generic ele %d  node %d (UX)" $eleTag_exp $expNodeJ]
+		}
 	}
 	
 	wipeAnalysis
