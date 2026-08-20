@@ -293,6 +293,44 @@ set pileSpringPropsDump {}
 set capFacePropsDump {}
 set capSoffitPropsDump {}
 set liqSpringMatTags {}
+# Profiles 1–2: spring + continuum pairs for partition -samePart (PyLiq1/sand SSI).
+set ssiPartitionSamePart {}
+
+# Continuum elements touching soil node nd -> {eleA eleB} (B may equal A).
+proc soilElesAtNode {nd} {
+	global soilNodeEles
+	if {[info exists soilNodeEles($nd)] && [llength $soilNodeEles($nd)] > 0} {
+		set eles $soilNodeEles($nd)
+		return [list [lindex $eles 0] [lindex $eles end]]
+	}
+	return {}
+}
+
+# Record spring/continuum group for METIS -samePart (profiles 1 and 2 only).
+proc ssiSamePartRecord {sprEle soilNd {layer ""}} {
+	global soilProfile ssiPartitionSamePart soilEleTags soilEleLayer
+	if {$soilProfile != 1 && $soilProfile != 2} {
+		return
+	}
+	set pair [soilElesAtNode $soilNd]
+	if {[llength $pair] < 1 && $layer ne ""} {
+		foreach ee $soilEleTags {
+			if {$soilEleLayer($ee) eq $layer} {
+				set pair [list $ee $ee]
+				break
+			}
+		}
+	}
+	if {[llength $pair] < 1} {
+		return
+	}
+	lassign $pair e1 e2
+	if {$e1 == $e2} {
+		lappend ::ssiPartitionSamePart [list $sprEle $e1]
+	} else {
+		lappend ::ssiPartitionSamePart [list $sprEle $e1 $e2]
+	}
+}
 
 # ---- pileSpring none: equalDOF only ----
 if {$pileSpring eq "none"} {
@@ -537,14 +575,20 @@ foreach w $sprWork {
 		set z50Ax $z50_tz
 		set pRes [expr {$pRes_frac*$pultS}]
 		set tRes [expr {$pRes_frac*$tultS}]
-		set sEle1 [lindex $soilEleTags 0]
-		set sEle2 $sEle1
-		foreach ee $soilEleTags {
-			if {$soilEleLayer($ee) eq $nm} {
-				set sEle1 $ee
-				set sEle2 $ee
-				break
+		# PyLiq1/TzLiq1 need continuum eles that share this soil node (same MPI rank).
+		set pair [soilElesAtNode $soilNd]
+		if {[llength $pair] < 1} {
+			set sEle1 [lindex $soilEleTags 0]
+			set sEle2 $sEle1
+			foreach ee $soilEleTags {
+				if {$soilEleLayer($ee) eq $nm} {
+					set sEle1 $ee
+					set sEle2 $ee
+					break
+				}
 			}
+		} else {
+			lassign $pair sEle1 sEle2
 		}
 		uniaxialMaterial PyLiq1 $mPy $pyType $pultS $y50 $Cd_py $c_dash_py $pRes $sEle1 $sEle2
 		uniaxialMaterial TzLiq1 $mTz $tzType $tultS $z50_tz $tRes $sEle1 $sEle2
@@ -566,6 +610,7 @@ foreach w $sprWork {
 		element zeroLength $eSpr $soilNd $dup -mat $mPy $mTz -dir 1 2 -doRayleigh 1
 	}
 
+	ssiSamePartRecord $eSpr $soilNd $nm
 	set xyS [nodeCoord $soilNd]
 	set xs [lindex $xyS 0]
 	set ys [lindex $xyS 1]
@@ -601,6 +646,7 @@ foreach w $capFaceWork {
 	}
 	incr eSpr
 	element zeroLength $eSpr $soilNd $dup -mat $mPy $mTz -dir 1 2 -doRayleigh 1
+	ssiSamePartRecord $eSpr $soilNd
 	lappend capFacePropsDump [list $eSpr $xC $yC $pOne $tOne $y50_cap $z50_cap]
 	set xy [nodeCoord $soilNd]
 	lappend ssiSpringDump [list $eSpr \
@@ -627,6 +673,7 @@ foreach w $capSoffitWork {
 	}
 	incr eSpr
 	element zeroLength $eSpr $soilNd $dup -mat $mQz -dir 2 -doRayleigh 1
+	ssiSamePartRecord $eSpr $soilNd
 	lappend capSoffitPropsDump [list $eSpr $xS $yS $qOne $z50_cap]
 	set xy [nodeCoord $soilNd]
 	lappend ssiSpringDump [list $eSpr \
@@ -637,3 +684,7 @@ foreach w $capSoffitWork {
 
 set eleTag_spr_last $eSpr
 set nSprings $nSpr
+if {($soilProfile == 1 || $soilProfile == 2) && [llength $ssiPartitionSamePart] > 0} {
+	puts [format "BuildSoilSprings: %d -samePart groups (spring+continuum) for soilProfile %d" \
+		[llength $ssiPartitionSamePart] $soilProfile]
+}

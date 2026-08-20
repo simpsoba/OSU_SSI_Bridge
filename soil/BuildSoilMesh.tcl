@@ -238,6 +238,15 @@ for {set ix 0} {$ix < $nX - 1} {incr ix} {
 }
 set eleTag_soil_last $e
 
+# Node -> continuum elements (for SSI springs / partition -samePart)
+array unset soilNodeEles
+array set soilNodeEles {}
+foreach ee $soilEleTags {
+	foreach nn [eleNodes $ee] {
+		lappend soilNodeEles($nn) $ee
+	}
+}
+
 # =====================================================================
 # 5. BOUNDARY CONDITIONS / CONSTRAINTS
 # =====================================================================

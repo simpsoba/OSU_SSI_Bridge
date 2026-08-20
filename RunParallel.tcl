@@ -318,13 +318,31 @@ wipeAnalysis
 
 
 # partition splits the frozen EQ mesh (METIS). Gravity stayed replicated.
+# Profiles 1–2: -samePart keeps each SSI spring with continuum at its soil node
+# (needed for PyLiq1/TzLiq1 and sand-column SSI under MPI).
 # realTimeON: pin ZLS-I, eta beam, ZLS-J on rank 0 so node 4 stays local.
+set partitionArgs {}
+if {($soilProfile == 1 || $soilProfile == 2) \
+		&& [info exists ssiPartitionSamePart] \
+		&& [llength $ssiPartitionSamePart] > 0} {
+	foreach grp $ssiPartitionSamePart {
+		set nSame [llength $grp]
+		if {$nSame >= 2} {
+			# partition -samePart $n $e1 $e2 ...
+			lappend partitionArgs -samePart $nSame {*}$grp
+		}
+	}
+	if {$pid == 0} {
+		puts [format "----- partition -samePart  %d spring/continuum groups (profile %d) -----" \
+			[llength $ssiPartitionSamePart] $soilProfile]
+	}
+}
 if {$realTimeON} {
-	# partition -keepOnRank $rank $nEle $ele1 ...
-	partition -keepOnRank 0 3 \
+	# partition ... -keepOnRank $rank $nEle $ele1 ...
+	partition {*}$partitionArgs -keepOnRank 0 3 \
 		$eleTag_pier_botSpr $eleTag_pier $eleTag_pier_topSpr
 } else {
-	partition
+	partition {*}$partitionArgs
 }
 if {$pid == 0} {
 	puts [format "----- partition  rank 0/%d  local nodes=%d  eles=%d -----" \

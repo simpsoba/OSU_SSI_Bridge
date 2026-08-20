@@ -261,7 +261,7 @@ partition -keepOnRank 0 3 \
 # then applySystem / constraints / integrator / analysis Transient
 ```
 
-Without OpenFresco (`realTimeON 0`), `RunParallel.tcl` just calls `partition`. Do not create the analysis first: `partition` only sees elements already in the domain, and the numberer is built from the mesh that remains after the split.
+Without OpenFresco (`realTimeON 0`), `RunParallel.tcl` just calls `partition`. For **soilProfile 1 or 2**, it also passes OpenSeesMP `-samePart` groups so each SSI spring stays on the same METIS part as continuum elements at its soil node (required for `PyLiq1`/`TzLiq1`). Do not create the analysis first: `partition` only sees elements already in the domain, and the numberer is built from the mesh that remains after the split.
 
 ---
 
