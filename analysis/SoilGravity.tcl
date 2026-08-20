@@ -88,21 +88,27 @@ setTime 0.0
 set dLambda 0.1
 set nStep [expr {int(round(1.0/$dLambda))}]
 
+# numberer / system from prePartitionSystem (applySystem in Run.tcl / RunParallel.tcl).
+if {![info exists prePartitionSystem] || $prePartitionSystem eq ""} {
+	set prePartitionSystem "UmfPack"
+}
+if {[info procs applySystem] eq ""} {
+	proc applySystem {sysStr} {
+		numberer Plain
+		system {*}$sysStr
+	}
+}
+
 wipeAnalysis
 constraints Transformation
-# constraints Plain
-numberer Plain
-# numberer RCM
-system UmfPack
-# system BandGeneral
+applySystem $prePartitionSystem
 test NormDispIncr 1.0e-8 50 0
 algorithm Newton
-# algorithm KrylovNewton
 integrator LoadControl $dLambda
 analysis Static
 
-puts [format "----- gravity  stage %d  %s  %dx%.3g  lock=%d -----" \
-	$soilMatStage $soilBoundary $nStep $dLambda $nGravLock]
+puts [format "----- gravity  stage %d  %s  %dx%.3g  lock=%d  system=%s -----" \
+	$soilMatStage $soilBoundary $nStep $dLambda $nGravLock $prePartitionSystem]
 set ok [analyze $nStep]
 if {$ok != 0} {
 	error "SoilGravity.tcl: gravity application (elastic) failed (ok=$ok)"
@@ -118,18 +124,13 @@ source [file join $soilDir UpdateSoilStage.tcl]
 
 wipeAnalysis
 constraints Transformation
-# constraints Plain
-numberer Plain
-# numberer RCM
-system UmfPack
-# system BandGeneral
+applySystem $prePartitionSystem
 test NormDispIncr 5.0e-8 100 0
 algorithm KrylovNewton
-# algorithm Newton
 integrator LoadControl $dLambda
 analysis Static
-puts [format "----- gravity  stage %d  %s  %dx%.3g -----" \
-	$soilMatStage $soilConstitutive $nStep $dLambda]
+puts [format "----- gravity  stage %d  %s  %dx%.3g  system=%s -----" \
+	$soilMatStage $soilConstitutive $nStep $dLambda $prePartitionSystem]
 set ok [analyze $nStep]
 if {$ok != 0} {
 	error "SoilGravity.tcl: gravity application (plastic) failed (ok=$ok)"

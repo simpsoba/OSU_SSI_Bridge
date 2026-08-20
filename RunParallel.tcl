@@ -2,12 +2,12 @@
 # Units: N, m, s
 #
 # OpenSeesMP driver: same gravity as Run.tcl (replicated on every rank),
-# then METIS partition and Mumps + MKRAlphaExplicitMultiSOE for EQ.
+# then METIS partition and parallel SOE + EQ integrator.
 # Eigen stays on serial Run.tcl. runEQ 0 stops after partition.
 #
 #   mpirun -np N OpenSeesMP RunParallel.tcl
 #
-# Knobs: Parameters.tcl. Switches below.
+# Knobs: Parameters.tcl. Switches + analysis knobs below.
 
 set runDir [file dirname [file normalize [info script]]]
 set root $runDir
@@ -73,6 +73,64 @@ set realTimeON 0;                         # <-- EDIT  0 | 1
 set realTimeNsteps 1000000000000;         # <-- EDIT  steps when realTimeON 1
 set eleTag_exp 101;                       # <-- EDIT  OpenFresco generic ele tag
 
+# ------------------------------------------------------------
+# Analysis knobs (EDIT these strings — include any args)
+# ------------------------------------------------------------
+# Gravity + structure weight BEFORE partition (full mesh on every rank).
+#   "UmfPack"             recommended (each rank solves its own copy)
+#   "CuDSS"               GPU; each rank may open the device
+#   "BandGeneral" | "ProfileSPD"   (numberer RCM)
+#   "Mumps"               allowed; see NOTE
+#   "DistributedCuDSS"    allowed; see NOTE (only rank 0 uses the GPU)
+#   "ParallelProfileSPD"  allowed; see NOTE (numberer ParallelRCM)
+#
+# NOTE — Mumps / DistributedCuDSS / ParallelProfileSPD before partition:
+#   Every rank still has the full mesh. The parallel solver adds every rank's
+#   K and F, so you solve (np*K) x = np*F. Same x, ~np times the work.
+#   DistributedCuDSS is mainly so only rank 0 talks to the GPU under MPI.
+#
+# EQ AFTER partition (mesh split):
+#   "Mumps" | "DistributedCuDSS" | "ParallelProfileSPD"
+#
+set prePartitionSystem  "UmfPack";                              # <-- EDIT
+set postPartitionSystem "DistributedCuDSS";                                # <-- EDIT
+
+# EQ constraints (gravity always uses Transformation).
+# ASDEA forces Transformation for EQ no matter what you put here.
+#   "Auto" | "Transformation" | "Plain" | "Penalty 1.0e18 1.0e18"
+set constraintsHandler  "Auto";                                 # <-- EDIT
+
+# EQ integrator string (name + args). Algorithm/test follow from the name.
+#   "MKRAlphaExplicitMultiSOE 0.5 -incrementalAccel"  -> Linear, no test
+#   "MKRAlphaExplicitMultiSOE 0.5"
+#   "CudaMKRAlpha 0.5 -incrementalAccel"              -> forces DistributedCuDSS
+#   "CudaMKRAlpha 0.5"
+#   "AlphaOSGeneralized 0.5"
+#   "TRBDF2"                                          -> KrylovNewton + test
+#   "Newmark 0.5 0.25"
+set eqIntegrator        "CudaMKRAlpha 0.5";  # <-- EDIT
+
+# --- apply system + matching numberer (used for pre and post) ---
+proc applySystem {sysStr} {
+	set name [lindex $sysStr 0]
+	if {$name eq "Mumps" || $name eq "DistributedCuDSS"} {
+		# Before partition (replicated mesh): works via (np*K)x = np*F; see NOTE above.
+		numberer ParallelPlain
+		system {*}$sysStr
+	} elseif {$name eq "ParallelProfileSPD"} {
+		numberer ParallelRCM
+		system {*}$sysStr
+	} elseif {$name eq "BandGeneral" || $name eq "ProfileSPD"} {
+		numberer RCM
+		system {*}$sysStr
+	} elseif {$name eq "UmfPack" || $name eq "CuDSS"} {
+		numberer Plain
+		system {*}$sysStr
+	} else {
+		error "applySystem: unknown system '$sysStr'"
+	}
+}
+
 source [file join $root Parameters.tcl]
 if {[info exists env(REGEN_PROFILE)] && $env(REGEN_PROFILE) ne ""} {
 	set soilProfile $env(REGEN_PROFILE)
@@ -118,8 +176,10 @@ if {![string is integer -strict $recordersON] || $recordersON < 0 || $recordersO
 }
 
 if {$pid == 0} {
-	puts [format "RunParallel: np=%d  runEQ=%d  realTimeON=%d  recordersON=%d  exportPartitionMap=%d  pier=%s  pile=%s  profile=%s  boundary=%s  constitutive=%s  springs=%s  soilEle=%s" \
-		$np $runEQ $realTimeON $recordersON $exportPartitionMap $pierEleType $pileEleType $soilProfile $soilBoundary $soilConstitutive $pileSpring $soilEleType]
+	puts [format "RunParallel: np=%d  runEQ=%d  realTimeON=%d  recordersON=%d  exportPartitionMap=%d  pier=%s  pile=%s  profile=%s  boundary=%s  constitutive=%s  springs=%s  soilEle=%s  soilMesh=%d" \
+		$np $runEQ $realTimeON $recordersON $exportPartitionMap $pierEleType $pileEleType $soilProfile $soilBoundary $soilConstitutive $pileSpring $soilEleType $soilMesh]
+	puts [format "  prePartitionSystem=%s  postPartitionSystem=%s  constraints=%s  integrator=%s" \
+		$prePartitionSystem $postPartitionSystem $constraintsHandler $eqIntegrator]
 	if {$runEQ} {
 		puts [format "  dt=%.6g s  DT_FACTOR=%d  cylinderSF=%.4g  gmStartTime=%.4g s  outDIR=%s" \
 			$dtAnalysis $DT_FACTOR $cylinderSF $gmStartTime $outDIR]
@@ -154,8 +214,7 @@ source [file join $analysisDir StructureGravityLoads.tcl]
 
 wipeAnalysis
 constraints Transformation
-numberer Plain
-system UmfPack
+applySystem $prePartitionSystem
 test NormDispIncr 5.0e-8 100 0
 algorithm KrylovNewton
 set dLambda 0.1
@@ -318,33 +377,39 @@ if {!$runEQ} {
 		barrier
 	}
 
-	# numberer $type
-	numberer ParallelPlain
-	# numberer ParallelRCM
-	# system $type
-	# system DistributedCuDSS
-	# system ParallelProfileSPD
-	system Mumps
-	# constraints $type
-	# Note: because of the sp-roller condition, Plain constraint handler cannot be used for the EQ Analysis
-	# off the relative displacement of its own two nodes.
-	# constraints Transformation
-	# constraints Plain
-	constraints Auto
-	# constraints Penalty 1.0e18 1.0e18
-	# test $type $tol $maxIter $flag
-	test NormDispIncr 1.0e-8 25 0
-	# test EnergyIncr 1e-8 25 0
-	# algorithm $type
-	algorithm Linear
-	# algorithm KrylovNewton
-	# integrator MKRAlphaExplicitMultiSOE $rhoInf
-	# integrator MKRAlphaExplicitMultiSOE 0.5
-	integrator MKRAlphaExplicitMultiSOE 0.5 -incrementalAccel
-	# integrator TRBDF2
-	# integrator AlphaOSGeneralized 0.0
-	# integrator CudaMKRAlpha 0.5
-	# analysis $type
+	# --- EQ analysis objects (knobs: postPartitionSystem, constraintsHandler, eqIntegrator) ---
+	set intName [lindex $eqIntegrator 0]
+
+	# system of equations + solver (+ matching numberer inside applySystem).
+	# CudaMKRAlpha needs DistributedCuDSS so only rank 0 uses the GPU under MPI.
+	if {$intName eq "CudaMKRAlpha" && [lindex $postPartitionSystem 0] ne "DistributedCuDSS"} {
+		puts "CudaMKRAlpha -> forcing postPartitionSystem DistributedCuDSS (was $postPartitionSystem)"
+		set postPartitionSystem "DistributedCuDSS"
+	}
+	applySystem $postPartitionSystem
+
+	# constraint handler (ASDEA sp-rollers need Transformation)
+	if {[info exists soilBoundary] && $soilBoundary eq "ASDEA"} {
+		constraints Transformation
+	} else {
+		constraints {*}$constraintsHandler
+	}
+
+	# time integrator
+	integrator {*}$eqIntegrator
+
+	# solution algorithm (+ convergence test when the integrator is implicit)
+	if {$intName eq "MKRAlphaExplicitMultiSOE" || $intName eq "CudaMKRAlpha" \
+			|| $intName eq "AlphaOSGeneralized"} {
+		algorithm Linear
+	} elseif {$intName eq "TRBDF2" || $intName eq "Newmark"} {
+		test NormDispIncr 1.0e-8 25 0
+		algorithm KrylovNewton
+	} else {
+		error "RunParallel.tcl: unknown eqIntegrator '$eqIntegrator'"
+	}
+
+	# analysis type
 	analysis Transient
 
 	source [file join $analysisDir EQRecorders.tcl]
@@ -371,11 +436,11 @@ if {!$runEQ} {
 	
 	if {$pid == 0} {
 		if {$realTimeON} {
-			puts [format "----- EQ (OpenSeesMP + Mumps)  realTimeON  dt=%.6g s  nSteps=%s  rec=%d -----" \
-				$dtAnalysis $realTimeNsteps $recordersON]
+			puts [format "----- EQ (OpenSeesMP + %s + %s)  realTimeON  dt=%.6g s  nSteps=%s  rec=%d -----" \
+				$postPartitionSystem $eqIntegrator $dtAnalysis $realTimeNsteps $recordersON]
 		} else {
-			puts [format "----- EQ (OpenSeesMP + Mumps)  dt=%.6g s  T=%.4g+%.4g+%.4g s (start+EQ+freeVib)  nSteps=%d  rec=%d -----" \
-				$dtAnalysis $tWait $Trec $eqFreeVibT $eqNstepsAll $recordersON]
+			puts [format "----- EQ (OpenSeesMP + %s + %s)  dt=%.6g s  T=%.4g+%.4g+%.4g s (start+EQ+freeVib)  nSteps=%d  rec=%d -----" \
+				$postPartitionSystem $eqIntegrator $dtAnalysis $tWait $Trec $eqFreeVibT $eqNstepsAll $recordersON]
 		}
 	}
 

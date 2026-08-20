@@ -150,7 +150,15 @@ To turn a group on or off, swap `$aOff`/`$bOff` with `$alphaM`/`$betaKcomm` on t
 
 ### Soil mesh
 
-`Parameters.tcl`, there is a list called `soilDxBands` that defines the soil mesh. Coarser and finer lists sit commented below it. Uncomment one list and comment the others.
+`soilMesh` in `Parameters.tcl` selects the horizontal near-field bands (`soilDxBands`):
+
+| `soilMesh` | Mesh |
+|---|---|
+| `0` | production (~35 x-stations) |
+| `1` | fine (3 ft to 201 ft; default) |
+| `2` | finer (3 ft to 270 ft) |
+| `-1` | coarse (~25 x-stations) |
+| `-2` | coarser (~19 x-stations) |
 
 Vertical size is `dy_soil` (keep equal to pile `dy`). Layer materials: `soil/Profiles.md`. Builder: `soil/BuildSoilMesh.tcl`.
 
@@ -216,6 +224,17 @@ Figures: `OpenSees PlotModel.tcl` → `plot/out/profile{N}/fibers/`.
 
 `eqFreeVibT` (seconds) in `Parameters.tcl` defines the number of seconds that are run in free vibration after the earthquake ends.
 
+### Analysis knobs (system / integrator)
+
+Edit the string knobs at the top of `Run.tcl` or `RunParallel.tcl` (not `Parameters.tcl`). The `applySystem` proc under those knobs picks the matching numberer.
+
+| Knob | Example | Role |
+|---|---|---|
+| `prePartitionSystem` | `"UmfPack"` | Gravity + structure weight. On MP, `"Mumps"` / `"DistributedCuDSS"` are allowed but inefficient (`(np·K)x = np·F`); DistCuDSS is mainly so only rank 0 uses the GPU. |
+| `postPartitionSystem` | `"Mumps"` (MP) / `"UmfPack"` (serial) | EQ. After `partition`: `"Mumps"` \| `"DistributedCuDSS"`. |
+| `constraintsHandler` | `"Auto"` or `"Penalty 1.0e18 1.0e18"` | EQ only. Gravity always `Transformation`. **ASDEA** forces `Transformation` for EQ. |
+| `eqIntegrator` | `"MKRAlphaExplicitMultiSOE 0.5 -incrementalAccel"` | Full OpenSees string. Explicit → Linear (no test); `TRBDF2` / `Newmark` → KrylovNewton + test. `CudaMKRAlpha` forces `CuDSS` / `DistributedCuDSS`. |
+
 ### EQ progress / timings
 
 `eqPrintON` in `Run.tcl` and `RunParallel.tcl` (not `Parameters.tcl`). Default `1` prints analysis time, wall-clock elapsed, and pier-top disp every `eqPrintDt` s (debug). Set `eqPrintON 0` to silence the loop. Ignored when `realTimeON 1`. The one-line `EQ done` summary still prints elapsed at the end.
@@ -239,7 +258,7 @@ partition -keepOnRank 0 3 \
 	$eleTag_pier_botSpr $eleTag_pier $eleTag_pier_topSpr
 # rank 0: expElement on $nodeTag_pierTopZeroLengthInner
 # barrier
-# then numberer / system / constraints / analysis Transient
+# then applySystem / constraints / integrator / analysis Transient
 ```
 
 Without OpenFresco (`realTimeON 0`), `RunParallel.tcl` just calls `partition`. Do not create the analysis first: `partition` only sees elements already in the domain, and the numberer is built from the mesh that remains after the split.

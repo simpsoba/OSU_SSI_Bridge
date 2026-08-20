@@ -8,7 +8,7 @@
 # Papers: Shin et al. (2007); Mackie et al. (2008); Kramer PEER 2008/07;
 # Neumann (2021); Neumann et al. (2023). See reference/ and NOTES.md.
 #
-# Knobs: Parameters.tcl (TAGS CONVENTION for IDs). Switches below.
+# Knobs: Parameters.tcl (TAGS CONVENTION for IDs). Switches + analysis knobs below.
 
 # Folders next to this file (structure/, soil/, analysis/, plot/).
 set runDir [file dirname [file normalize [info script]]]
@@ -44,6 +44,46 @@ set gmStartTime 0.0;                      # <-- EDIT  s (0 = omit -startTime)
 set realTimeON 0;                         # <-- EDIT  0 | 1
 set realTimeNsteps 1000000000000;         # <-- EDIT  steps when realTimeON 1
 set eleTag_exp 101;                       # <-- EDIT  OpenFresco generic ele tag
+
+# ------------------------------------------------------------
+# Analysis knobs (EDIT these strings — include any args)
+# ------------------------------------------------------------
+# Gravity + structure weight (no MPI partition here).
+#   "UmfPack" | "CuDSS" | "FullGeneral"
+#   "BandGeneral" | "ProfileSPD"   (numberer RCM)
+# (DistributedCuDSS / Mumps need OpenSeesMP — use RunParallel.tcl.)
+#
+set prePartitionSystem  "UmfPack";                              # <-- EDIT
+set postPartitionSystem "UmfPack";                              # <-- EDIT
+
+# EQ constraints (gravity always uses Transformation).
+# ASDEA forces Transformation for EQ no matter what you put here.
+#   "Auto" | "Transformation" | "Plain" | "Penalty 1.0e18 1.0e18"
+set constraintsHandler  "Auto";                                 # <-- EDIT
+
+# EQ integrator string (name + args). Algorithm/test follow from the name.
+#   "MKRAlphaExplicitMultiSOE 0.5 -incrementalAccel"  -> Linear, no test
+#   "MKRAlphaExplicitMultiSOE 0.5"
+#   "CudaMKRAlpha 0.5 -incrementalAccel"              -> forces CuDSS
+#   "CudaMKRAlpha 0.5"
+#   "AlphaOSGeneralized 0.5"
+#   "TRBDF2"                                          -> KrylovNewton + test
+#   "Newmark 0.5 0.25"
+set eqIntegrator        "MKRAlphaExplicitMultiSOE 0.5 -incrementalAccel";  # <-- EDIT
+
+# --- apply system + matching numberer (used for pre and post) ---
+proc applySystem {sysStr} {
+	set name [lindex $sysStr 0]
+	if {$name eq "BandGeneral" || $name eq "ProfileSPD"} {
+		numberer RCM
+		system {*}$sysStr
+	} elseif {$name eq "UmfPack" || $name eq "CuDSS" || $name eq "FullGeneral"} {
+		numberer Plain
+		system {*}$sysStr
+	} else {
+		error "applySystem: unknown system '$sysStr' (UmfPack, CuDSS, BandGeneral, FullGeneral, ProfileSPD)"
+	}
+}
 
 source [file join $root Parameters.tcl]
 if {[info exists env(REGEN_PROFILE)] && $env(REGEN_PROFILE) ne ""} {
@@ -81,8 +121,10 @@ if {![string is integer -strict $recordersON] || $recordersON < 0 || $recordersO
 	error "Run.tcl: recordersON must be an integer 0..3 (got '$recordersON')"
 }
 
-puts [format "Run: runEQ=%d  realTimeON=%d  recordersON=%d  pier=%s  pile=%s  profile=%s  boundary=%s  constitutive=%s  springs=%s  soilEle=%s" \
-	$runEQ $realTimeON $recordersON $pierEleType $pileEleType $soilProfile $soilBoundary $soilConstitutive $pileSpring $soilEleType]
+puts [format "Run: runEQ=%d  realTimeON=%d  recordersON=%d  pier=%s  pile=%s  profile=%s  boundary=%s  constitutive=%s  springs=%s  soilEle=%s  soilMesh=%d" \
+	$runEQ $realTimeON $recordersON $pierEleType $pileEleType $soilProfile $soilBoundary $soilConstitutive $pileSpring $soilEleType $soilMesh]
+puts [format "  prePartitionSystem=%s  postPartitionSystem=%s  constraints=%s  integrator=%s" \
+	$prePartitionSystem $postPartitionSystem $constraintsHandler $eqIntegrator]
 if {$runEQ} {
 	puts [format "  dt=%.6g s  DT_FACTOR=%d  cylinderSF=%.4g  gmStartTime=%.4g s  outDIR=%s" \
 		$dtAnalysis $DT_FACTOR $cylinderSF $gmStartTime $outDIR]
@@ -116,11 +158,7 @@ source [file join $analysisDir StructureGravityLoads.tcl]
 
 wipeAnalysis
 constraints Transformation
-# constraints Plain
-numberer Plain
-# numberer RCM
-system UmfPack
-# system BandGeneral
+applySystem $prePartitionSystem
 test NormDispIncr 5.0e-8 100 0
 algorithm KrylovNewton
 # algorithm Newton
@@ -190,10 +228,7 @@ if {!$runEQ} {
 	# ------------------------------------------------------------
 	wipeAnalysis
 	constraints Transformation
-	numberer Plain
-	# numberer RCM
-	system UmfPack
-	# system BandGeneral
+	applySystem $prePartitionSystem
 
 	puts [format "----- Eigen (%d modes) -----" $nModesEigen]
 	set lambdas [eigen $nModesEigen]
@@ -286,29 +321,39 @@ if {!$runEQ} {
 	}
 	
 	wipeAnalysis
-	numberer Plain
-	# numberer RCM
-	# system CuDSS
-	system UmfPack
-	# system BandGeneral
-	# system ProfileSPD
-	# Note: because of the sp-roller condition, Plain constraint handler cannot be used for the EQ Analysis
-	# constraints Transformation
-	# constraints Plain
-	constraints Auto
-	# constraints Penalty 1.0e18 1.0e18
-	# test $type $tol $maxIter $flag
-	test NormDispIncr 1.0e-8 25 0
-	# test EnergyIncr 1e-8 25 0
-	# algorithm KrylovNewton
-	algorithm Linear
-	# algorithm Newton
-	# integrator TRBDF2
-	# integrator Newmark 0.5 0.25
-	integrator MKRAlphaExplicitMultiSOE 0.5 -incrementalAccel
-	# integrator MKRAlphaExplicitMultiSOE 0.5
-	# integrator CudaMKRAlpha 0.5
-	# integrator AlphaOSGeneralized 0.5
+	# --- EQ analysis objects (knobs: postPartitionSystem, constraintsHandler, eqIntegrator) ---
+	set intName [lindex $eqIntegrator 0]
+
+	# system of equations + solver (+ matching numberer inside applySystem).
+	# CudaMKRAlpha needs CuDSS.
+	if {$intName eq "CudaMKRAlpha" && [lindex $postPartitionSystem 0] ne "CuDSS"} {
+		puts "CudaMKRAlpha -> forcing postPartitionSystem CuDSS (was $postPartitionSystem)"
+		set postPartitionSystem "CuDSS"
+	}
+	applySystem $postPartitionSystem
+
+	# constraint handler (ASDEA sp-rollers need Transformation)
+	if {[info exists soilBoundary] && $soilBoundary eq "ASDEA"} {
+		constraints Transformation
+	} else {
+		constraints {*}$constraintsHandler
+	}
+
+	# time integrator
+	integrator {*}$eqIntegrator
+
+	# solution algorithm (+ convergence test when the integrator is implicit)
+	if {$intName eq "MKRAlphaExplicitMultiSOE" || $intName eq "CudaMKRAlpha" \
+			|| $intName eq "AlphaOSGeneralized"} {
+		algorithm Linear
+	} elseif {$intName eq "TRBDF2" || $intName eq "Newmark"} {
+		test NormDispIncr 1.0e-8 25 0
+		algorithm KrylovNewton
+	} else {
+		error "Run.tcl: unknown eqIntegrator '$eqIntegrator'"
+	}
+
+	# analysis type
 	analysis Transient
 
 	source [file join $analysisDir EQRecorders.tcl]
@@ -332,11 +377,11 @@ if {!$runEQ} {
 	
 	
 	if {$realTimeON} {
-		puts [format "----- EQ  realTimeON  dt=%.6g s  nSteps=%s  rec=%d -----" \
-			$dtAnalysis $realTimeNsteps $recordersON]
+		puts [format "----- EQ (%s + %s)  realTimeON  dt=%.6g s  nSteps=%s  rec=%d -----" \
+			$postPartitionSystem $eqIntegrator $dtAnalysis $realTimeNsteps $recordersON]
 	} else {
-		puts [format "----- EQ  dt=%.6g s  T=%.4g+%.4g+%.4g s (start+EQ+freeVib)  nSteps=%d  rec=%d -----" \
-			$dtAnalysis $tWait $Trec $eqFreeVibT $eqNstepsAll $recordersON]
+		puts [format "----- EQ (%s + %s)  dt=%.6g s  T=%.4g+%.4g+%.4g s (start+EQ+freeVib)  nSteps=%d  rec=%d -----" \
+			$postPartitionSystem $eqIntegrator $dtAnalysis $tWait $Trec $eqFreeVibT $eqNstepsAll $recordersON]
 	}
 
 	set t0 [clock microseconds]
