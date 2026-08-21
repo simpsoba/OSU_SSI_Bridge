@@ -45,7 +45,7 @@ if {$nY != $nSoilRows + 1} {
 # soilDxBands: near field {mesh size, x end}. Last x end = L_half.
 # Shin: one extra station at L_half+w_FF. ASDEA: continuum stops at L_half.
 if {![info exists soilDxBands] || [llength $soilDxBands] < 1} {
-	error "BuildSoilMesh.tcl: set soilDxBands in Parameters.tcl"
+	error "BuildSoilMesh.tcl: soilDxBands missing (ApplySoilDxBands / soil/SoilDxBands.tcl)"
 }
 set xTol 1.0e-4
 set ib 0

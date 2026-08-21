@@ -259,67 +259,16 @@ set t_soil [expr {150.0*$foot}];          # <-- EDIT  m, near-field OOP thicknes
 set dy_soil [expr {3.0*$foot}];           # <-- EDIT  m, vertical quad size (= pile dy)
 set nSeg_below_tip 5;                     # <-- EDIT  (-) L5 below tip (15 ft)
 
-# Horizontal mesh, |x| from the pier (near field). Each row:
-#   {mesh size    x end for that size}
-# mesh size -- horizontal quad width in this ring
-# x end     -- outer |x| where this width stops (next row starts there)
-# x end = previous x end + n * mesh size (integer n), or the last cell is skinny.
-# Last x end is L_half (near-field outer face).
-#
-# soilMesh: pick one band list
+# Horizontal mesh, |x| from the pier (near field).
+# soilMesh picks a band list; {mesh size, x end} rows live in soil/SoilDxBands.tcl.
 #    0  production / 2026-08-19 tag (~35 x-stations; outer 30 ft)
 #    1  production, tighter outer ring (~35 x-stations; outer 20 ft)
-#    2  refined SSI (3 ft to 40 ft), then graded to 200 ft
+#    2  refined SSI (3 ft to 39 ft), then graded to 200 ft
 #   -1  coarse    (~25 x-stations)
 #   -2  coarser   (~19 x-stations)
 set soilMesh 0;                           # <-- EDIT  -2 | -1 | 0 | 1 | 2
-
-if {$soilMesh == 0} {
-	# production (2026-08-19 tag): 3 ft SSI to 12 ft; outer 30 ft to 200 ft
-	set soilDxBands [list \
-		[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
-		[list [expr { 7.0*$foot}] [expr { 40.0*$foot}]] \
-		[list [expr {15.0*$foot}] [expr {100.0*$foot}]] \
-		[list [expr {20.0*$foot}] [expr {140.0*$foot}]] \
-		[list [expr {30.0*$foot}] [expr {200.0*$foot}]] \
-		]
-} elseif {$soilMesh == 1} {
-	# production, tighter outer: same as 0 but outer 20 ft to 200 ft
-	set soilDxBands [list \
-		[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
-		[list [expr { 7.0*$foot}] [expr { 40.0*$foot}]] \
-		[list [expr {15.0*$foot}] [expr {100.0*$foot}]] \
-		[list [expr {20.0*$foot}] [expr {140.0*$foot}]] \
-		[list [expr {20.0*$foot}] [expr {200.0*$foot}]] \
-		]
-} elseif {$soilMesh == 2} {
-	# refined SSI: 3 ft to 40 ft, then graded to 200 ft
-	set soilDxBands [list \
-		[list [expr { 3.0*$foot}] [expr { 40.0*$foot}]] \
-		[list [expr { 7.0*$foot}] [expr {100.0*$foot}]] \
-		[list [expr {15.0*$foot}] [expr {140.0*$foot}]] \
-		[list [expr {20.0*$foot}] [expr {200.0*$foot}]] \
-		]
-} elseif {$soilMesh == -1} {
-	# coarse: same inner SSI; ~25 x-stations
-	set soilDxBands [list \
-		[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
-		[list [expr {14.0*$foot}] [expr { 40.0*$foot}]] \
-		[list [expr {20.0*$foot}] [expr {100.0*$foot}]] \
-		[list [expr {50.0*$foot}] [expr {200.0*$foot}]] \
-		]
-} elseif {$soilMesh == -2} {
-	# coarser: 3 ft only to outer pile (±s); ~19 x-stations
-	set soilDxBands [list \
-		[list [expr { 3.0*$foot}] [expr {  6.0*$foot}]] \
-		[list [expr {12.0*$foot}] [expr { 30.0*$foot}]] \
-		[list [expr {30.0*$foot}] [expr { 90.0*$foot}]] \
-		[list [expr {55.0*$foot}] [expr {200.0*$foot}]] \
-		]
-} else {
-	error "Parameters.tcl: soilMesh must be -2, -1, 0, 1, or 2 (got '$soilMesh')"
-}
-set L_half [lindex [lindex $soilDxBands end] 1];  # m, NF outer face
+source [file join [file dirname [file normalize [info script]]] soil SoilDxBands.tcl]
+# ApplySoilDxBands + dtAnalysis: RefreshDerivedKnobs, after DT_FACTOR
 
 # Far-field column: Shin uses one thick column of width w_FF; ASDEA uses
 # an absorbing ring of the same width. OOP t_FF is Shin-only.
@@ -355,7 +304,25 @@ set gmScaleFactor 1.0;                    # <-- EDIT  (-) Path scale (units conv
 # EQ transient step (TRBDF2). Time scale is sqrt(cylinderSF) (length scale).
 # dtAnalysis = DT_FACTOR / 2048 * sqrt(cylinderSF)
 set DT_FACTOR 10;                         # <-- EDIT  (-) skip vs 2048 Hz
-set dtAnalysis [expr {$DT_FACTOR/2048.0*sqrt($cylinderSF)}];  # s
+
+# Rebuild soilDxBands, L_half, and dtAnalysis from the knobs above.
+# Args: none (reads soilMesh, foot, DT_FACTOR, cylinderSF)
+# Returns: none. Call again after Overrides.tcl.
+proc RefreshDerivedKnobs {} {
+	global DT_FACTOR cylinderSF dtAnalysis
+	if {[info commands ApplySoilDxBands] eq ""} {
+		error "RefreshDerivedKnobs: source soil/SoilDxBands.tcl first"
+	}
+	if {![info exists DT_FACTOR]} {
+		error "RefreshDerivedKnobs: DT_FACTOR missing"
+	}
+	if {![info exists cylinderSF]} {
+		error "RefreshDerivedKnobs: cylinderSF missing"
+	}
+	ApplySoilDxBands
+	set dtAnalysis [expr {$DT_FACTOR/2048.0*sqrt($cylinderSF)}]
+}
+RefreshDerivedKnobs
 # Optional truncate (s); empty -> full velocity record length
 set eqTmax "";                            # <-- EDIT  s (empty = full record)
 # Free vibration after the last GM sample (Path is 0 past the record).

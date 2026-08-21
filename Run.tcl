@@ -122,7 +122,7 @@ if {$overridesON && $overridesFile ne ""} {
 		error "Run.tcl: overrides file not found: $overridesFile"
 	}
 	source $overridesFile
-	source [file join $root analysis/RefreshDerivedKnobs.tcl]
+	RefreshDerivedKnobs
 	puts "----- Overrides ON  $overridesFile -----"
 } elseif {$overridesFile ne "" && !$overridesON} {
 	puts "----- Overrides file ignored (overridesON=0)  $overridesFile -----"

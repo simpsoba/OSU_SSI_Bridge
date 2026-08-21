@@ -155,13 +155,13 @@ Knobs (`rayleighT1`, `rayleighT2`, `ξ`, `rayleighOffFac`, `rayleighStiff` = `co
 
 ### Soil mesh
 
-`soilMesh` in `Parameters.tcl` selects the horizontal near-field bands (`soilDxBands`):
+`soilMesh` in `Parameters.tcl` selects the horizontal near-field bands. The `{mesh size, x end}` lists live in `soil/SoilDxBands.tcl` (`ApplySoilDxBands`, from `RefreshDerivedKnobs` after `Overrides.tcl`).
 
 | `soilMesh` | Mesh |
 |---|---|
 | `0` | production / `2026-08-19` tag (~35 x-stations; outer 30 ft → 200 ft; default) |
 | `1` | production, tighter outer (~35 x-stations; outer 20 ft → 200 ft) |
-| `2` | refined SSI (3 ft → 40 ft), then graded to 200 ft |
+| `2` | refined SSI (3 ft → 39 ft), then graded to 200 ft |
 | `-1` | coarse (~25 x-stations) |
 | `-2` | coarser (~19 x-stations) |
 
