@@ -146,7 +146,7 @@ OSU_SSI_Bridge/
 
 Knobs in `Parameters.tcl` (`# <-- EDIT`); IDs in the TAGS CONVENTION section.
 `tmp/` is gitignored; `Run.tcl` and `PlotModel.tcl` do not source it.
-Matrix runs: `python RunTestMatrix.py --row N` then pass `Overrides.tcl` as argv to `Run.tcl` / `RunParallel.tcl` (`overridesON` defaults to 1; no file → forced off).
+Matrix runs: `python RunTestMatrix.py --row N` (or `--row=-N`) then pass `Overrides.tcl` as argv to `Run.tcl` / `RunParallel.tcl` (`overridesON` defaults to 1; no file → forced off). `+N` = Auto, `-N` = Transformation.
 Wave Name (Storm Wave / Big Tsunami) prototype vs lab depths/heights/periods: `WaveCatalog.csv` (documentation only for now).
 
 ---

@@ -6,7 +6,8 @@ Parameters of the model are mostly changed in `Parameters.tcl` (`# <-- EDIT`).
 The main file to run is: `Run.tcl`
 
 Optional campaign row: edit `TestMatrix.csv`, then
-`python RunTestMatrix.py --row N` writes `Overrides.tcl`. Launch with that file as argv
+`python RunTestMatrix.py --row N` (or `--row=-N`) writes `Overrides.tcl`.
+Positive `N` is `constraints Auto`; negative is `Transformation`; the same `|N|` is the same case (IDs start at 1). Launch with that file as argv
 (`OpenSees Run.tcl Overrides.tcl` or `mpiexec -n N OpenSeesMP RunParallel.tcl Overrides.tcl`).
 Drivers default `overridesON 1`; with no argv file they force it to 0.
 
@@ -159,9 +160,11 @@ Knobs (`rayleighT1`, `rayleighT2`, `ξ`, `rayleighOffFac`, `rayleighStiff` = `co
 
 | `soilMesh` | Mesh |
 |---|---|
-| `0` | production / `2026-08-19` tag (~35 x-stations; outer 30 ft → 200 ft; default) |
-| `1` | production, tighter outer (~35 x-stations; outer 20 ft → 200 ft) |
-| `2` | refined SSI (3 ft → 39 ft), then graded to 200 ft |
+| `0` | production / `2026-08-19` tag (~35 x-stations; default) |
+| `1` | moderate SSI (3 ft → 39 ft; ~57 x-stations) |
+| `2` | large SSI (3 ft → 84 ft; ~83 x-stations) |
+| `3` | x-large SSI (3 ft → 114 ft; ~99 x-stations) |
+| `4` | xx-large SSI (3 ft → 123 ft; ~107 x-stations) |
 | `-1` | coarse (~25 x-stations) |
 | `-2` | coarser (~19 x-stations) |
 
