@@ -7,6 +7,12 @@ output/
 # Archived EQ dumps (named copies of trial1 / outDIR)
 runs/
 
+# Junction -> G:\My Drive\OSU_SSI_BRIDGE_DATA (lab dumps; read-only source)
+OSU_SSI_BRIDGE_DATA/
+
+# Local post-process plots from Drive dumps (not the dump archive)
+OSU_SSI_PLOTS/
+
 # Matrix-generated knob overrides (recreate with RunTestMatrix.py --row N)
 Overrides.tcl
 

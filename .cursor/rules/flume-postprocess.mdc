@@ -1,0 +1,56 @@
+---
+description: Post-process lab dumps from Drive; write plots under OSU_SSI_PLOTS
+alwaysApply: true
+---
+
+# Flume / lab dump post-process
+
+## Folders
+
+| Path | Role |
+|------|------|
+| `OSU_SSI_BRIDGE_DATA/` | Junction → `G:\My Drive\OSU_SSI_BRIDGE_DATA` — **read-only** dumps |
+| `OSU_SSI_BRIDGE_DATA/opensees data.lnk` | Shared Drive shortcut; **actual run folders live here** (resolve under `G:\.shortcut-targets-by-id\...\opensees data`) |
+| `OSU_SSI_PLOTS/` | Local plots only (`OSU_SSI_PLOTS/<run>/*.png`) |
+
+List runs from the resolved `opensees data` folder, not only the junction root (the root often only has the `.lnk`).
+
+**Read-only rule:** never leave `plots/` (or other outputs) inside a Drive dump folder. `PlotEQParallel.py` auto-routes lab dumps to `OSU_SSI_PLOTS/<run>/`. If a Drive-side `plots/` appears, delete it after copying. Do not write recorder dumps into `OSU_SSI_PLOTS/`.
+
+## Infer from the dump — not from the CSV
+
+Lab runs may ignore `TestMatrix.csv` / `Overrides.tcl` / folder-name hints (`r+01`, `np8`, …). **Never** take `Number of Procs`, soil profile, boundary, element type, integrator, or duration from the matrix as ground truth for post-process.
+
+Read what the files say:
+
+1. **Parallel vs serial** — `window_meta.txt.0` (and `*.out.$pid`) → `PlotEQParallel.py`; plain `window_nodes.txt` / `window_meta.txt` → `PlotEQ.py`.
+2. **`np`** — `np` in `window_meta.txt.0`; confirm ranks `0 .. np-1` exist for meta (PlotEQParallel already does this). Sparse recorder shards on some ranks are normal (lean dump).
+3. **Model knobs** — same meta: `soilProfile`, `soilBoundary`, `soilEleType`, `pierHinge`, `pileEleType`, `recordersON`, `Trec`, `freeVibT`, `dtAnalysis`, `gmVelFile`, …
+4. **What was recorded** — glob the folder (`pier_node_*.out.*`, `Elmt*_ctrlDsp.out`, springs, quads). Plot only what is present; do not assume every TestMatrix instrument is there.
+5. **Incomplete uploads** — if meta/disp/hinge files are missing, skip and report; recheck later (Drive sync). Incomplete *analyses* (t_last ≪ Trec) are still plotted.
+
+Folder names and the CSV are labels for humans; the dump is the authority.
+
+## Scripts
+
+Always use the plotters in `plot/`:
+
+- OpenSeesMP: `python plot/PlotEQParallel.py <eqOutDir>`  
+  Lab dumps → `OSU_SSI_PLOTS/<run>/` automatically (or `--plots-out DIR`).
+- Serial: `python plot/PlotEQ.py <eqOutDir>` (prefer copying PNGs out of Drive if that path is a lab dump).
+- Pier-top ux overlays: `python plot/PlotEQCompareRuns.py`  
+  → `OSU_SSI_PLOTS/compare/hist_ux_complete.png` (t_last ≥ Trec − 1 s)  
+  → `OSU_SSI_PLOTS/compare/hist_ux_all.png` (complete + incomplete; incomplete dashed)
+
+On this machine prefer Anaconda `python.exe` if `python` is the Windows Store stub.
+
+## When the user asks to post-process
+
+1. Resolve `opensees data.lnk` under `OSU_SSI_BRIDGE_DATA/`; list run folders there.
+2. Skip runs that already have PNGs under `OSU_SSI_PLOTS/<run>/` unless re-plotting.
+3. Inspect meta + file list; choose PlotEQ vs PlotEQParallel from the dump.
+4. Run the plotter on that dump folder (lab path → plots land in `OSU_SSI_PLOTS`).
+5. Remove any accidental Drive-side `<run>/plots/` after a successful copy.
+6. Sanity-check from the data: last sample vs meta `Trec`, no NaN/Inf, pier top ux, hinge, OpenFresco channels if present. Report oddities.
+
+Do not commit dump files, `OSU_SSI_BRIDGE_DATA/`, or bulky `OSU_SSI_PLOTS/` contents.

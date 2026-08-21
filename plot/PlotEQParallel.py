@@ -3,11 +3,16 @@
 
   python3 plot/PlotEQParallel.py
   python3 plot/PlotEQParallel.py /path/to/eqOutDir
+  python3 plot/PlotEQParallel.py /path/to/eqOutDir --plots-out OSU_SSI_PLOTS/run
 
 Reads np from window_meta.txt.0 (must match ranks 0..np-1). Stitches a serial
 folder, then calls PlotEQ.py. Lean window quads get corners from
 model_sketch.json here (PlotEQ.py stays serial-only).
-Panels: the DO_* switches in PlotEQ.py. Plots go to <eqOutDir>/plots/.
+Panels: the DO_* switches in PlotEQ.py.
+
+Lab dumps under OSU_SSI_BRIDGE_DATA / Drive `opensees data` write PNGs to
+OSU_SSI_PLOTS/<run>/ (dump stays read-only). Local plot/out dumps still get
+<eqOutDir>/plots/.
 """
 
 from __future__ import annotations
@@ -504,26 +509,100 @@ def stitch(eq: Path, dest: Path, np_run: int, metas: dict[int, dict[str, str]]) 
         print(f"PlotEQParallel: sketch corners for {n_fill} window quads")
 
 
-HELP = """\
-usage: python3 plot/PlotEQParallel.py [eqOutDir]
+REPO = HERE.parent
+PLOTS_ROOT = REPO / "OSU_SSI_PLOTS"
 
-  eqOutDir   MP recorder folder (default: EQ_OUT in this file)
-  np         from window_meta.txt.0; ranks must be 0..np-1
-  plots      <eqOutDir>/plots/   (PlotEQ.py DO_* switches)
+HELP = """\
+usage: python3 plot/PlotEQParallel.py [eqOutDir] [--plots-out DIR]
+
+  eqOutDir     MP recorder folder (default: EQ_OUT in this file)
+  --plots-out  write PNGs here (flat). Lab dumps under OSU_SSI_BRIDGE_DATA /
+               Drive `opensees data` default to OSU_SSI_PLOTS/<runName>/ so the
+               dump folder stays read-only.
+  else         <eqOutDir>/plots/   (local plot/out style)
+  np           from window_meta.txt.0; ranks must be 0..np-1
 """
+
+
+def _is_lab_dump(eq: Path) -> bool:
+    """True if eq lives on the Drive data junction / shared opensees data folder."""
+    s = str(eq).replace("\\", "/").lower()
+    if "osu_ssi_bridge_data" in s:
+        return True
+    if "shortcut-targets-by-id" in s and "opensees data" in s:
+        return True
+    try:
+        eq.resolve().relative_to((REPO / "OSU_SSI_BRIDGE_DATA").resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def _parse_argv(argv: list[str]) -> tuple[Path, Path | None]:
+    """Return (eqOutDir, plots_out or None meaning auto)."""
+    args = list(argv[1:])
+    plots_out: Path | None = None
+    positional: list[str] = []
+    i = 0
+    while i < len(args):
+        if args[i] in ("-h", "--help"):
+            positional.append(args[i])
+            i += 1
+            continue
+        if args[i] == "--plots-out":
+            if i + 1 >= len(args):
+                raise SystemExit("PlotEQParallel: --plots-out needs a directory")
+            plots_out = Path(args[i + 1]).resolve()
+            i += 2
+            continue
+        if args[i].startswith("--plots-out="):
+            plots_out = Path(args[i].split("=", 1)[1]).resolve()
+            i += 1
+            continue
+        positional.append(args[i])
+        i += 1
+    if positional and positional[0] in ("-h", "--help"):
+        return Path("."), None  # main handles help
+    eq = Path(positional[0]).resolve() if positional else Path(EQ_OUT)
+    return eq, plots_out
+
+
+def _install_plots(src: Path, dst: Path, flat: bool) -> None:
+    """Copy PNGs from stitch temp/plots into dst (flat files or plots/ tree)."""
+    if not src.is_dir():
+        return
+    if flat:
+        dst.mkdir(parents=True, exist_ok=True)
+        for p in src.iterdir():
+            if p.is_file():
+                shutil.copy2(p, dst / p.name)
+            elif p.is_dir():
+                # frames/ etc.
+                target = dst / p.name
+                if target.exists():
+                    shutil.rmtree(target)
+                shutil.copytree(p, target)
+    else:
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(src, dst)
+    print(f"PlotEQParallel: plots -> {dst}")
 
 
 def main() -> int:
     if any(a in ("-h", "--help") for a in sys.argv[1:]):
         print(HELP, end="")
         return 0
-    eq = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path(EQ_OUT)
+    eq, plots_out = _parse_argv(sys.argv)
     if (eq / "window_nodes.txt").is_file() and not (eq / "window_nodes.txt.0").is_file():
         print(
             f"PlotEQParallel: serial dump in {eq}\n  python3 plot/PlotEQ.py {eq}",
             file=sys.stderr,
         )
         return 1
+    if plots_out is None and _is_lab_dump(eq):
+        plots_out = (PLOTS_ROOT / eq.name).resolve()
+        print(f"PlotEQParallel: lab dump -> plots-out {plots_out}")
     np_run, metas = load_np(eq)
     print(f"PlotEQParallel: np={np_run}  {eq}")
     tmp = Path(tempfile.mkdtemp(prefix="eqmp_"))
@@ -537,12 +616,10 @@ def main() -> int:
         finally:
             sys.argv = argv
             src = tmp / "plots"
-            dst = eq / "plots"
-            if src.is_dir():
-                if dst.exists():
-                    shutil.rmtree(dst)
-                shutil.copytree(src, dst)
-                print(f"PlotEQParallel: plots -> {dst}")
+            if plots_out is not None:
+                _install_plots(src, plots_out, flat=True)
+            else:
+                _install_plots(src, eq / "plots", flat=False)
         return rc
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
