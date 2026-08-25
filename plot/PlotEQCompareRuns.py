@@ -58,7 +58,6 @@ PLOTS_ROOT = plots_root()
 
 DPI = 300
 TREC_TOL_S = 1.0  # complete if t_last >= Trec - this (match PlotEQ)
-MAX_PLOT_PTS = 40_000  # downsample long DAQ / recorder series for PNG size
 UX_ABS_MAX_CM = 100.0  # skip dumps that clearly diverged
 
 # r±NN_YYYYMMDD_HHMM_…
@@ -360,24 +359,6 @@ def short_label(eq_dir: Path, incomplete: bool = False) -> str:
     return tag
 
 
-def decimate(
-    t: np.ndarray,
-    y: np.ndarray,
-    n_max: int = MAX_PLOT_PTS,
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Thin a time series for plotting (keep endpoints of every stride).
-
-    Args:    t, y  same length; n_max  max points kept
-    Returns: (t_plot, y_plot)
-    """
-    n = len(t)
-    if n <= n_max:
-        return t, y
-    step = int(np.ceil(n / n_max))
-    return t[::step], y[::step]
-
-
 # ------------------------------------------------------------
 # 3. SIMULINK meaSigOS (realtime overlays)
 # ------------------------------------------------------------
@@ -568,13 +549,12 @@ def plot_compare_realtime(
         # Scale model mat → prototype for the primary axes
         t_proto_s = t_model_s * TIME_SCALE_FROUDE
         u_proto_cm = model_disp_to_proto_cm(u_model_m)
-        t_plot, u_plot = decimate(t_proto_s, u_proto_cm)
 
         color = COLORS[n_plotted % len(COLORS)]
         line_style = "-" if complete else "--"
         ax.plot(
-            t_plot,
-            u_plot,
+            t_proto_s,
+            u_proto_cm,
             color=color,
             lw=1.0 if complete else 0.9,
             ls=line_style,

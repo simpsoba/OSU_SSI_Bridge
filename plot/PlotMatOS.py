@@ -65,7 +65,6 @@ REPO = HERE.parent
 PLOTS_ROOT = plots_root()
 
 DPI = 300
-MAX_PLOT_PTS = 40_000
 
 # Model-scale displacement (m) to prototype displacement (cm).
 DISP_M_TO_PROTO_CM = CYLINDER_LENGTH_SCALE * 100.0
@@ -88,10 +87,11 @@ COLORS = (
     "#7b1fa2",
 )
 
-# OpenFresco typeConv* names used by this campaign.
+# Friendly legend names for stateOS leaves. typeConv3/1 labels are interpretive
+# (not from an official OpenFresco map); y-axis uses the raw leaf name.
 STATE_LABELS = {
-    "typeConv3": "simState",
-    "typeConv1": "substep/count",
+    "typeConv3": "typeConv3",
+    "typeConv1": "typeConv1",
     "s1": "flag s1",
     "s2": "flag s2",
     "s3": "flag s3",
@@ -251,24 +251,6 @@ def integer_yaxis(ax) -> None:
 # ------------------------------------------------------------
 # 3. EXTRACT I/O AND SERIES DISCOVERY
 # ------------------------------------------------------------
-
-
-def decimate(
-    t: np.ndarray,
-    y: np.ndarray,
-    nmax: int = MAX_PLOT_PTS,
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Thin a time series to at most nmax plotting points.
-
-    Args:    t  time (s); y  signal values; nmax  maximum points
-    Returns: (t_plot, y_plot)
-    """
-    n_points = len(t)
-    if n_points <= nmax:
-        return t, y
-    step = int(np.ceil(n_points / nmax))
-    return t[::step], y[::step]
 
 
 def load_block(
@@ -432,14 +414,10 @@ def plot_com(z: np.lib.npyio.NpzFile, out: Path, title: str) -> None:
         return
 
     signal_column = signal_columns[0]
-    time_plot, command_plot = decimate(
-        time_model_s,
-        data[:, signal_column],
-    )
     fig, ax = plt.subplots(figsize=(11.0, 4.4), constrained_layout=True)
     ax.plot(
-        time_plot,
-        command_plot * DISP_M_TO_PROTO_CM,
+        time_model_s,
+        data[:, signal_column] * DISP_M_TO_PROTO_CM,
         color=COLORS[1],
         lw=1.05,
         label=rf"command ($\times\lambda={CYLINDER_LENGTH_SCALE:g}$)",
@@ -480,13 +458,9 @@ def plot_tar_com_mea(z: np.lib.npyio.NpzFile, out: Path, title: str) -> None:
             if signal_column < len(names)
             else block_key
         )
-        time_plot, displacement_plot = decimate(
-            time_model_s,
-            data[:, signal_column],
-        )
         ax.plot(
-            time_plot,
-            displacement_plot * DISP_M_TO_PROTO_CM,
+            time_model_s,
+            data[:, signal_column] * DISP_M_TO_PROTO_CM,
             color=color,
             lw=1.0,
             label=f"{block_key}: {signal_name}",
@@ -539,32 +513,25 @@ def plot_state(z: np.lib.npyio.NpzFile, out: Path, title: str) -> None:
     state_ax, flags_ax = axes
 
     sim_state_column = state_columns[0]
-    time_plot, state_plot = decimate(
+    # Same as MATLAB: plot(stateOS.data(:,end), stateOS.data(:,1))
+    state_ax.plot(
         time_model_s,
         data[:, sim_state_column],
-    )
-    state_ax.plot(
-        time_plot,
-        state_plot,
         color=COLORS[0],
         lw=1.05,
         drawstyle="steps-post",
         label=state_label(names[sim_state_column]),
     )
-    state_ax.set_ylabel("simState")
+    state_ax.set_ylabel(r"typeConv3")
     state_ax.set_title(title)
     state_ax.legend(fontsize=8, loc="best")
     state_ax.grid(True, ls=":", alpha=0.45)
     integer_yaxis(state_ax)
 
     for color_index, state_column in enumerate(state_columns[1:]):
-        time_plot, state_plot = decimate(
+        flags_ax.plot(
             time_model_s,
             data[:, state_column],
-        )
-        flags_ax.plot(
-            time_plot,
-            state_plot,
             color=COLORS[(color_index + 1) % len(COLORS)],
             lw=0.95,
             drawstyle="steps-post",
@@ -646,13 +613,9 @@ def plot_compare_com(
             continue
 
         time_proto_s = time_model_s * TIME_SCALE_FROUDE
-        time_plot, command_plot = decimate(
-            time_proto_s,
-            data[:, signal_columns[0]],
-        )
         ax.plot(
-            time_plot,
-            command_plot * DISP_M_TO_PROTO_CM,
+            time_proto_s,
+            data[:, signal_columns[0]] * DISP_M_TO_PROTO_CM,
             color=COLORS[n_plotted % len(COLORS)],
             lw=1.0,
             label=compare_label(mat_name, mmap),
@@ -696,15 +659,11 @@ def plot_compare_state(
             continue
 
         time_proto_s = time_model_s * TIME_SCALE_FROUDE
-        time_plot, state_plot = decimate(
-            time_proto_s,
-            data[:, state_columns[0]],
-        )
         series.append(
             (
                 series_label(mat_name, mmap),
-                time_plot,
-                state_plot,
+                time_proto_s,
+                data[:, state_columns[0]],
             )
         )
 
@@ -734,7 +693,7 @@ def plot_compare_state(
             lw=1.0,
             drawstyle="steps-post",
         )
-        ax.set_ylabel("simState", fontsize=7)
+        ax.set_ylabel("typeConv3", fontsize=7)
         ax.grid(True, ls=":", alpha=0.45)
         integer_yaxis(ax)
         # A full legend on every panel would cover the state history.
@@ -755,7 +714,7 @@ def plot_compare_state(
             },
         )
 
-    axes[0].set_title("stateOS simState — OpenFresco (slowdowns)")
+    axes[0].set_title("stateOS typeConv3 — OpenFresco (slowdowns)")
     axes[-1].set_xlabel(
         r"t (s) lab real $\times\sqrt{2.4}$ (prototype scale)"
     )
