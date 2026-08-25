@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""METIS partition map from ExportPartitionMap.tcl rank JSON.
+"""
+Goals
+-----
+Merge per-rank JSON files from ExportPartitionMap.tcl.
+Plot METIS element ownership for the bridge zoom and full soil domain.
 
   python3 plot/PlotPartition.py plot/out/profile4/partition/Shin/quad/lumpedPlasticity/np2
 """
@@ -26,6 +30,10 @@ from PlotModelSketch import (
     ssi_coil_ends,
 )
 
+# ------------------------------------------------------------
+# 1. RANK COLORS AND ELEMENT GROUPS
+# ------------------------------------------------------------
+
 # Okabe–Ito, rank 0..7
 RANK_COLORS = (
     "#0072B2",
@@ -42,16 +50,39 @@ QUAD_GRPS = {"soil", "soil_bnd"}
 SKIP_LINE_GRPS = {"ssi_spring", "spring", "other"}
 
 
+# ------------------------------------------------------------
+# 2. READ AND MERGE RANK FILES
+# ------------------------------------------------------------
+
+
 def rank_color(pid: int) -> str:
+    """
+    Select the repeating color for one MPI rank.
+
+    Args:    pid  rank number
+    Returns: color string
+    """
     return RANK_COLORS[int(pid) % len(RANK_COLORS)]
 
 
 def load_rank(path: Path) -> dict:
+    """
+    Read one rank JSON file.
+
+    Args:    path
+    Returns: decoded rank dictionary
+    """
     with path.open() as f:
         return json.load(f)
 
 
 def merge_ranks(out_dir: Path) -> dict:
+    """
+    Merge rank.*.json files and verify unique element ownership.
+
+    Args:    out_dir  partition output directory
+    Returns: merged partition dictionary (also writes partition.json)
+    """
     files = sorted(out_dir.glob("rank.*.json"), key=lambda p: int(p.suffixes[0].lstrip(".")))
     if not files:
         raise FileNotFoundError(f"no rank.*.json in {out_dir}")
@@ -94,7 +125,18 @@ def merge_ranks(out_dir: Path) -> dict:
     return merged
 
 
+# ------------------------------------------------------------
+# 3. GEOMETRY AND SSI LOOKUPS
+# ------------------------------------------------------------
+
+
 def xy_pairs(xy: list) -> list[tuple[float, float]]:
+    """
+    Convert a flat coordinate list to (x, y) pairs.
+
+    Args:    xy
+    Returns: coordinate pairs
+    """
     pts = []
     for i in range(0, len(xy) - 1, 2):
         pts.append((float(xy[i]), float(xy[i + 1])))
@@ -102,6 +144,12 @@ def xy_pairs(xy: list) -> list[tuple[float, float]]:
 
 
 def first_xy(el: dict) -> tuple[float, float] | None:
+    """
+    Read the first coordinate pair stored for an element.
+
+    Args:    el
+    Returns: (x, y), or None
+    """
     pts = xy_pairs(el.get("xy") or [])
     if not pts:
         return None
@@ -110,7 +158,12 @@ def first_xy(el: dict) -> tuple[float, float] | None:
 
 def ssi_stypes(x: float, y: float, pile_xs: set[float], x_face: float,
                ymin_at: dict[float, float], H_cap: float) -> tuple[str, tuple[str, ...]]:
-    """(kind, uniaxial types) at one SSI station. One zeroLength may carry py+tz."""
+    """
+    Infer station kind and uniaxial materials for one SSI element.
+
+    Args:    x, y, pile_xs, x_face, ymin_at, H_cap  geometry (m)
+    Returns: (station_kind, spring_types)
+    """
     xr = round(x, 4)
     if xr in pile_xs:
         if abs(y - ymin_at.get(xr, y)) < 1.0e-6:
@@ -123,7 +176,18 @@ def ssi_stypes(x: float, y: float, pile_xs: set[float], x_face: float,
     return "pile", ("py", "tz")
 
 
+# ------------------------------------------------------------
+# 4. PARTITION MAP
+# ------------------------------------------------------------
+
+
 def plot_map(data: dict, out: Path) -> None:
+    """
+    Draw the near-field and full-domain rank ownership maps.
+
+    Args:    data  merged partition dictionary; out  destination PNG
+    Returns: none (writes PNG)
+    """
     plt.rcParams["mathtext.fontset"] = "cm"
     plt.rcParams["font.family"] = "serif"
     plt.rcParams["font.size"] = 9
@@ -146,6 +210,12 @@ def plot_map(data: dict, out: Path) -> None:
     )
 
     def draw_on(a: plt.Axes, *, full: bool) -> None:
+        """
+        Draw rank-colored elements on one panel.
+
+        Args:    a, full
+        Returns: none (updates a)
+        """
         by_pid: dict[int, list] = {i: [] for i in range(np)}
         for q in quads:
             pts = xy_pairs(q.get("xy") or [])
@@ -308,7 +378,18 @@ def plot_map(data: dict, out: Path) -> None:
     )
 
 
+# ------------------------------------------------------------
+# 5. COMMAND-LINE ENTRY POINT
+# ------------------------------------------------------------
+
+
 def main() -> int:
+    """
+    Merge a partition directory and write its map.
+
+    Args:    command-line arguments in sys.argv
+    Returns: process status code
+    """
     if len(sys.argv) < 2:
         print(
             "usage: python3 plot/PlotPartition.py <partitionOutDir>",

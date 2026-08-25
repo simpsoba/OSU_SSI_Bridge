@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""EQ window postprocess (serial dumps: window_nodes.txt, disp_nodes.txt, … ).
+"""Goals
+-----
+Post-process one serial OpenSees earthquake-window recorder dump.
+Use the ``DO_*`` switches to select history, envelope, hysteresis, quad,
+spring, pile-section, and frame plots. Write PNGs to ``<eqOutDir>/plots/``.
+Use ``PlotEQParallel.py`` for OpenSeesMP dumps whose files end in ``.$pid``.
 
-  python3 plot/PlotEQ.py
-  python3 plot/PlotEQ.py /path/to/eqOutDir
-  python3 plot/PlotEQ.py --overlay 3
-  python3 plot/PlotEQ.py --overlay 3 lumpedPlasticity
-
-OpenSeesMP dumps (name.$pid): python3 plot/PlotEQParallel.py [eqOutDir]
-
-Writes PNGs to <eqOutDir>/plots/. Edit the block below; leave a switch at 0 to skip.
+Units: N, m, s.
 """
 
 from __future__ import annotations
@@ -36,6 +34,7 @@ from PlotModelSketch import layer_style
 # ------------------------------------------------------------
 # EDIT
 # ------------------------------------------------------------
+# Lab dumps use PlotEQParallel.py, which sets the plots folder through lab_paths.
 EQ_OUT = eq_dir(3, "Shin", "quad", "forceBeamColumn")
 
 DO_HIST = 1
@@ -71,7 +70,18 @@ NAMES = ("L", "C", "R")
 COLORS = {"L": BLUE, "C": BROWN, "R": PURPLE}
 
 
+# ------------------------------------------------------------
+# 1. INPUT AND RECORDER I/O
+# ------------------------------------------------------------
+
 def _skip_hash(path: Path) -> list[str]:
+    """Read nonblank, noncomment lines from a text file.
+
+    Args:
+        path: Input text-file path.
+    Returns:
+        Lines with blanks and ``#`` comments removed.
+    """
     lines = []
     for ln in path.read_text().splitlines():
         s = ln.strip()
@@ -82,6 +92,13 @@ def _skip_hash(path: Path) -> list[str]:
 
 
 def read_meta(eq: Path) -> dict[str, str]:
+    """Read key-value pairs from the serial window metadata file.
+
+    Args:
+        eq: Serial recorder directory.
+    Returns:
+        Metadata values keyed by their Tcl names.
+    """
     meta = {}
     for ln in _skip_hash(eq / "window_meta.txt"):
         k, _, rest = ln.partition(" ")
@@ -90,10 +107,24 @@ def read_meta(eq: Path) -> dict[str, str]:
 
 
 def node_tag_bases(meta: dict | None) -> tuple[int, int, int, int, int]:
-    """(soil, spr, soffit_off, bnd, soil_last) from window_meta."""
+    """Get node-tag ranges used to classify model parts.
+
+    Args:
+        meta: Window metadata, or ``None`` for legacy defaults.
+    Returns:
+        Soil base, spring base, soffit offset, boundary base, and last soil tag.
+    """
     meta = meta or {}
 
     def gi(key: str, default: int) -> int:
+        """Convert one metadata value to an integer.
+
+        Args:
+            key: Metadata key.
+            default: Value used when the key is absent or invalid.
+        Returns:
+            Parsed integer value.
+        """
         try:
             return int(float(meta.get(key, default)))
         except (TypeError, ValueError):
@@ -111,6 +142,13 @@ def node_tag_bases(meta: dict | None) -> tuple[int, int, int, int, int]:
 
 
 def read_node_file(path: Path) -> tuple[list[int], dict[int, tuple[float, float]]]:
+    """Read node tags and planar coordinates.
+
+    Args:
+        path: Node-list file path; coordinates are in m.
+    Returns:
+        Ordered tags and a tag-to-``(x, y)`` coordinate map in m.
+    """
     tags: list[int] = []
     xy: dict[int, tuple[float, float]] = {}
     for ln in _skip_hash(path):
@@ -122,17 +160,26 @@ def read_node_file(path: Path) -> tuple[list[int], dict[int, tuple[float, float]
 
 
 def read_nodes(eq: Path) -> tuple[list[int], dict[int, tuple[float, float]]]:
-    """Geometry: every node with coordinates (window_nodes.txt)."""
+    """Read every node listed in ``window_nodes.txt``.
+
+    Args:
+        eq: Serial recorder directory.
+    Returns:
+        Ordered tags and a tag-to-``(x, y)`` coordinate map in m.
+    """
     return read_node_file(eq / "window_nodes.txt")
 
 
 def read_disp_nodes(eq: Path) -> list[int]:
-    """Column order of window_disp*.out.
+    """Read the node order used by displacement recorder columns.
 
-    recordersON=2|3|4 (lean) record displacement for the pier and the center
-    pile only, so disp_nodes.txt is a subset of window_nodes.txt (which also
-    holds soil-column quad corners; near-FF corners when recordersON>=3).
-    Older dumps have no such file and every window node owns a column.
+    Args:
+        eq: Serial recorder directory.
+    Returns:
+        Node tags in ``window_disp*.out`` column order.
+
+    Lean dumps record only pier and center-pile displacements. Legacy dumps
+    without ``disp_nodes.txt`` use every window node.
     """
     p = eq / "disp_nodes.txt"
     if not p.is_file():
@@ -141,6 +188,13 @@ def read_disp_nodes(eq: Path) -> list[int]:
 
 
 def read_eles(eq: Path) -> tuple[list[list[int]], list[list[int]]]:
+    """Read line and quadrilateral connectivity from the window element list.
+
+    Args:
+        eq: Serial recorder directory.
+    Returns:
+        Two-node line connectivity and four-node quad connectivity.
+    """
     lines = []
     quads = []
     for ln in _skip_hash(eq / "window_eles.txt"):
@@ -156,6 +210,15 @@ def read_eles(eq: Path) -> tuple[list[list[int]], list[list[int]]]:
 def load_window_disp(
     eq: Path, tags: list[int], disp_files: list[str]
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Load and stitch serial nodal displacement recorder files.
+
+    Args:
+        eq: Serial recorder directory.
+        tags: Nodes expected in recorder-column order.
+        disp_files: Recorder filenames to stitch.
+    Returns:
+        Time in s, horizontal displacement in m, and vertical displacement in m.
+    """
     ux_parts = []
     uy_parts = []
     t = None
@@ -187,7 +250,13 @@ def load_window_disp(
 
 
 def loadtxt_partial(path: Path) -> np.ndarray:
-    """np.loadtxt, but drop a truncated last line (live recorder)."""
+    """Load numeric rows while tolerating one truncated final recorder line.
+
+    Args:
+        path: Numeric recorder-file path.
+    Returns:
+        Two-dimensional floating-point data array.
+    """
     try:
         a = np.loadtxt(path)
     except ValueError:
@@ -218,6 +287,16 @@ def loadtxt_partial(path: Path) -> np.ndarray:
 def load_spring_pt(
     eq: Path, force_name: str, defo_name: str, n_ele: int
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Load paired spring force and deformation recorders.
+
+    Args:
+        eq: Serial recorder directory.
+        force_name: Spring-force recorder filename; forces are in N.
+        defo_name: Spring-deformation recorder filename; deformations are in m.
+        n_ele: Number of recorded spring elements.
+    Returns:
+        Time in s, force array in N, and deformation array in m.
+    """
     f = loadtxt_partial(eq / force_name)
     d = loadtxt_partial(eq / defo_name)
     if f.ndim == 1:
@@ -233,7 +312,18 @@ def load_spring_pt(
 PILE_HEAD_TAGS = {1027, 1028, 1029}
 
 
+# ------------------------------------------------------------
+# 2. GEOMETRY AND COMMON PLOT HELPERS
+# ------------------------------------------------------------
+
 def pile_groups(xy: dict[int, tuple[float, float]]) -> dict[str, list[int]]:
+    """Group pile nodes by shaft and order each shaft from head to tip.
+
+    Args:
+        xy: Node coordinates in m keyed by tag.
+    Returns:
+        Pile names mapped to node tags ordered by decreasing y.
+    """
     piles = [t for t in xy if 2000 <= t < 3000 or t in PILE_HEAD_TAGS]
     if not piles:
         return {}
@@ -255,12 +345,28 @@ def pile_groups(xy: dict[int, tuple[float, float]]) -> dict[str, list[int]]:
 
 
 def maybe_t0(arr: np.ndarray) -> np.ndarray:
+    """Subtract the first sample when ``SUBTRACT_T0`` is enabled.
+
+    Args:
+        arr: Time-history array in its native units.
+    Returns:
+        Original or first-sample-relative array in the same units.
+    """
     if not SUBTRACT_T0 or arr.shape[0] < 1:
         return arr
     return arr - arr[0]
 
 
 def sym_xlim(ax, *vals: np.ndarray, pad: float = 1.05) -> None:
+    """Set symmetric x limits around all finite input values.
+
+    Args:
+        ax: Matplotlib axes to update.
+        *vals: Arrays in the plotted x-axis units.
+        pad: Multiplicative limit padding.
+    Returns:
+        None.
+    """
     m = 0.0
     for v in vals:
         if v is None or len(np.atleast_1d(v)) == 0:
@@ -275,10 +381,25 @@ def sym_xlim(ax, *vals: np.ndarray, pad: float = 1.05) -> None:
 
 
 def layer_at_y(y: float, layers: list[dict]) -> str:
+    """Find the soil-layer name at one elevation.
+
+    Args:
+        y: Elevation in m.
+        layers: Layer dictionaries with vertical bounds in m.
+    Returns:
+        Soil-layer name.
+    """
     if not layers:
         return "soil"
 
     def span(L: dict) -> tuple[float, float]:
+        """Normalize one layer's vertical bounds.
+
+        Args:
+            L: Soil-layer dictionary with bounds in m.
+        Returns:
+            Bottom and top elevations in m.
+        """
         if "yBot" in L and "yTop" in L:
             a, b = float(L["yBot"]), float(L["yTop"])
         else:
@@ -295,6 +416,14 @@ def layer_at_y(y: float, layers: list[dict]) -> str:
 
 
 def _pair_idx(pairs: list[tuple[int, int]], idx: dict[int, int]) -> np.ndarray:
+    """Map node-tag pairs to displacement-column index pairs.
+
+    Args:
+        pairs: Node-tag pairs.
+        idx: Node tag to recorder-column index.
+    Returns:
+        Integer ``(n, 2)`` index array.
+    """
     rows = []
     for a, b in pairs:
         if a in idx and b in idx:
@@ -307,7 +436,17 @@ def _pair_idx(pairs: list[tuple[int, int]], idx: dict[int, int]) -> np.ndarray:
 def _spring_segments(
     X: np.ndarray, Y: np.ndarray, ij: np.ndarray, fallback: np.ndarray, minlen: float
 ) -> np.ndarray:
-    """(n, 2, 2) segments from soil->dup; short ZLs get a min-length tick."""
+    """Build visible spring segments, including ticks for zero-length springs.
+
+    Args:
+        X: Deformed x coordinates in m.
+        Y: Deformed y coordinates in m.
+        ij: Spring endpoint index pairs.
+        fallback: Unit directions for coincident endpoints.
+        minlen: Minimum displayed spring length in m.
+    Returns:
+        Segment endpoints with shape ``(n, 2, 2)`` in m.
+    """
     if len(ij) == 0:
         return np.zeros((0, 2, 2))
     p0 = np.column_stack((X[ij[:, 0]], Y[ij[:, 0]]))
@@ -324,6 +463,15 @@ def _spring_segments(
 
 
 def _line_segments(X: np.ndarray, Y: np.ndarray, ij: np.ndarray) -> np.ndarray:
+    """Build line-segment endpoints from coordinate arrays.
+
+    Args:
+        X: Deformed x coordinates in m.
+        Y: Deformed y coordinates in m.
+        ij: Endpoint index pairs.
+    Returns:
+        Segment endpoints with shape ``(n, 2, 2)`` in m.
+    """
     if len(ij) == 0:
         return np.zeros((0, 2, 2))
     a = np.column_stack((X[ij[:, 0]], Y[ij[:, 0]]))
@@ -331,7 +479,19 @@ def _line_segments(X: np.ndarray, Y: np.ndarray, ij: np.ndarray) -> np.ndarray:
     return np.stack([a, b], axis=1)
 
 
+# ------------------------------------------------------------
+# 3. HISTORIES AND PILE ENVELOPES
+# ------------------------------------------------------------
+
 def eq_end_time(meta: dict, t: np.ndarray) -> float | None:
+    """Infer the earthquake end from record duration and free vibration.
+
+    Args:
+        meta: Window metadata with ``Trec`` and ``freeVibT`` in s.
+        t: Recorder times in s.
+    Returns:
+        Earthquake end time in s, or ``None`` when unavailable.
+    """
     try:
         fv = float(meta.get("freeVibT", 0) or 0)
     except ValueError:
@@ -349,7 +509,14 @@ def eq_end_time(meta: dict, t: np.ndarray) -> float | None:
 
 
 def truncated_end(meta: dict, t: np.ndarray | None) -> float | None:
-    """Last sample time if the dump stops before Trec (incomplete run)."""
+    """Find the last sample when a recorder dump stops before ``Trec``.
+
+    Args:
+        meta: Window metadata with ``Trec`` in s.
+        t: Recorder times in s, or ``None``.
+    Returns:
+        Truncated end time in s, or ``None`` for a complete/unknown run.
+    """
     if t is None or len(t) < 2:
         return None
     try:
@@ -363,6 +530,14 @@ def truncated_end(meta: dict, t: np.ndarray | None) -> float | None:
 
 
 def mark_eq_end(ax, t_eq: float | None) -> None:
+    """Mark the earthquake end on a time-history axes.
+
+    Args:
+        ax: Matplotlib axes to update.
+        t_eq: Earthquake end time in s, or ``None``.
+    Returns:
+        None.
+    """
     if t_eq is None:
         return
     ax.axvline(t_eq, color="#78909c", lw=1.0, ls=":", label="EQ end")
@@ -371,6 +546,16 @@ def mark_eq_end(ax, t_eq: float | None) -> None:
 def mark_last_sample(
     ax, t, t_eq: float | None, t_cut: float | None = None
 ) -> None:
+    """Mark earthquake end and an incomplete recorder's last sample.
+
+    Args:
+        ax: Matplotlib axes to update.
+        t: Recorder times in s.
+        t_eq: Earthquake end time in s, or ``None``.
+        t_cut: Known truncated end time in s, or ``None``.
+    Returns:
+        None.
+    """
     mark_eq_end(ax, t_eq)
     if t_cut is not None:
         ax.axvline(float(t_cut), color="#c62828", lw=1.0, ls="--",
@@ -382,6 +567,18 @@ def mark_last_sample(
 
 
 def hyst_loop(ax, x, y, xlabel: str, ylabel: str, title: str) -> None:
+    """Draw one labeled hysteresis loop.
+
+    Args:
+        ax: Matplotlib axes to update.
+        x: Deformation-like history in label-defined units.
+        y: Force-like history in label-defined units.
+        xlabel: Horizontal-axis label.
+        ylabel: Vertical-axis label.
+        title: Panel title.
+    Returns:
+        None.
+    """
     ax.plot(x, y, color=BROWN, lw=0.85, rasterized=True)
     ax.axhline(0.0, color="#9e9e9e", lw=0.6)
     ax.axvline(0.0, color="#9e9e9e", lw=0.6)
@@ -395,6 +592,20 @@ def plot_hist(
     out: Path, t, ux, uy, idx, groups, t_eq: float | None = None,
     t_cut: float | None = None,
 ) -> None:
+    """Plot pier and pile-head displacement histories.
+
+    Args:
+        out: Plot output directory.
+        t: Recorder times in s.
+        ux: Horizontal nodal displacements in m.
+        uy: Vertical nodal displacements in m.
+        idx: Node tag to displacement-column index.
+        groups: Pile names mapped to ordered node tags.
+        t_eq: Earthquake end time in s, or ``None``.
+        t_cut: Truncated recorder time in s, or ``None``.
+    Returns:
+        None; writes ``hist_ux.png`` and ``hist_uy.png``.
+    """
     fig, ax = plt.subplots(figsize=(10.4, 4.2), constrained_layout=True)
     if PIER_TOP in idx:
         ax.plot(t, ux[:, idx[PIER_TOP]], color=ORANGE, lw=1.4,
@@ -434,6 +645,17 @@ def plot_pier_hinge(
     out: Path, eq: Path, meta: dict, t_eq: float | None,
     t_cut: float | None = None,
 ) -> None:
+    """Plot pier-base hinge histories and hysteresis panels.
+
+    Args:
+        out: Plot output directory.
+        eq: Serial recorder directory.
+        meta: Window metadata describing the hinge recorder.
+        t_eq: Earthquake end time in s, or ``None``.
+        t_cut: Truncated recorder time in s, or ``None``.
+    Returns:
+        None; writes hinge PNGs when recorder files exist.
+    """
     kind = meta.get("pierHinge", "")
     if kind not in ("lumpedPlasticity", "forceBeamColumn"):
         return
@@ -504,6 +726,17 @@ def plot_pier_hinge(
 
 
 def plot_envelope(out: Path, ux, idx, groups, xy) -> None:
+    """Plot pile displacement extrema against depth.
+
+    Args:
+        out: Plot output directory.
+        ux: Horizontal nodal displacements in m.
+        idx: Node tag to displacement-column index.
+        groups: Pile names mapped to ordered node tags.
+        xy: Node coordinates in m keyed by tag.
+    Returns:
+        None; writes ``pile_envelope_ux.png``.
+    """
     fig, ax = plt.subplots(figsize=(5.6, 7.4), constrained_layout=True)
     xs = []
     for name, tags in groups.items():
@@ -526,6 +759,13 @@ def plot_envelope(out: Path, ux, idx, groups, xy) -> None:
 
 
 def read_pile_beam_eles(eq: Path) -> list[tuple[int, int, int]]:
+    """Read pile beam element, pile, and vertical-station indices.
+
+    Args:
+        eq: Serial recorder directory.
+    Returns:
+        ``(element tag, pile index, station index)`` rows.
+    """
     p = eq / "pile_beam_eles.txt"
     if not p.is_file():
         return []
@@ -542,6 +782,16 @@ def plot_pile_depth_env(
     groups: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
     xlabel: str,
 ) -> None:
+    """Plot pile-section extrema against elevation.
+
+    Args:
+        out: Plot output directory.
+        fname: Output PNG filename.
+        groups: Pile names mapped to elevation and min/max arrays.
+        xlabel: Horizontal-axis label with units.
+    Returns:
+        None; writes the named PNG.
+    """
     fig, ax = plt.subplots(figsize=(5.6, 7.4), constrained_layout=True)
     xs: list[np.ndarray] = []
     for name, (y, vmin, vmax) in groups.items():
@@ -560,6 +810,16 @@ def plot_pile_depth_env(
 
 
 def plot_pile_section(out: Path, eq: Path, meta: dict, xy: dict) -> None:
+    """Plot pile moment/curvature envelopes and hysteresis.
+
+    Args:
+        out: Plot output directory.
+        eq: Serial recorder directory.
+        meta: Window metadata describing pile recorders.
+        xy: Node coordinates in m keyed by tag.
+    Returns:
+        None; writes available pile-section PNGs.
+    """
     rows = read_pile_beam_eles(eq)
     fn_g = eq / meta.get("pileBeamGlobalForceFile", "pile_beam_globalForce.out")
     if not rows or not fn_g.is_file():
@@ -660,12 +920,29 @@ def plot_pile_section(out: Path, eq: Path, meta: dict, xy: dict) -> None:
     print(f"PlotEQ: wrote {out / 'hyst_pile_mk.png'}")
 
 
+# ------------------------------------------------------------
+# 4. QUAD STRESS AND STRAIN
+# ------------------------------------------------------------
+
 def read_window_quad_list(eq: Path) -> list[int]:
+    """Read window quad element tags in recorder-column order.
+
+    Args:
+        eq: Serial recorder directory.
+    Returns:
+        Ordered quad element tags.
+    """
     return [t for t, _, _ in read_window_quads(eq)]
 
 
 def read_window_quads(eq: Path) -> list[tuple[int, str, str]]:
-    """(eleTag, layer, column) with column in {center, ff, window, ''}."""
+    """Read quad tags, layer names, and recorder-column groups.
+
+    Args:
+        eq: Serial recorder directory.
+    Returns:
+        ``(element tag, layer, column)`` rows; column may be center, ff, or window.
+    """
     rows: list[tuple[int, str, str]] = []
     p = eq / "window_quads.txt"
     if not p.is_file():
@@ -680,6 +957,13 @@ def read_window_quads(eq: Path) -> list[tuple[int, str, str]]:
 
 
 def read_ele_nodes(eq: Path) -> dict[int, list[int]]:
+    """Read element connectivity keyed by element tag.
+
+    Args:
+        eq: Serial recorder directory.
+    Returns:
+        Element tags mapped to node-tag lists.
+    """
     m: dict[int, list[int]] = {}
     p = eq / "window_eles.txt"
     if not p.is_file():
@@ -691,6 +975,13 @@ def read_ele_nodes(eq: Path) -> dict[int, list[int]]:
 
 
 def _file_ncols(path: Path) -> int:
+    """Count fields in the first numeric recorder row.
+
+    Args:
+        path: Recorder-file path.
+    Returns:
+        Number of columns, or zero for an empty file.
+    """
     with path.open() as f:
         for ln in f:
             s = ln.strip()
@@ -703,7 +994,18 @@ def _file_ncols(path: Path) -> int:
 def peak_abs_gp_comp(
     eq: Path, files: list[str], n_ele: int, n_gp: int, n_comp: int = 3, icomp: int = 2
 ) -> np.ndarray:
-    """Max over time and Gauss pts of |component icomp| (0-based in each GP)."""
+    """Find each element's peak absolute component over time and Gauss points.
+
+    Args:
+        eq: Serial recorder directory.
+        files: Recorder filenames covering all elements.
+        n_ele: Total number of recorded elements.
+        n_gp: Gauss points per element.
+        n_comp: Components recorded at each Gauss point.
+        icomp: Zero-based component index.
+    Returns:
+        Peak absolute value for each element in recorder units.
+    """
     peak = np.zeros(n_ele)
     i0 = 0
     blk = n_gp * n_comp
@@ -744,7 +1046,19 @@ def load_quad_gp_mean_keep(
     n_comp: int = 3,
     icomp: int = 2,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """GP-mean of component icomp vs time for global window_quads indices `keep`."""
+    """Load Gauss-point means for selected global quad indices.
+
+    Args:
+        eq: Serial recorder directory.
+        files: Recorder filenames covering all elements.
+        n_ele: Total number of recorded elements.
+        n_gp: Gauss points per element.
+        keep: Global quad indices to retain.
+        n_comp: Components recorded at each Gauss point.
+        icomp: Zero-based component index.
+    Returns:
+        Time in s and selected component histories in recorder units.
+    """
     pos = {int(g): j for j, g in enumerate(keep)}
     n_keep = len(keep)
     blk = n_gp * n_comp
@@ -794,10 +1108,25 @@ def load_quad_gp_mean_keep(
 def _quad_triangulation(
     xy: dict[int, tuple[float, float]], quads: list[list[int]]
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[int, int]]:
+    """Split quadrilaterals into triangles for field plotting.
+
+    Args:
+        xy: Node coordinates in m keyed by tag.
+        quads: Four-node quad connectivity.
+    Returns:
+        Points in m, triangle indices, quad-face indices, and node point indices.
+    """
     pts: list[tuple[float, float]] = []
     imap: dict[int, int] = {}
 
     def ix(n: int) -> int:
+        """Get or create a triangulation point index.
+
+        Args:
+            n: Node tag.
+        Returns:
+            Point-array index.
+        """
         if n not in imap:
             imap[n] = len(pts)
             pts.append(xy[n])
@@ -824,6 +1153,21 @@ def plot_window_peak_field(
     title: str,
     soil_base: int = 10000,
 ) -> None:
+    """Plot one peak quad field over the soil window.
+
+    Args:
+        out: Plot output directory.
+        name: Output PNG filename.
+        xy: Node coordinates in m keyed by tag.
+        quads: Four-node quad connectivity.
+        values: One peak value per quad in colorbar units.
+        lines: Structural line connectivity.
+        cbar_label: Colorbar label with units.
+        title: Plot title.
+        soil_base: First soil node tag.
+    Returns:
+        None; writes the named PNG when values are finite.
+    """
     pts, triangles, face, imap = _quad_triangulation(xy, quads)
     tri = Triangulation(pts[:, 0], pts[:, 1], triangles)
     znode = np.zeros(len(pts))
@@ -885,6 +1229,17 @@ def plot_quad_shear_peaks(
     xy: dict[int, tuple[float, float]],
     lines: list[list[int]],
 ) -> None:
+    """Plot peak quad shear stress and strain fields.
+
+    Args:
+        out: Plot output directory.
+        eq: Serial recorder directory.
+        meta: Window metadata describing quad recorders.
+        xy: Node coordinates in m keyed by tag.
+        lines: Structural line connectivity.
+    Returns:
+        None; writes available peak shear PNGs.
+    """
     qtags = read_window_quad_list(eq)
     if not qtags:
         print("PlotEQ: no window_quads.txt -- skip shear peaks")
@@ -944,7 +1299,15 @@ def quad_centroids(
     ev: dict[int, list[int]],
     xy: dict[int, tuple[float, float]],
 ) -> list[tuple[int, str, float, float, int, str]]:
-    """(eleTag, layer, xc, yc, global index, column) for window quads with 4 nodes in xy."""
+    """Compute centroids for window quads with complete connectivity.
+
+    Args:
+        qrows: Quad tag, layer, and column rows.
+        ev: Element connectivity keyed by tag.
+        xy: Node coordinates in m keyed by tag.
+    Returns:
+        Quad tag, layer, centroid in m, global index, and column rows.
+    """
     out = []
     for i, (tag, nm, col) in enumerate(qrows):
         nn = ev.get(tag, [])
@@ -961,9 +1324,14 @@ def quad_depth_column(
     x_target: float | None,
     column: str | None = None,
 ) -> list[tuple[int, str, float, float, int, str]]:
-    """One ele per soil row, nearest x_target (default: outermost |x|).
+    """Select one quad per soil row nearest a target x coordinate.
 
-    If column is set (center|ff|...), keep only that recorder column first.
+    Args:
+        cents: Quad centroid rows with coordinates in m.
+        x_target: Target x coordinate in m; ``None`` selects outermost absolute x.
+        column: Optional recorder-column name to filter first.
+    Returns:
+        Selected centroid rows ordered from top to bottom.
     """
     if column:
         cents = [r for r in cents if r[5] == column]
@@ -987,6 +1355,16 @@ def plot_quad_shear_hyst(
     meta: dict,
     xy: dict[int, tuple[float, float]],
 ) -> None:
+    """Plot shear stress-strain loops through selected soil columns.
+
+    Args:
+        out: Plot output directory.
+        eq: Serial recorder directory.
+        meta: Window metadata describing quad recorders.
+        xy: Node coordinates in m keyed by tag.
+    Returns:
+        None; writes available tau-gamma hysteresis PNGs.
+    """
     qrows = read_window_quads(eq)
     if not qrows:
         print("PlotEQ: no window_quads.txt -- skip tau-gamma hyst")
@@ -1049,7 +1427,18 @@ def plot_quad_shear_hyst(
             shutil.copy2(out / fname, out / "hyst_tau_gamma.png")
 
 
+# ------------------------------------------------------------
+# 5. SSI SPRINGS AND HYSTERESIS
+# ------------------------------------------------------------
+
 def load_spring_json(meta: dict) -> dict | None:
+    """Load spring capacities and station data for the active soil profile.
+
+    Args:
+        meta: Window metadata identifying the soil profile.
+    Returns:
+        Parsed spring JSON, or ``None`` when no file exists.
+    """
     sp = meta.get("soilProfile", "")
     cands = []
     if sp:
@@ -1063,7 +1452,14 @@ def load_spring_json(meta: dict) -> dict | None:
 
 
 def cap_totals(js: dict, profile: int) -> tuple[float, float, float, float, float]:
-    """PultCap, TultCap, QultSoffit, y50_cap, z50_cap (Mokwa, same as BuildSoilSprings)."""
+    """Get or calculate cap spring capacities and reference deformations.
+
+    Args:
+        js: Spring input data in N and m.
+        profile: Soil-profile number.
+    Returns:
+        Lateral, shaft, and soffit capacities in N; y50 and z50 in m.
+    """
     H = float(js.get("H_cap", 0.9906))
     y50 = float(js.get("y50_cap", 0.01))
     z50 = float(js.get("z50_cap", 0.01))
@@ -1087,6 +1483,13 @@ def cap_totals(js: dict, profile: int) -> tuple[float, float, float, float, floa
 
 
 def load_sketch_sizes(meta: dict) -> dict:
+    """Load model-sketch dimensions for spring plot fallbacks.
+
+    Args:
+        meta: Window metadata identifying soil profile and boundary.
+    Returns:
+        Model size values in m, or an empty dictionary.
+    """
     sp = meta.get("soilProfile", "")
     bnd = meta.get("soilBoundary", "Shin")
     cands = []
@@ -1101,6 +1504,13 @@ def load_sketch_sizes(meta: dict) -> dict:
 
 
 def trib_from_x(xs: np.ndarray) -> np.ndarray:
+    """Compute one-dimensional tributary widths.
+
+    Args:
+        xs: Ordered x coordinates in m.
+    Returns:
+        Tributary widths in m.
+    """
     n = len(xs)
     trib = np.ones(n)
     if n == 1:
@@ -1113,6 +1523,14 @@ def trib_from_x(xs: np.ndarray) -> np.ndarray:
 
 
 def soffit_x_default(nsof: int, sizes: dict) -> np.ndarray:
+    """Build fallback x coordinates for cap-soffit springs.
+
+    Args:
+        nsof: Number of soffit springs.
+        sizes: Model dimensions in m.
+    Returns:
+        Soffit spring x coordinates in m.
+    """
     s = float(sizes.get("s_pile_cap", 1.8288))
     wsoil = float(sizes.get("W_cap_soil", 2.0 * s))
     xf = 0.5 * wsoil
@@ -1123,6 +1541,13 @@ def soffit_x_default(nsof: int, sizes: dict) -> np.ndarray:
 
 
 def split_cap_eles(eq: Path) -> tuple[list[int], list[int]]:
+    """Separate cap-face and cap-soffit spring element tags.
+
+    Args:
+        eq: Serial recorder directory.
+    Returns:
+        Cap-face tags and cap-soffit tags.
+    """
     face_e, sof_e = [], []
     path = eq / "cap_springs_eles.txt"
     if not path.is_file():
@@ -1139,6 +1564,13 @@ def split_cap_eles(eq: Path) -> tuple[list[int], list[int]]:
 
 
 def read_ele_list(path: Path) -> list[int]:
+    """Read the first element tag from each data line.
+
+    Args:
+        path: Element-list file path.
+    Returns:
+        Ordered element tags.
+    """
     out = []
     for ln in _skip_hash(path):
         out.append(int(ln.split()[0]))
@@ -1146,7 +1578,13 @@ def read_ele_list(path: Path) -> list[int]:
 
 
 def read_pile_spring_eles(eq: Path) -> list[dict]:
-    """Rows from pile_springs_eles.txt: e, kind, optional ip iy."""
+    """Read pile spring identity and station indices.
+
+    Args:
+        eq: Serial recorder directory.
+    Returns:
+        Rows with element tag, kind, and optional pile/station indices.
+    """
     path = eq / "pile_springs_eles.txt"
     out: list[dict] = []
     for ln in _skip_hash(path):
@@ -1160,7 +1598,13 @@ def read_pile_spring_eles(eq: Path) -> list[dict]:
 
 
 def parse_lean_stations(meta: dict) -> list[dict]:
-    """window_meta leanStations: {iy y layer isTip iSeg} per SSI horizon."""
+    """Parse lean-dump SSI stations from window metadata.
+
+    Args:
+        meta: Window metadata containing ``leanStations``.
+    Returns:
+        Station rows with index, elevation in m, layer, tip flag, and segment.
+    """
     raw = meta.get("leanStations", "").strip()
     if not raw:
         return []
@@ -1182,7 +1626,15 @@ def parse_lean_stations(meta: dict) -> list[dict]:
 def stations_for_plot(
     rows: list[dict], js: dict | None, meta: dict
 ) -> list[dict] | None:
-    """Column order. JSON stations if they match; else leanStations + ip/iy."""
+    """Align spring stations with recorder columns.
+
+    Args:
+        rows: Recorder element rows.
+        js: Spring JSON, or ``None``.
+        meta: Window metadata with lean-station fallback data.
+    Returns:
+        Stations in recorder-column order, or ``None`` when alignment fails.
+    """
     aligned = align_pile_stations(rows, (js or {}).get("stations") or [])
     if aligned is not None:
         return aligned
@@ -1210,7 +1662,14 @@ def stations_for_plot(
 def align_pile_stations(
     rows: list[dict], stations: list[dict]
 ) -> list[dict] | None:
-    """Stations in recorder-column order. None if they cannot be matched."""
+    """Match station data to recorder rows by pile and vertical index.
+
+    Args:
+        rows: Recorder element rows.
+        stations: Candidate station dictionaries.
+    Returns:
+        Stations in recorder-column order, or ``None`` when unmatched.
+    """
     if not rows:
         return []
     if not stations:
@@ -1230,21 +1689,50 @@ def align_pile_stations(
 
 
 def env_minmax(arr: np.ndarray, icomp: int) -> tuple[np.ndarray, np.ndarray]:
-    """arr (nt, n, ncomp) -> (umin, umax) length n."""
+    """Find time-history extrema for one recorder component.
+
+    Args:
+        arr: Array shaped ``(time, element, component)`` in native units.
+        icomp: Zero-based component index.
+    Returns:
+        Minimum and maximum arrays in the input units.
+    """
     v = arr[:, :, icomp]
     return v.min(axis=0), v.max(axis=0)
 
 
 def pile_name(ip: int) -> str:
+    """Convert a zero-based pile index to a plot label.
+
+    Args:
+        ip: Zero-based pile index.
+    Returns:
+        ``L``, ``C``, ``R``, or a generated pile label.
+    """
     return NAMES[ip] if ip < len(NAMES) else f"p{ip}"
 
 
 def is_qz_station(s: dict) -> bool:
+    """Test whether a station represents a pile-tip q-z spring.
+
+    Args:
+        s: Spring station dictionary.
+    Returns:
+        ``True`` for a tip/q-z station.
+    """
     return bool(s.get("isTip")) or s.get("axType") == "qz"
 
 
 def pile_hyst_order(stations: list, n_ele: int, qz: bool | None = None) -> list[int]:
-    """Row = depth (iy), cols L/C/R. qz True = tips only, False = shaft only."""
+    """Order pile hysteresis panels by depth and pile.
+
+    Args:
+        stations: Spring or beam station dictionaries.
+        n_ele: Number of recorded elements.
+        qz: ``True`` for tips, ``False`` for shafts, or ``None`` for all.
+    Returns:
+        Recorder-column indices ordered by station then pile.
+    """
     if len(stations) != n_ele:
         return list(range(n_ele))
     by_iy: dict[int, list[tuple[int, int]]] = {}
@@ -1273,6 +1761,20 @@ def plot_depth_env(
     groups: list[tuple[str, np.ndarray, np.ndarray, np.ndarray]],
     cap_neg: np.ndarray | None = None,
 ) -> None:
+    """Plot spring extrema and capacities against depth.
+
+    Args:
+        out: Plot output directory.
+        name: Output PNG filename.
+        y_cap: Capacity elevations in m.
+        cap_pos: Positive capacities/reference deformations in axis units.
+        xlabel: Horizontal-axis label with units.
+        cap_label: Capacity curve label.
+        groups: Name, elevation in m, minimum, and maximum arrays.
+        cap_neg: Optional negative capacity in axis units.
+    Returns:
+        None; writes the named PNG.
+    """
     cap_pos = np.asarray(cap_pos, dtype=float)
     if cap_neg is None:
         cap_neg = -cap_pos
@@ -1308,6 +1810,21 @@ def plot_x_env(
     cap_label: str,
     compression_only: bool = False,
 ) -> None:
+    """Plot spring extrema and capacities along x.
+
+    Args:
+        out: Plot output directory.
+        name: Output PNG filename.
+        x: Spring x coordinates in m.
+        vmin: Minimum response in axis units.
+        vmax: Maximum response in axis units.
+        cap_pos: Capacity/reference values in axis units.
+        ylabel: Vertical-axis label with units.
+        cap_label: Capacity curve label.
+        compression_only: Show only the negative capacity branch when true.
+    Returns:
+        None; writes the named PNG.
+    """
     cap_pos = np.asarray(cap_pos, dtype=float)
     fig, ax = plt.subplots(figsize=(7.2, 4.0), constrained_layout=True)
     ax.plot(x, vmin, color=BROWN, lw=1.5, marker="o", ms=4, label="min")
@@ -1345,6 +1862,18 @@ def plot_spring_envelopes(
     groups_xy: dict[str, list[int]],
     xy: dict[int, tuple[float, float]],
 ) -> None:
+    """Plot pile and cap spring deformation/force envelopes.
+
+    Args:
+        out: Plot output directory.
+        eq: Serial recorder directory.
+        js: Spring capacities and stations, or ``None``.
+        meta: Window metadata.
+        groups_xy: Pile names mapped to ordered node tags.
+        xy: Node coordinates in m keyed by tag.
+    Returns:
+        None; writes available spring envelope PNGs.
+    """
     rows = read_pile_spring_eles(eq)
     pile_eles = [r["e"] for r in rows]
     _, Fp, Up = load_spring_pt(
@@ -1381,6 +1910,13 @@ def plot_spring_envelopes(
     tult = np.array([float(stations[i]["tult"]) for i in i0])
 
     def as_groups(minmax):
+        """Arrange extrema into pile depth-plot groups.
+
+        Args:
+            minmax: Minimum and maximum arrays in native units.
+        Returns:
+            Pile labels, elevations in m, and grouped extrema.
+        """
         umin, umax = minmax
         return [(name, y, umin[idx], umax[idx]) for name, idx, y in g]
 
@@ -1412,6 +1948,13 @@ def plot_spring_envelopes(
             tult_s = np.array([float(stations[i]["tult"]) for i in i_s0])
 
             def as_shaft(minmax):
+                """Arrange shaft-only extrema into pile depth groups.
+
+                Args:
+                    minmax: Minimum and maximum arrays in native units.
+                Returns:
+                    Shaft labels, elevations in m, and grouped extrema.
+                """
                 umin, umax = minmax
                 return [(nm, yi, umin[idx], umax[idx]) for nm, idx, yi in shaft_g]
 
@@ -1476,6 +2019,15 @@ def plot_spring_envelopes(
         yL = yf[:n2] if n2 else yf
 
         def cap_groups(minmax, yf=yf, n2=n2):
+            """Arrange cap-face extrema into left/right depth groups.
+
+            Args:
+                minmax: Minimum and maximum arrays in native units.
+                yf: Cap-face elevations in m.
+                n2: Number of stations on one cap face.
+            Returns:
+                Cap-face labels, elevations in m, and grouped extrema.
+            """
             umin, umax = minmax
             if not n2:
                 return [("cap", yf, umin, umax)]
@@ -1546,6 +2098,24 @@ def hyst_grid(
     share_x: bool = False,
     share_y: bool = False,
 ) -> None:
+    """Plot many element hysteresis loops on a panel grid.
+
+    Args:
+        out: Plot output directory.
+        fname: Output PNG filename.
+        U: Deformation histories in label-defined units.
+        F: Force histories in label-defined units.
+        icomp: Zero-based component index.
+        titles: Element panel titles.
+        xlabel: Horizontal-axis label with units.
+        ylabel: Vertical-axis label with units.
+        ncol: Number of panel columns.
+        which: Optional recorder-column order/subset.
+        share_x: Use one symmetric x range.
+        share_y: Use one symmetric y range.
+    Returns:
+        None; writes the named PNG.
+    """
     if which is None:
         which = list(range(U.shape[1]))
     n = len(which)
@@ -1586,6 +2156,16 @@ def hyst_grid(
 
 
 def plot_hyst(out: Path, eq: Path, js: dict | None, meta: dict) -> None:
+    """Plot pile and cap spring hysteresis grids.
+
+    Args:
+        out: Plot output directory.
+        eq: Serial recorder directory.
+        js: Spring capacities and stations, or ``None``.
+        meta: Window metadata.
+    Returns:
+        None; writes available spring hysteresis PNGs.
+    """
     rows = read_pile_spring_eles(eq)
     pile_eles = [r["e"] for r in rows]
     _, Fp, Up = load_spring_pt(
@@ -1665,8 +2245,18 @@ def plot_hyst(out: Path, eq: Path, js: dict | None, meta: dict) -> None:
         )
 
 
+# ------------------------------------------------------------
+# 6. DEFORMED FRAMES AND MOVIES
+# ------------------------------------------------------------
+
 def frame_steps(t: np.ndarray) -> np.ndarray:
-    """Indices into the recorder. N_FRAMES wins; else FRAME_FPS of analysis time."""
+    """Select recorder samples for deformed-shape frames.
+
+    Args:
+        t: Recorder times in s.
+    Returns:
+        Sample indices; ``N_FRAMES`` takes precedence over ``FRAME_FPS``.
+    """
     nt = len(t)
     if nt < 1:
         return np.zeros(0, dtype=int)
@@ -1695,6 +2285,22 @@ def plot_frames(
     js: dict | None,
     meta: dict | None = None,
 ) -> None:
+    """Render deformed soil, structure, and spring frames and an MP4.
+
+    Args:
+        out: Plot output directory.
+        t: Recorder times in s.
+        ux: Horizontal nodal displacements in m.
+        uy: Vertical nodal displacements in m.
+        tags: Nodes in displacement-column order.
+        xy: Undeformed node coordinates in m keyed by tag.
+        lines: Structural and spring line connectivity.
+        quads: Soil quad connectivity.
+        js: Spring/model JSON, or ``None``.
+        meta: Window metadata, or ``None``.
+    Returns:
+        None; writes frame PNGs and, when available, ``eq_window.mp4``.
+    """
     d = out / "frames"
     d.mkdir(parents=True, exist_ok=True)
     for old in d.glob("*.png"):
@@ -1843,6 +2449,13 @@ def plot_frames(
 
 
 def ffmpeg_bin() -> str | None:
+    """Locate an ffmpeg executable.
+
+    Args:
+        None.
+    Returns:
+        Executable path, or ``None`` when ffmpeg is unavailable.
+    """
     p = shutil.which("ffmpeg")
     if p:
         return p
@@ -1856,6 +2469,17 @@ def ffmpeg_bin() -> str | None:
 def mux_frame_mp4(
     out: Path, d: Path, t: np.ndarray, steps: np.ndarray, ndig: int
 ) -> bool:
+    """Encode rendered frames at one-to-one analysis duration.
+
+    Args:
+        out: Plot output directory.
+        d: Frame PNG directory.
+        t: Recorder times in s.
+        steps: Recorder sample indices used for frames.
+        ndig: Zero-padding width in frame filenames.
+    Returns:
+        ``True`` when ``eq_window.mp4`` is encoded successfully.
+    """
     nfr = len(steps)
     if nfr < 2:
         return False
@@ -1895,7 +2519,19 @@ def prune_movie_frames(
     tags: list[int],
     ndig: int,
 ) -> None:
-    """After a successful MP4, keep t0 / tend / pier-top ux,uy extrema; drop the rest."""
+    """Keep key stills and remove intermediate PNGs after MP4 encoding.
+
+    Args:
+        d: Frame PNG directory.
+        steps: Recorder sample indices used for frames.
+        t: Recorder times in s.
+        ux: Horizontal nodal displacements in m.
+        uy: Vertical nodal displacements in m.
+        tags: Nodes in displacement-column order.
+        ndig: Zero-padding width in frame filenames.
+    Returns:
+        None; keeps start/end and pier-top extrema stills.
+    """
     nfr = len(steps)
     if nfr < 1:
         return
@@ -1905,6 +2541,13 @@ def prune_movie_frames(
         col = idx[PIER_TOP]
 
         def near(k: int) -> int:
+            """Find the rendered frame nearest one recorder sample.
+
+            Args:
+                k: Recorder sample index.
+            Returns:
+                Nearest frame index.
+            """
             return int(np.argmin(np.abs(steps.astype(np.int64) - int(k))))
 
         keep["ux_max"] = near(int(np.argmax(ux[:, col])))
@@ -1927,7 +2570,18 @@ def prune_movie_frames(
     print(f"PlotEQ: kept {len(kept)} frames ({', '.join(kept)})")
 
 
+# ------------------------------------------------------------
+# 7. COMPARISON, CLI, AND MAIN
+# ------------------------------------------------------------
+
 def load_pier_top(eq: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Load the dedicated pier-top displacement recorder.
+
+    Args:
+        eq: Serial recorder directory.
+    Returns:
+        Time in s and pier-top ux/uy in m, or ``None`` when absent.
+    """
     p = eq / "pier_top_disp.out"
     if not p.is_file():
         return None
@@ -1946,7 +2600,15 @@ def overlay_bcs(
     soil_ele: str = "quad",
     pier_ele: str = "lumpedPlasticity",
 ) -> int:
-    """Shin vs ASDEA pier-top histories for one soil profile and pier type."""
+    """Plot Shin and ASDEA pier-top history overlays.
+
+    Args:
+        profile: Soil-profile number.
+        soil_ele: Soil element type.
+        pier_ele: Pier element/hinge type.
+    Returns:
+        Process status: zero on success, one when an input recorder is missing.
+    """
     shin = eq_dir(profile, "Shin", soil_ele, pier_ele, "serial")
     asd = eq_dir(profile, "ASDEA", soil_ele, pier_ele, "serial")
     a = load_pier_top(shin)
@@ -2008,6 +2670,13 @@ usage: python3 plot/PlotEQ.py [eqOutDir]
 
 
 def main() -> int:
+    """Run the serial plot workflow selected by the command line and switches.
+
+    Args:
+        None; reads ``sys.argv`` without changing the existing CLI.
+    Returns:
+        Process status code.
+    """
     if any(a in ("-h", "--help") for a in sys.argv[1:]):
         print(HELP, end="")
         return 0

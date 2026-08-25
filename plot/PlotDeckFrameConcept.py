@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
-"""Conceptual PT39 deck cross-section as a stiff elastic frame (Mackie/Ketchum).
+"""
+Goals
+-----
+Show the PT39 solid-concrete outline and its stiff elastic frame idealization.
+Annotate the translational mass and rotational inertia assigned at each node.
 
   python3 plot/PlotDeckFrameConcept.py
 
-Writes: plot/out/deck/frame_concept.png
+Writes:
+  plot/out/deck/frame_concept.png
 
 Prefers mass / geometry from plot/out/deck/deck_frame.json (BuildDeckNodes.tcl).
 Falls back to Parameters-equivalent dims + length-weighted lumping.
-Annotates nodal mx, my (kg) and rotational inertia I (kg·m²); no dimension arrows.
+
+Units
+-----
+Geometry is in m, nodal mass in kg, and rotational inertia in kg.m².
 """
 
 from __future__ import annotations
@@ -26,6 +34,10 @@ from pt39_outline import pt39_outline
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "out" / "deck" / "frame_concept.png"
 JSON_PATH = HERE / "out" / "deck" / "deck_frame.json"
+
+# ------------------------------------------------------------
+# 1. PT39 GEOMETRY AND FRAME STYLE
+# ------------------------------------------------------------
 
 # Nodal inertia: mx, my (kg), Irot (kg·m²)
 MassTriple = tuple[float, float, float]
@@ -71,7 +83,18 @@ STYLE = {
 }
 
 
+# ------------------------------------------------------------
+# 2. FRAME GEOMETRY AND MASS
+# ------------------------------------------------------------
+
+
 def frame_nodes(dw: float, dd: float, sw: float, cw: float, bh: float, y0: float = 0.0):
+    """
+    Build named frame-node coordinates from PT39 dimensions.
+
+    Args:    dw, dd, sw, cw, bh, y0  (m)
+    Returns: node name → (x, y), m
+    """
     x_top_outer = 0.5 * dw
     x_overhang_in = 0.5 * dw - cw
     x_soffit = 0.5 * sw
@@ -99,7 +122,12 @@ def length_weighted_mass(
     dd: float,
     yb: float,
 ) -> dict[str, MassTriple]:
-    """Same as BuildDeck: mx=my from length lump; Irot = Σ m_mem L²/105."""
+    """
+    Reproduce BuildDeck length-weighted mass and rotational inertia.
+
+    Args:    nodes, members, m_total  (kg), dw, dd, yb  (m)
+    Returns: node name → (mx, my, Irot)
+    """
     names = list(nodes.keys())
     w = {nm: 0.0 for nm in names}
     mem_L: list[tuple[str, str, float]] = []
@@ -123,6 +151,11 @@ def length_weighted_mass(
     return {nm: (m[nm], m[nm], irot[nm]) for nm in names}
 
 
+# ------------------------------------------------------------
+# 3. EXPORTED DATA OR PARAMETER FALLBACK
+# ------------------------------------------------------------
+
+
 def load_or_fallback() -> tuple[
     dict[str, tuple[float, float]],
     list[tuple[str, str, str]],
@@ -130,7 +163,12 @@ def load_or_fallback() -> tuple[
     dict,
     str,
 ]:
-    """Return nodes (y relative to soffit), members, (mx,my,Irot), geom, source."""
+    """
+    Read BuildDeck output, or reconstruct the same conceptual frame.
+
+    Args:    none
+    Returns: (nodes, members, nodal inertia, geometry, source label)
+    """
     if JSON_PATH.is_file():
         with JSON_PATH.open() as f:
             data = json.load(f)
@@ -198,7 +236,12 @@ def load_or_fallback() -> tuple[
 
 
 def _fmt_mass_label(name: str, mx: float, my: float, irot: float) -> str:
-    """Compact nodal inertia annotation with units."""
+    """
+    Format one compact nodal-inertia annotation.
+
+    Args:    name, mx, my  (kg), irot  (kg.m²)
+    Returns: multiline label
+    """
     return (
         f"{name}\n"
         f"$m_x$={mx:,.0f} kg\n"
@@ -207,7 +250,18 @@ def _fmt_mass_label(name: str, mx: float, my: float, irot: float) -> str:
     )
 
 
+# ------------------------------------------------------------
+# 4. FRAME-CONCEPT FIGURE
+# ------------------------------------------------------------
+
+
 def main() -> int:
+    """
+    Draw the frame concept and write frame_concept.png.
+
+    Args:    none
+    Returns: process status code
+    """
     nodes, members, mass, geom, src = load_or_fallback()
     dw, dd, sw, cw = geom["dw"], geom["dd"], geom["sw"], geom["cw"]
     td, ts, tw, bh, yb = geom["td"], geom["ts"], geom["tw"], geom["bh"], geom["yb"]

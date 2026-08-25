@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""Fiber section cuts from plot/fiber_sections.json (DumpFiberSections.tcl).
+"""
+Goals
+-----
+Plot the pier and pile fiber sections exported by DumpFiberSections.tcl.
+Show the graded strips and fiber locations that OpenSees integrates.
 
-Draws what OpenSees integrates: graded horizontal strips, and (for the pier)
+The plots use graded horizontal strips and, for the pier,
 rebar fibers already merged onto z = 0 with combined area — same as
 circularRebarYFibers / circularTubeFiberStripsGraded.
 
   python3 plot/PlotFiberSections.py [in.json] [out_dir]
-  # default → plot/out/profile{N}/fibers/  (profile from soil_profile.json if present)
+
+Default output:
+  plot/out/profile{N}/fibers/
 """
 
 from __future__ import annotations
@@ -26,12 +32,29 @@ from paths import HERE, fibers_dir
 DEFAULT_JSON = HERE / "fiber_sections.json"
 
 
+# ------------------------------------------------------------
+# 1. INPUT AND STRIP GEOMETRY
+# ------------------------------------------------------------
+
+
 def load(path: Path) -> dict:
+    """
+    Read one fiber-section JSON file.
+
+    Args:    path
+    Returns: decoded section dictionary
+    """
     with path.open() as f:
         return json.load(f)
 
 
 def y_breaks(Ro: float, n_fibers: int, n_edge: int, edge_frac: float = 1.0 / 6.0) -> list[float]:
+    """
+    Build graded horizontal strip boundaries across a circle.
+
+    Args:    Ro  outer radius (m), n_fibers, n_edge, edge_frac
+    Returns: y-coordinate boundaries (m)
+    """
     D = 2.0 * Ro
     Ledge = edge_frac * D
     Lmid = (1.0 - 2.0 * edge_frac) * D
@@ -52,12 +75,23 @@ def y_breaks(Ro: float, n_fibers: int, n_edge: int, edge_frac: float = 1.0 / 6.0
 
 
 def chord_half(R: float, y: float) -> float:
+    """
+    Half-chord length of a circle at one y coordinate.
+
+    Args:    R, y  (m)
+    Returns: half-chord length (m)
+    """
     v = R * R - y * y
     return math.sqrt(v) if v > 0.0 else 0.0
 
 
 def annulus_strip_polys(Ro: float, Ri: float, y1: float, y2: float) -> list[np.ndarray]:
-    """Horizontal strip of an annulus → polygons in (z, y)."""
+    """
+    Split one horizontal annulus strip into plotting polygons.
+
+    Args:    Ro, Ri, y1, y2  (m)
+    Returns: polygons in (z, y)
+    """
     ys = np.linspace(y1, y2, 8)
     polys: list[np.ndarray] = []
 
@@ -81,12 +115,28 @@ def annulus_strip_polys(Ro: float, Ri: float, y1: float, y2: float) -> list[np.n
 
 
 def solid_strip_poly(R: float, y1: float, y2: float) -> np.ndarray:
+    """
+    Build one solid-circle strip polygon.
+
+    Args:    R, y1, y2  (m)
+    Returns: polygon coordinates in (z, y)
+    """
     z1, z2 = chord_half(R, y1), chord_half(R, y2)
     return np.array([[-z1, y1], [z1, y1], [z2, y2], [-z2, y2]])
 
 
+# ------------------------------------------------------------
+# 2. PIER FIBER SECTION
+# ------------------------------------------------------------
+
+
 def plot_pier(sec: dict, out: Path) -> None:
-    """RC circle as modeled: graded core/cover strips + rebar fibers on z=0."""
+    """
+    Plot the RC pier's core, cover, and rebar fibers.
+
+    Args:    sec, out  destination PNG
+    Returns: none (writes PNG)
+    """
     R = float(sec["R"])
     Rc = float(sec["R_core"])
     nY = int(sec["nFiberY"])
@@ -146,8 +196,18 @@ def plot_pier(sec: dict, out: Path) -> None:
     print(f"PlotFiberSections: wrote {out}")
 
 
+# ------------------------------------------------------------
+# 3. PILE FIBER SECTION
+# ------------------------------------------------------------
+
+
 def plot_pile(sec: dict, out: Path) -> None:
-    """Steel tube as modeled: graded annular strips; fiber at strip centroid."""
+    """
+    Plot the steel pile tube's graded strips and fiber centroids.
+
+    Args:    sec, out  destination PNG
+    Returns: none (writes PNG)
+    """
     Ro = float(sec["Ro"])
     Ri = float(sec["Ri"])
     nY = int(sec["nFiberY"])
@@ -201,7 +261,18 @@ def plot_pile(sec: dict, out: Path) -> None:
     print(f"PlotFiberSections: wrote {out}")
 
 
+# ------------------------------------------------------------
+# 4. COMMAND-LINE ENTRY POINT
+# ------------------------------------------------------------
+
+
 def main() -> int:
+    """
+    Read section data and write each available fiber plot.
+
+    Args:    command-line arguments in sys.argv
+    Returns: process status code
+    """
     json_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_JSON
     if not json_path.is_file():
         print(f"missing {json_path}", file=sys.stderr)

@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""Post-gravity deformed shape from gravity_shape.json (DumpGravityShape.tcl).
+"""
+Goals
+-----
+Plot the post-gravity deformed shape exported by DumpGravityShape.tcl.
+Show the bridge zoom and full soil domain with one fixed displacement scale.
 
-  Undeformed mesh + u amplified by SCALE_FACTOR (same sf on ux, uy; both panels).
+The undeformed mesh is overlaid with displacement amplified by SCALE_FACTOR.
+The same factor applies to ux and uy on both panels.
 
   python3 plot/PlotGravityShape.py [in.json] [out.png]
 """
@@ -23,16 +28,38 @@ from PlotEigenModes import (
 )
 
 DEFAULT_JSON = HERE / "gravity_shape.json"
+
+# ------------------------------------------------------------
+# 1. DISPLAY SCALE
+# ------------------------------------------------------------
+
 # Fixed visual amplification of gravity displacements (same sf on ux, uy).
 SCALE_FACTOR = 10.0
 
 
+# ------------------------------------------------------------
+# 2. INPUT AND OUTPUT PATHS
+# ------------------------------------------------------------
+
+
 def load(path: Path) -> dict:
+    """
+    Read one gravity-shape JSON file.
+
+    Args:    path
+    Returns: decoded gravity dictionary
+    """
     with path.open() as f:
         return json.load(f)
 
 
 def default_out_path(data: dict) -> Path:
+    """
+    Build the default gravity-figure path from model metadata.
+
+    Args:    data
+    Returns: destination PNG path
+    """
     sp = data.get("soilProfile")
     sb = data.get("soilBoundary")
     sele = data.get("soilEleType") or "quad"
@@ -45,10 +72,21 @@ def default_out_path(data: dict) -> Path:
     return d / "gravity_deformed.png"
 
 
+# ------------------------------------------------------------
+# 3. DISPLACEMENT MAP AND SCALE
+# ------------------------------------------------------------
+
+
 def node_xy_u(data: dict) -> tuple[
     dict[int, tuple[float, float]],
     dict[int, tuple[float, float]],
 ]:
+    """
+    Split dumped node rows into coordinate and displacement mappings.
+
+    Args:    data
+    Returns: (tag → (x, y), tag → (ux, uy)), m
+    """
     xy: dict[int, tuple[float, float]] = {}
     u: dict[int, tuple[float, float]] = {}
     for row in data["nodes"]:
@@ -69,7 +107,12 @@ def scale_disp(
     u: dict[int, tuple[float, float]],
     sf: float = SCALE_FACTOR,
 ) -> tuple[float, float, float]:
-    """Return (sf, amp, H) with fixed sf; amp = max |u| (true)."""
+    """
+    Report the fixed scale, true maximum displacement, and domain height.
+
+    Args:    xy, u, sf
+    Returns: (scale_factor, max|u|, domain_height)
+    """
     ymax = max((y for _, y in xy.values()), default=1.0)
     ymin = min((y for _, y in xy.values()), default=0.0)
     H = max(ymax - ymin, 1.0)
@@ -79,7 +122,18 @@ def scale_disp(
     return sf, amp, H
 
 
+# ------------------------------------------------------------
+# 4. COMMAND-LINE ENTRY POINT
+# ------------------------------------------------------------
+
+
 def main() -> int:
+    """
+    Read gravity data and write the two-panel deformed-shape figure.
+
+    Args:    command-line arguments in sys.argv
+    Returns: process status code
+    """
     json_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_JSON
     if not json_path.is_file():
         print(

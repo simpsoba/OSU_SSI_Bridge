@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Elevation from plot/model_sketch.json (DumpModelSketch.tcl).
+"""
+Goals
+-----
+Draw the assembled bridge and soil elevation exported by DumpModelSketch.tcl.
+Show the near-field SSI details beside the full soil-domain view.
 
   OpenSees PlotModel.tcl
   python3 plot/PlotModelSketch.py [in.json] [out.png]
-  # default → plot/out/profile{N}/elevation/{Shin|ASDEA}/elevation.png
+
+Default output:
+  plot/out/profile{N}/elevation/{Shin|ASDEA}/elevation.png
 """
 
 from __future__ import annotations
@@ -23,6 +29,10 @@ from paths import HERE, elevation_png
 from pt39_outline import pt39_outline
 
 DEFAULT_JSON = HERE / "model_sketch.json"
+
+# ------------------------------------------------------------
+# 1. FIGURE STYLE AND DISPLAY KNOBS
+# ------------------------------------------------------------
 
 SPRING_GAP = 0.70
 # Visual length for coincident / short SSI springs (like rot. spiral gap)
@@ -70,12 +80,29 @@ LAYER_STYLE = {
 }
 
 
+# ------------------------------------------------------------
+# 2. INPUT AND MODEL LOOKUPS
+# ------------------------------------------------------------
+
+
 def load(path: Path) -> dict:
+    """
+    Read one DumpModelSketch JSON file.
+
+    Args:    path
+    Returns: decoded model dictionary
+    """
     with path.open() as f:
         return json.load(f)
 
 
 def node_map(data: dict) -> dict[int, tuple[float, float]]:
+    """
+    Convert dumped node rows to tag → (x, y).
+
+    Args:    data  model dictionary
+    Returns: node-coordinate mapping (m)
+    """
     return {int(t): (float(x), float(y)) for t, x, y in data["nodes"]}
 
 
@@ -83,9 +110,13 @@ def display_nodes(
     nodes: dict[int, tuple[float, float]],
     springs: list,
 ) -> dict[int, tuple[float, float]]:
-    """Spread coincident lumpedPlasticity ZLS so both spirals read in elevation.
+    """
+    Spread coincident lumped-plasticity nodes for a readable ZLS glyph.
 
     Base: 1 (cap TC) stays, 2 (inner) up. Top: 5 (deck BC) stays, 4 (inner) down.
+
+    Args:    nodes, springs
+    Returns: display-only tag → (x, y) mapping (m)
     """
     disp = dict(nodes)
     if not springs:
@@ -102,6 +133,12 @@ def display_nodes(
 
 
 def group_of_node(tag: int, soil: int = 10000, spr: int = 20000) -> str:
+    """
+    Infer the assembly group from the model tag ranges.
+
+    Args:    tag, soil  soil base tag, spr  SSI spring base tag
+    Returns: group name
+    """
     if tag < 1000:
         return "pier"
     if tag < 2000:
@@ -118,6 +155,12 @@ def group_of_node(tag: int, soil: int = 10000, spr: int = 20000) -> str:
 
 
 def layer_style(name: str, profile: int | None = None) -> dict:
+    """
+    Select fill color and label for one soil layer.
+
+    Args:    name, profile  optional soil profile number
+    Returns: style dictionary
+    """
     if profile == 1 and name == "L3":
         return {"fill": "#e8c547", "label": "L3 sand"}
     if name in LAYER_STYLE:
@@ -127,7 +170,18 @@ def layer_style(name: str, profile: int | None = None) -> dict:
     return {"fill": "#a0a0a0", "label": name}
 
 
+# ------------------------------------------------------------
+# 3. SPRING AND DASHPOT GLYPHS
+# ------------------------------------------------------------
+
+
 def draw_rot_spiral(ax, x0: float, y0: float, x1: float, y1: float, color: str) -> None:
+    """
+    Draw a rotational zeroLength spring between display points.
+
+    Args:    ax, x0, y0, x1, y1  (m), color
+    Returns: none (updates ax)
+    """
     xm = 0.5 * (x0 + x1)
     ym = 0.5 * (y0 + y1)
     gap = abs(y1 - y0)
@@ -151,7 +205,12 @@ def draw_trans_coil(
     y1: float,
     color: str,
 ) -> None:
-    """Zigzag coil between two points (assumed visual length already applied)."""
+    """
+    Draw a translational spring between two display points.
+
+    Args:    ax, x0, y0, x1, y1  (m), color
+    Returns: none (updates ax)
+    """
     dx = x1 - x0
     dy = y1 - y0
     L = float(np.hypot(dx, dy))
@@ -180,7 +239,12 @@ def ssi_coil_ends(
     yi: float,
     kind: str = "pile",
 ) -> tuple[float, float, float, float]:
-    """Place lateral coils horizontal at structure elev; axial vertical, mirrored for qz."""
+    """
+    Place lateral coils horizontally and axial coils vertically.
+
+    Args:    stype, xp, yp, xi, yi  endpoint coordinates (m), kind
+    Returns: display endpoints (x0, y0, x1, y1), m
+    """
     lat = stype in ("py", "pyliq", "py_elastic")
     dx = xi - xp
     # Outward from pile/cap center: iface−pile, else sign of x
@@ -210,7 +274,12 @@ def ssi_coil_ends(
 
 
 def parse_ssi_row(row: list) -> tuple[float, float, float, float, str, str]:
-    """Return (xp, yp, xi, yi, stype, kind) from dump row (new or legacy)."""
+    """
+    Normalize a current or legacy SSI dump row.
+
+    Args:    row
+    Returns: (xp, yp, xi, yi, spring_type, station_kind)
+    """
     if len(row) >= 9:
         _e, _xs, _ys, xi, yi, xp, yp, kind, stype = row[:9]
         return float(xp), float(yp), float(xi), float(yi), str(stype), str(kind)
@@ -222,7 +291,12 @@ def parse_ssi_row(row: list) -> tuple[float, float, float, float, str, str]:
 
 
 def draw_lysmer_mark(ax, x: float, y: float, color: str) -> None:
-    """Horizontal dashpot glyph at (x, y); sized for full-domain view."""
+    """
+    Draw one horizontal Lysmer dashpot glyph.
+
+    Args:    ax, x, y  location (m), color
+    Returns: none (updates ax)
+    """
     w, h = 4.0, 1.2
     ax.plot([x - w, x - 0.7], [y, y], color=color, lw=1.6, zorder=7)
     ax.plot([x + 0.7, x + w], [y, y], color=color, lw=1.6, zorder=7)
@@ -236,7 +310,18 @@ def draw_lysmer_mark(ax, x: float, y: float, color: str) -> None:
             color=color, lw=1.3, zorder=8)
 
 
+# ------------------------------------------------------------
+# 4. MODEL ELEVATION
+# ------------------------------------------------------------
+
+
 def plot(data: dict, out: Path) -> None:
+    """
+    Draw near-field and full-domain model elevations.
+
+    Args:    data  decoded sketch dictionary; out  destination PNG
+    Returns: none (writes PNG)
+    """
     plt.rcParams["mathtext.fontset"] = "cm"
     plt.rcParams["font.family"] = "serif"
     plt.rcParams["font.size"] = 9
@@ -277,6 +362,12 @@ def plot(data: dict, out: Path) -> None:
         axes = [ax]
 
     def draw_on(a: plt.Axes, *, full: bool) -> None:
+        """
+        Draw the model on one near-field or full-domain panel.
+
+        Args:    a, full
+        Returns: none (updates a)
+        """
         # Soil quads under structure
         if quads:
             by_layer: dict[str, list] = {}
@@ -543,7 +634,18 @@ def plot(data: dict, out: Path) -> None:
     )
 
 
+# ------------------------------------------------------------
+# 5. COMMAND-LINE ENTRY POINT
+# ------------------------------------------------------------
+
+
 def main() -> int:
+    """
+    Resolve CLI paths and write the elevation plot.
+
+    Args:    command-line arguments in sys.argv
+    Returns: process status code
+    """
     json_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_JSON
     if not json_path.is_file():
         print(

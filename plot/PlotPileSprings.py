@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""Pile p-y / t-z (q-z tip) capacities vs depth from plot/pile_springs.json.
+"""
+Goals
+-----
+Plot pile p-y, t-z, and q-z spring properties versus depth.
+Mark liquefiable stations and distinguish shaft response from the pile tip.
 
   python3 plot/PlotPileSprings.py [in.json] [out_dir]
 
-Default → plot/out/profile{N}/pile_springs/{pult,tult,y50z50}.png
+Default output:
+  plot/out/profile{N}/pile_springs/{pult,tult,y50z50}.png
 """
 
 from __future__ import annotations
@@ -19,24 +24,50 @@ from paths import HERE, pile_springs_dir
 
 DEFAULT_JSON = HERE / "pile_springs.json"
 
+# ------------------------------------------------------------
+# 1. LAYER STYLE
+# ------------------------------------------------------------
+
 # Soft layer bands (sand / clay)
 LAYER_SAND = "#fff3e0"
 LAYER_CLAY = "#e3f2fd"
 
 
+# ------------------------------------------------------------
+# 2. INPUT AND DEPTH-PLOT HELPERS
+# ------------------------------------------------------------
+
+
 def load(path: Path) -> dict:
+    """
+    Read one pile-spring JSON file.
+
+    Args:    path
+    Returns: decoded spring dictionary
+    """
     with path.open() as f:
         return json.load(f)
 
 
 def stations_for_pile(data: dict, ip: int = 0) -> list[dict]:
+    """
+    Select and depth-sort stations for one pile index.
+
+    Args:    data, ip
+    Returns: station dictionaries ordered by depth
+    """
     rows = [s for s in data.get("stations", []) if int(s["ip"]) == ip]
     rows.sort(key=lambda s: float(s["depth"]))
     return rows
 
 
 def shade_layers(ax, layers: list[dict], y_mode: str = "depth") -> None:
-    """y_mode: 'depth' uses depth = -y; 'elev' uses y."""
+    """
+    Shade and label soil layers on a depth or elevation axis.
+
+    Args:    ax, layers, y_mode  "depth" or "elev"
+    Returns: none (updates ax)
+    """
     for L in layers:
         yt, yb = float(L["yTop"]), float(L["yBot"])
         if y_mode == "depth":
@@ -61,6 +92,12 @@ def shade_layers(ax, layers: list[dict], y_mode: str = "depth") -> None:
 
 
 def style_depth_axis(ax, depth_max: float) -> None:
+    """
+    Apply the common downward-positive depth axis style.
+
+    Args:    ax, depth_max  (m)
+    Returns: none (updates ax)
+    """
     ax.set_ylim(depth_max * 1.02, 0.0)  # depth down
     ax.set_ylabel("Depth below grade (m)")
     ax.grid(True, which="both", ls=":", alpha=0.45)
@@ -68,7 +105,18 @@ def style_depth_axis(ax, depth_max: float) -> None:
     ax.spines["right"].set_visible(False)
 
 
+# ------------------------------------------------------------
+# 3. P-Y CAPACITY
+# ------------------------------------------------------------
+
+
 def plot_pult(data: dict, rows: list[dict], out: Path) -> None:
+    """
+    Plot p-y ultimate and residual capacities.
+
+    Args:    data, rows, out  destination PNG
+    Returns: none (writes PNG)
+    """
     depth = np.array([float(s["depth"]) for s in rows])
     pult = np.array([float(s["pult"]) for s in rows]) / 1.0e3  # kN
     pRes = np.array([float(s["pRes"]) for s in rows]) / 1.0e3
@@ -107,7 +155,18 @@ def plot_pult(data: dict, rows: list[dict], out: Path) -> None:
     print(f"PlotPileSprings: wrote {out}")
 
 
+# ------------------------------------------------------------
+# 4. T-Z AND Q-Z CAPACITY
+# ------------------------------------------------------------
+
+
 def plot_tult(data: dict, rows: list[dict], out: Path) -> None:
+    """
+    Plot shaft t-z capacity and annotate the q-z pile tip.
+
+    Args:    data, rows, out  destination PNG
+    Returns: none (writes PNG)
+    """
     depth = np.array([float(s["depth"]) for s in rows])
     tult = np.array([float(s["tult"]) for s in rows]) / 1.0e3  # kN
     tRes = np.array([float(s["tRes"]) for s in rows]) / 1.0e3
@@ -174,7 +233,18 @@ def plot_tult(data: dict, rows: list[dict], out: Path) -> None:
     print(f"PlotPileSprings: wrote {out}")
 
 
+# ------------------------------------------------------------
+# 5. REFERENCE DISPLACEMENTS
+# ------------------------------------------------------------
+
+
 def plot_y50_z50(data: dict, rows: list[dict], out: Path) -> None:
+    """
+    Plot p-y, t-z, and q-z reference displacements.
+
+    Args:    data, rows, out  destination PNG
+    Returns: none (writes PNG)
+    """
     depth = np.array([float(s["depth"]) for s in rows])
     y50 = np.array([float(s["y50"]) for s in rows]) * 1.0e3  # mm
     z50 = np.array([float(s["z50"]) for s in rows]) * 1.0e3
@@ -210,7 +280,18 @@ def plot_y50_z50(data: dict, rows: list[dict], out: Path) -> None:
     print(f"PlotPileSprings: wrote {out}")
 
 
+# ------------------------------------------------------------
+# 6. COMMAND-LINE ENTRY POINT
+# ------------------------------------------------------------
+
+
 def main() -> int:
+    """
+    Read pile-spring data and write all three figures.
+
+    Args:    command-line arguments in sys.argv
+    Returns: process status code
+    """
     json_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_JSON
     if not json_path.is_file():
         print(

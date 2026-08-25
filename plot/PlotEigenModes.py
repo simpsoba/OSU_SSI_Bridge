@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
-"""Mode shapes from plot/eigen_modes.json (DumpEigenModes.tcl).
+"""
+Goals
+-----
+Plot eigenmode shapes exported by DumpEigenModes.tcl.
+Use one displacement scale on both components and both figure panels.
 
-  After: OpenSees run_gravity.tcl
+After:
+  OpenSees run_gravity.tcl
   python3 plot/PlotEigenModes.py [in.json] [out.png]
-  # default → plot/out/profile{N}/elevation/{BC}/modes/{pier}/mode_XX.png
-  # Each figure: left = pier/deck/pile zoom, right = full soil domain.
+
+Default output:
+  plot/out/profile{N}/elevation/{BC}/modes/{soilEle}/{pier}/mode_XX.png
+
+Each figure shows the pier/deck/pile zoom at left and full soil domain at right.
 """
 
 from __future__ import annotations
@@ -20,6 +28,10 @@ from matplotlib.collections import LineCollection, PolyCollection
 from paths import HERE, profile_root
 
 DEFAULT_JSON = HERE / "eigen_modes.json"
+
+# ------------------------------------------------------------
+# 1. DISPLACEMENT SCALE AND FIGURE STYLE
+# ------------------------------------------------------------
 
 # Visual budget for plotted displacement (single sf on both ux and uy).
 # Lateral-ish modes: max |ux| → SCALE_LATERAL · H
@@ -41,12 +53,29 @@ STRUCT_COLOR = {
 }
 
 
+# ------------------------------------------------------------
+# 2. INPUT AND MODE-SHAPE MAPS
+# ------------------------------------------------------------
+
+
 def load(path: Path) -> dict:
+    """
+    Read one DumpEigenModes JSON file.
+
+    Args:    path
+    Returns: decoded mode dictionary
+    """
     with path.open() as f:
         return json.load(f)
 
 
 def default_out_dir(data: dict) -> Path:
+    """
+    Build the default mode-figure directory from model metadata.
+
+    Args:    data
+    Returns: output directory (created if needed)
+    """
     sp = data.get("soilProfile")
     sb = data.get("soilBoundary")
     pier = data.get("pierEleType") or "pier"
@@ -67,10 +96,22 @@ def default_out_dir(data: dict) -> Path:
 
 
 def node_xy(data: dict) -> dict[int, tuple[float, float]]:
+    """
+    Convert dumped node rows to tag → (x, y).
+
+    Args:    data
+    Returns: node-coordinate mapping (m)
+    """
     return {int(t): (float(x), float(y)) for t, x, y in data["nodes"]}
 
 
 def phi_maps(data: dict) -> list[dict[int, tuple[float, float]]]:
+    """
+    Convert each mode table to tag → (ux, uy).
+
+    Args:    data
+    Returns: one displacement mapping per mode
+    """
     out = []
     for mode_phi in data["phi"]:
         m = {}
@@ -82,18 +123,32 @@ def phi_maps(data: dict) -> list[dict[int, tuple[float, float]]]:
 
 
 def domain_height(xy: dict[int, tuple[float, float]]) -> float:
+    """
+    Vertical extent used to set the visual displacement target.
+
+    Args:    xy  node-coordinate mapping (m)
+    Returns: domain height (m), at least 1
+    """
     ymax = max((y for _, y in xy.values()), default=1.0)
     ymin = min((y for _, y in xy.values()), default=0.0)
     return max(ymax - ymin, 1.0)
 
 
+# ------------------------------------------------------------
+# 3. MODE SCALE AND DEFORMED GEOMETRY
+# ------------------------------------------------------------
 
 
 def phi_component_amps(
     phi: dict[int, tuple[float, float]],
     tags: set[int] | None = None,
 ) -> tuple[float, float, float]:
-    """Return (max|ux|, max|uy|, max√(ux²+uy²)) over tags, or all nodes if tags is None."""
+    """
+    Find maximum mode-shape component and resultant amplitudes.
+
+    Args:    phi, tags  optional subset of node tags
+    Returns: (max|ux|, max|uy|, max resultant)
+    """
     max_ux = max_uy = max_r = 0.0
     if tags is None:
         vals = phi.values()
@@ -111,11 +166,14 @@ def scale_for_mode(
     xy: dict[int, tuple[float, float]],
     phi: dict[int, tuple[float, float]],
 ) -> tuple[float, float, float, str, float]:
-    """One sf for both ux and uy (same on zoom and full panels).
+    """
+    Choose one scale factor for ux and uy on both panels.
 
     Classify by max|ux| vs max|uy| over the full mesh.
     Lateral → sf so max|ux| = SCALE_LATERAL·H; vertical → max|uy| = SCALE_VERTICAL·H.
-    Returns (sf, amp, H, kind, target).
+
+    Args:    xy, phi
+    Returns: (scale_factor, controlling_amplitude, H, kind, target_fraction)
     """
     H = domain_height(xy)
     max_ux, max_uy, _ = phi_component_amps(phi, None)
@@ -132,6 +190,12 @@ def deformed(
     phi: dict[int, tuple[float, float]],
     sf: float,
 ) -> dict[int, tuple[float, float]]:
+    """
+    Apply a mode-shape scale factor to all node coordinates.
+
+    Args:    xy, phi, sf
+    Returns: deformed tag → (x, y) mapping
+    """
     out = {}
     for t, (x, y) in xy.items():
         ux, uy = phi.get(t, (0.0, 0.0))
@@ -144,6 +208,12 @@ def line_segs(
     xy: dict[int, tuple[float, float]],
     groups: set[str],
 ) -> list[np.ndarray]:
+    """
+    Build two-node line segments for selected element groups.
+
+    Args:    eles, xy, groups
+    Returns: coordinate arrays for plotting
+    """
     segs = []
     for _e, ni, nj, grp in eles:
         if grp not in groups:
@@ -158,6 +228,12 @@ def soil_polys(
     quads: list,
     xy: dict[int, tuple[float, float]],
 ) -> list[np.ndarray]:
+    """
+    Build quad polygons from node tags and a coordinate map.
+
+    Args:    quads, xy
+    Returns: valid polygon coordinate arrays
+    """
     polys = []
     for q in quads:
         pts = []
@@ -178,7 +254,12 @@ def structure_xlim(
     eles: list,
     pad: float = ZOOM_X_PAD,
 ) -> tuple[float, float] | None:
-    """±x window around pier/deck/piles (elevation-sketch style)."""
+    """
+    Find a symmetric x window around the bridge structure.
+
+    Args:    xy, eles, pad  extra width (m)
+    Returns: (xmin, xmax), or None when no structure is present
+    """
     xs: list[float] = []
     for _e, ni, nj, grp in eles:
         if grp not in ZOOM_GROUPS:
@@ -196,11 +277,22 @@ def domain_ylim(
     xy0: dict[int, tuple[float, float]],
     xy1: dict[int, tuple[float, float]],
 ) -> tuple[float, float] | None:
+    """
+    Find one y window containing undeformed and deformed nodes.
+
+    Args:    xy0, xy1
+    Returns: padded (ymin, ymax), or None
+    """
     ys = [p[1] for p in xy0.values()] + [p[1] for p in xy1.values()]
     if not ys:
         return None
     pad = 0.05 * (max(ys) - min(ys) + 1.0)
     return (min(ys) - pad, max(ys) + pad)
+
+
+# ------------------------------------------------------------
+# 4. MODE PANELS
+# ------------------------------------------------------------
 
 
 def plot_panel(
@@ -216,6 +308,13 @@ def plot_panel(
     ylim: tuple[float, float] | None = None,
     show_bnd: bool = True,
 ) -> None:
+    """
+    Draw undeformed and deformed soil and structure on one panel.
+
+    Args:    ax, xy0, xy1, eles, quads, title, bnd_quads, xlim, ylim,
+             show_bnd
+    Returns: none (updates ax)
+    """
     if bnd_quads is None:
         bnd_quads = []
 
@@ -320,7 +419,18 @@ def plot_panel(
             ax.set_xlim(min(xs) - pad_x, max(xs) + pad_x)
 
 
+# ------------------------------------------------------------
+# 5. COMMAND-LINE ENTRY POINT
+# ------------------------------------------------------------
+
+
 def main() -> int:
+    """
+    Read mode data and write one PNG per available mode.
+
+    Args:    command-line arguments in sys.argv
+    Returns: process status code
+    """
     json_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_JSON
     if not json_path.is_file():
         print(f"PlotEigenModes: missing {json_path}; run OpenSees run_gravity.tcl first", file=sys.stderr)

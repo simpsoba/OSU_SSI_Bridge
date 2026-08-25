@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
-"""EQ postprocess for OpenSeesMP dumps (name.$pid).
+"""
+Goals
+-----
+Stitch OpenSeesMP recorder shards (``name.$pid``) into the serial files that
+PlotEQ.py expects, then let PlotEQ make the figures. PlotEQ.py stays
+serial-only; this file owns the MPI-specific checks and assembly.
 
-  python3 plot/PlotEQParallel.py
-  python3 plot/PlotEQParallel.py /path/to/eqOutDir
-  python3 plot/PlotEQParallel.py /path/to/eqOutDir --plots-out DIR
+  python plot/PlotEQParallel.py
+  python plot/PlotEQParallel.py /path/to/eqOutDir
+  python plot/PlotEQParallel.py /path/to/eqOutDir --plots-out DIR
 
-Reads np from window_meta.txt.0 (must match ranks 0..np-1). Stitches a serial
-folder, then calls PlotEQ.py. Lean window quads get corners from
-model_sketch.json here (PlotEQ.py stays serial-only).
-Panels: the DO_* switches in PlotEQ.py.
+The process count comes from window_meta.txt.0. Metadata shards must cover
+ranks 0 through np - 1. Lean window dumps recover missing quad corners from
+model_sketch.json before PlotEQ runs. Figure panels remain controlled by the
+DO_* switches in PlotEQ.py.
 
-Lab dumps under Shared Drive / OSU_SSI_BRIDGE_DATA write PNGs to
-OSU_SSI_BRIDGE_DATA_LOCAL/plots/<run>/ (dump stays read-only). Local plot/out
-dumps still get <eqOutDir>/plots/.
+Lab dumps under Shared Drive or OSU_SSI_BRIDGE_DATA write PNGs to
+OSU_SSI_BRIDGE_DATA_LOCAL/plots/<run>/. The dump remains read-only. Local
+plot/out dumps write to <eqOutDir>/plots/ unless --plots-out is given.
 """
 
 from __future__ import annotations
@@ -36,8 +41,12 @@ from paths import HERE, elevation_dir, eq_dir
 
 EQ_OUT = eq_dir(4, "Shin", "SSPquad", "lumpedPlasticity", "parallel")
 
-# Recorders that live on one rank (copy the first non-empty shard).
-# pier_node_$tag.out is one file per pier node, so each one is also single-rank.
+# ------------------------------------------------------------
+# knobs and recorder groups
+# ------------------------------------------------------------
+
+# These recorders live on one rank. Copy the first non-empty shard.
+# pier_node_$tag.out is one file per pier node and is also single-rank.
 ONE_RANK = (
     "pier_hinge_force.out",
     "pier_hinge_defo.out",
@@ -48,7 +57,7 @@ ONE_RANK = (
     "soil_base_primary.out",
 )
 
-# Time-series whose columns follow concat of the matching *_eles.txt ranks.
+# These time-series columns follow the concatenated *_eles.txt rank lists.
 HSTACK = (
     "pile_beam_globalForce.out",
     "pile_beam_sec1_defo.out",
@@ -71,7 +80,19 @@ TEXT_UNIQUE_ELE = (
 # window_nodes.txt and disp_nodes.txt are stitched with the disp columns instead.
 
 
+# ------------------------------------------------------------
+# 1. RANK FILES AND METADATA
+# ------------------------------------------------------------
+
+
 def rank_files(eq: Path, name: str) -> dict[int, Path]:
+    """
+    Find numbered shards for one recorder name.
+
+    Args:    eq    MP recorder folder
+             name  unsuffixed recorder name
+    Returns: {rank: shard path}, sorted by rank
+    """
     out: dict[int, Path] = {}
     prefix = name + "."
     for p in eq.iterdir():
@@ -84,6 +105,12 @@ def rank_files(eq: Path, name: str) -> dict[int, Path]:
 
 
 def parse_meta(path: Path) -> dict[str, str]:
+    """
+    Read one key-value window metadata shard.
+
+    Args:    path  window_meta.txt.$pid path
+    Returns: metadata values keyed by field name
+    """
     meta: dict[str, str] = {}
     for ln in peq._skip_hash(path):
         k, _, rest = ln.partition(" ")
@@ -92,6 +119,12 @@ def parse_meta(path: Path) -> dict[str, str]:
 
 
 def load_np(eq: Path) -> tuple[int, dict[int, dict[str, str]]]:
+    """
+    Read np and require one metadata file for every expected rank.
+
+    Args:    eq  MP recorder folder
+    Returns: (process count, metadata by rank)
+    """
     files = rank_files(eq, "window_meta.txt")
     if 0 not in files:
         raise SystemExit(
@@ -119,7 +152,12 @@ def load_np(eq: Path) -> tuple[int, dict[int, dict[str, str]]]:
 
 
 def one_rank_names(eq: Path) -> list[str]:
-    """ONE_RANK plus the pier_node_$tag.out files this run happened to write."""
+    """
+    Add this run's pier-node recorders to the fixed single-rank names.
+
+    Args:    eq  MP recorder folder
+    Returns: unsuffixed recorder names copied from one rank
+    """
     names = list(ONE_RANK)
     for p in sorted(eq.glob("pier_node_*.out.*")):
         stem = p.name.rsplit(".", 1)[0]
@@ -129,8 +167,19 @@ def one_rank_names(eq: Path) -> list[str]:
 
 
 def shard_or_none(eq: Path, name: str, pid: int) -> Path | None:
+    """
+    Return a rank shard when it exists.
+
+    Args:    eq, name, pid
+    Returns: shard path, or None
+    """
     p = eq / f"{name}.{pid}"
     return p if p.is_file() else None
+
+
+# ------------------------------------------------------------
+# 2. TEXT LISTS AND WINDOW DISPLACEMENT
+# ------------------------------------------------------------
 
 
 def concat_text(
@@ -140,6 +189,13 @@ def concat_text(
     np_run: int,
     unique_col0: bool,
 ) -> int:
+    """
+    Concatenate text shards in rank order, optionally dropping repeated tags.
+
+    Args:    eq, dest, name, np_run
+             unique_col0  keep only the first row for each first-column value
+    Returns: number of data rows written
+    """
     header = None
     rows: list[str] = []
     seen: set[str] = set()
@@ -173,11 +229,22 @@ def concat_text(
 def load_rank_disp(
     eq: Path, tags: list[int], disp_files: list[str]
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Load one rank's displacement shards through PlotEQ's serial reader.
+
+    Args:    eq, tags, disp_files
+    Returns: (time, ux, uy) arrays
+    """
     return peq.load_window_disp(eq, tags, disp_files)
 
 
 def parse_node_shard(path: Path) -> tuple[str | None, list[int], list[tuple[str, str]]]:
-    """One window_nodes.txt / disp_nodes.txt shard: header, tags, (x, y) strings."""
+    """
+    Read one window_nodes.txt or disp_nodes.txt rank shard.
+
+    Args:    path  node-list shard
+    Returns: (header, node tags, coordinate strings)
+    """
     header = None
     tags: list[int] = []
     xy: list[tuple[str, str]] = []
@@ -198,6 +265,12 @@ def parse_node_shard(path: Path) -> tuple[str | None, list[int], list[tuple[str,
 def write_node_file(
     path: Path, header: str | None, tags: list[int], xy: dict[int, tuple[str, str]]
 ) -> None:
+    """
+    Write a serial node list in the supplied tag order.
+
+    Args:    path, header, tags, xy
+    Returns: none
+    """
     with path.open("w") as f:
         if header:
             f.write(header + "\n")
@@ -209,9 +282,16 @@ def write_node_file(
 def stitch_nodes_disp(
     eq: Path, dest: Path, np_run: int, metas: dict[int, dict[str, str]]
 ) -> tuple[int, int, int]:
-    """Unique nodes (drop ghosts): geometry -> window_nodes.txt, columns ->
-    disp_nodes.txt + window_disp.out. Lean dumps (recordersON=2, 3, or 4) record
-    displacement for a subset of the geometry, so the two lists differ."""
+    """
+    Drop ghost nodes and align unique displacement columns.
+
+    Geometry goes to window_nodes.txt. Recorded nodes and columns go to
+    disp_nodes.txt and window_disp.out. Lean dumps record displacement for
+    only a subset of the geometry, so the node lists may differ.
+
+    Args:    eq, dest, np_run, metas
+    Returns: (raw geometry nodes, unique geometry nodes, displacement nodes)
+    """
     geom_header = None
     disp_header = None
     geom_tags: list[int] = []
@@ -279,7 +359,18 @@ def stitch_nodes_disp(
     return n_raw, len(geom_tags), n_disp
 
 
+# ------------------------------------------------------------
+# 3. RECORDER COLUMN ASSEMBLY
+# ------------------------------------------------------------
+
+
 def hstack_recorders(eq: Path, dest: Path, name: str, np_run: int) -> None:
+    """
+    Join one recorder's non-time columns across non-empty rank shards.
+
+    Args:    eq, dest, name, np_run
+    Returns: none
+    """
     parts: list[np.ndarray] = []
     t = None
     for pid in range(np_run):
@@ -303,6 +394,12 @@ def hstack_recorders(eq: Path, dest: Path, name: str, np_run: int) -> None:
 
 
 def copy_one_rank(eq: Path, dest: Path, name: str, np_run: int) -> None:
+    """
+    Copy the first usable shard of a recorder owned by one rank.
+
+    Args:    eq, dest, name, np_run
+    Returns: none
+    """
     for pid in range(np_run):
         p = shard_or_none(eq, name, pid)
         if p is None or p.stat().st_size < 100:
@@ -314,6 +411,12 @@ def copy_one_rank(eq: Path, dest: Path, name: str, np_run: int) -> None:
 def stitch_quads(
     eq: Path, dest: Path, np_run: int, metas: dict[int, dict[str, str]]
 ) -> tuple[list[str], list[str], int]:
+    """
+    Assemble the quad list plus stress and strain recorder columns.
+
+    Args:    eq, dest, np_run, metas
+    Returns: (serial stress filenames, serial strain filenames, quad count)
+    """
     nq = concat_text(eq, dest, "window_quads.txt", np_run, unique_col0=True)
     sig: list[str] = []
     eps: list[str] = []
@@ -338,6 +441,12 @@ def stitch_quads(
 def hstack_named_files(
     eq: Path, dest: Path, out_name: str, files: list[str]
 ) -> None:
+    """
+    Join explicitly named recorder files into one serial time series.
+
+    Args:    eq, dest, out_name, files
+    Returns: none
+    """
     parts: list[np.ndarray] = []
     t = None
     for fn in files:
@@ -368,6 +477,14 @@ def write_meta(
     pier_files: list[str] | None = None,
     n_disp: int = 0,
 ) -> None:
+    """
+    Write serial metadata that describes the stitched files.
+
+    Args:    dest, base, n_nodes, n_eles, n_quads, sig, eps, np_run
+             pier_files  stitched pier-node filenames
+             n_disp      number of nodes with displacement columns
+    Returns: none
+    """
     skip = {
         "dispFiles",
         "pierNodeFiles",
@@ -409,8 +526,18 @@ def write_meta(
     (dest / "window_meta.txt").write_text("\n".join(lines) + "\n")
 
 
+# ------------------------------------------------------------
+# 4. LEAN-DUMP QUAD GEOMETRY
+# ------------------------------------------------------------
+
+
 def sketch_quad_xy(meta: dict) -> dict[int, list[tuple[float, float]]]:
-    """Undeformed 4-node corners from DumpModelSketch. Keys = ele tags."""
+    """
+    Read undeformed four-node quad corners from DumpModelSketch output.
+
+    Args:    meta  merged or rank metadata
+    Returns: {element tag: [(x, y), ...]} for four-node soil quads
+    """
     sp = meta.get("soilProfile", "")
     bnd = meta.get("soilBoundary", "Shin")
     cands = []
@@ -434,10 +561,15 @@ def sketch_quad_xy(meta: dict) -> dict[int, list[tuple[float, float]]]:
 
 
 def fill_lean_quad_geom(dest: Path, meta: dict) -> int:
-    """Add sketch corners so PlotEQ can find 4 nodes per window quad.
+    """
+    Add sketch corners so PlotEQ can find four nodes per window quad.
 
     Only needed for dumps whose window_nodes.txt misses a quad corner. Geometry
     only: these tags get no displacement column.
+
+    Args:    dest  stitched serial folder
+             meta  run metadata used to locate model_sketch.json
+    Returns: number of quads filled from the sketch
     """
     sketch = sketch_quad_xy(meta)
     qtags = peq.read_window_quad_list(dest)
@@ -475,7 +607,12 @@ def fill_lean_quad_geom(dest: Path, meta: dict) -> int:
 
 
 def merge_rank_meta(metas: dict[int, dict[str, str]]) -> dict[str, str]:
-    """Rank 0 as base; fill keys only a later rank wrote (pile beams, nIP, …)."""
+    """
+    Fill missing rank-0 fields from later ranks (pile beams, nIP, and others).
+
+    Args:    metas  metadata keyed by rank
+    Returns: one merged metadata dictionary
+    """
     base = dict(metas[0])
     for pid in sorted(metas):
         if pid == 0:
@@ -486,7 +623,18 @@ def merge_rank_meta(metas: dict[int, dict[str, str]]) -> dict[str, str]:
     return base
 
 
+# ------------------------------------------------------------
+# 5. BUILD THE SERIAL STAGING FOLDER
+# ------------------------------------------------------------
+
+
 def stitch(eq: Path, dest: Path, np_run: int, metas: dict[int, dict[str, str]]) -> None:
+    """
+    Stitch all supported MPI shards into PlotEQ's serial file layout.
+
+    Args:    eq, dest, np_run, metas
+    Returns: none
+    """
     dest.mkdir(parents=True, exist_ok=True)
     n_raw, n_u, n_disp = stitch_nodes_disp(eq, dest, np_run, metas)
     print(
@@ -515,6 +663,10 @@ def stitch(eq: Path, dest: Path, np_run: int, metas: dict[int, dict[str, str]]) 
         print(f"PlotEQParallel: sketch corners for {n_fill} window quads")
 
 
+# ------------------------------------------------------------
+# 6. PATHS AND COMMAND-LINE INTERFACE
+# ------------------------------------------------------------
+
 REPO = HERE.parent
 PLOTS_ROOT = plots_root()
 
@@ -531,7 +683,12 @@ usage: python3 plot/PlotEQParallel.py [eqOutDir] [--plots-out DIR]
 
 
 def _is_lab_dump(eq: Path) -> bool:
-    """True if eq lives on Shared Drive archive / junction / LOCAL mirror."""
+    """
+    Check whether a dump belongs to the read-only lab data trees.
+
+    Args:    eq  recorder folder
+    Returns: True for Shared Drive, junction, or local-mirror paths
+    """
     try:
         resolved = eq.resolve()
     except OSError:
@@ -548,7 +705,12 @@ def _is_lab_dump(eq: Path) -> bool:
 
 
 def _parse_argv(argv: list[str]) -> tuple[Path, Path | None]:
-    """Return (eqOutDir, plots_out or None meaning auto)."""
+    """
+    Parse the recorder folder and optional plot destination.
+
+    Args:    argv  command-line tokens including the program name
+    Returns: (eqOutDir, plots_out); None requests automatic plot routing
+    """
     args = list(argv[1:])
     plots_out: Path | None = None
     positional: list[str] = []
@@ -577,7 +739,13 @@ def _parse_argv(argv: list[str]) -> tuple[Path, Path | None]:
 
 
 def _install_plots(src: Path, dst: Path, flat: bool) -> None:
-    """Copy PNGs from stitch temp/plots into dst (flat files or plots/ tree)."""
+    """
+    Move PlotEQ output from the temporary stitch tree to its final location.
+
+    Args:    src, dst
+             flat  copy children into dst; otherwise replace dst with src
+    Returns: none
+    """
     if not src.is_dir():
         return
     if flat:
@@ -598,7 +766,18 @@ def _install_plots(src: Path, dst: Path, flat: bool) -> None:
     print(f"PlotEQParallel: plots -> {dst}")
 
 
+# ------------------------------------------------------------
+# 7. STITCH, CALL PLOTEQ, AND INSTALL FIGURES
+# ------------------------------------------------------------
+
+
 def main() -> int:
+    """
+    Run the MPI-to-serial adapter, then call PlotEQ.main.
+
+    Args:    none (reads sys.argv)
+    Returns: PlotEQ return code, or 0 for help and 1 for a serial dump
+    """
     if any(a in ("-h", "--help") for a in sys.argv[1:]):
         print(HELP, end="")
         return 0

@@ -1,8 +1,18 @@
-"""PT39 box solid-concrete outline polygons (local y = 0 at soffit bottom)."""
+"""
+Goals
+-----
+Build reusable matplotlib polygons for the PT39 solid-concrete outline.
+Use local y = 0 at the soffit bottom, with an optional global elevation shift.
+"""
 
 from __future__ import annotations
 
 from matplotlib.patches import Polygon
+
+
+# ------------------------------------------------------------
+# 1. PT39 OUTLINE
+# ------------------------------------------------------------
 
 
 def pt39_outline(
@@ -16,12 +26,24 @@ def pt39_outline(
     *,
     y0: float = 0.0,
 ) -> list[Polygon]:
-    """Solid concrete outline patches; y0 shifts soffit bottom to global elevation."""
+    """
+    Build top, soffit, web, and cantilever concrete patches.
+
+    Args:    dw, dd, sw, cw, td, ts, tw  section dimensions (m);
+             y0  soffit-bottom elevation (m)
+    Returns: six matplotlib Polygon patches
+    """
     x_top_outer = 0.5 * dw
     x_overhang_in = 0.5 * dw - cw
     x_soffit = 0.5 * sw
 
     def _poly(pts: list[tuple[float, float]]) -> Polygon:
+        """
+        Shift local section points to the requested elevation.
+
+        Args:    pts  local (x, y) coordinates (m)
+        Returns: closed Polygon
+        """
         return Polygon([(x, y0 + y) for x, y in pts], closed=True)
 
     top = _poly([

@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Group as-run lab dumps by *model* knobs for fair compare overlays.
+"""
+Goals
+-----
+Bucket as-run lab dumps by *model* knobs so PlotEQCompareRuns / PlotMatOS
+put fair overlays in one folder.
 
-Solver / np / integrator changes stay in the same group (same mesh, soil,
-element, constitutive, hybrid setup). Physics changes get their own folder.
+  Same group  = same mesh, soil profile/element/constitutive, exp element,
+                holdPier, and (if non-default) Rayleigh ξ1.
+  Not in key  = solver, np, integrator, precision, hybridExecuteMode, …
 
-Reads: plot/opensees_data/TestMatrix_lab_runs.csv (fallback: LOCAL copy).
+Reads: plot/opensees_data/TestMatrix_lab_runs.csv
+       (fallback: OSU_SSI_BRIDGE_DATA_LOCAL/TestMatrix_lab_runs.csv)
 """
 
 from __future__ import annotations
@@ -15,7 +21,6 @@ from collections import OrderedDict
 from pathlib import Path
 
 from lab_paths import lab_runs_csv_path
-
 
 # Columns that define the structural / soil model (not numerics).
 MODEL_KEYS = (
@@ -28,21 +33,40 @@ MODEL_KEYS = (
     "rayleighXi1",
 )
 
+# Default campaign ξ1 — only append to the slug when different.
+DEFAULT_XI1 = ("0.03", "0.030")
 
-def _slug_part(s: str) -> str:
-    s = (s or "").strip()
-    s = re.sub(r"\s*\([^)]*\)\s*", "", s)  # drop " (SOFT)" style tags
+
+# ------------------------------------------------------------
+# slug pieces
+# ------------------------------------------------------------
+
+
+def _slug_part(text: str) -> str:
+    """
+    One path-safe token from a CSV cell (drop parenthetical tags).
+
+    Args:    text  e.g. "4 (SOFT)" or "SSPQuad"
+    Returns: "4" or "SSPQuad"
+    """
+    s = (text or "").strip()
+    s = re.sub(r"\s*\([^)]*\)\s*", "", s)
     s = s.replace("%", "pct")
     s = re.sub(r"[^A-Za-z0-9.+-]+", "_", s)
     return s.strip("_") or "x"
 
 
 def group_slug(row: dict[str, str]) -> str:
-    """Folder name under LOCAL/plots/compare/."""
+    """
+    Folder name under LOCAL/plots/compare/.
+
+    Args:    row  one TestMatrix_lab_runs.csv dict
+    Returns: e.g. mesh0_4_SSPQuad_Inelastic_generic
+    """
     mesh = _slug_part(row.get("soilMesh", ""))
-    # Prefer short mesh tags: 0, 1, 2, 3
-    m0 = re.match(r"^(\d+)", mesh)
-    mesh_tag = f"mesh{m0.group(1)}" if m0 else f"mesh_{mesh}"
+    mesh_match = re.match(r"^(\d+)", mesh)
+    mesh_tag = f"mesh{mesh_match.group(1)}" if mesh_match else f"mesh_{mesh}"
+
     parts = [
         mesh_tag,
         _slug_part(row.get("soilProfile", "")),
@@ -50,17 +74,21 @@ def group_slug(row: dict[str, str]) -> str:
         _slug_part(row.get("soilConstitutive", "")),
         _slug_part(row.get("expElementType", "")),
     ]
-    hold = (row.get("holdPierON") or "").strip()
-    if hold == "0":
+    if (row.get("holdPierON") or "").strip() == "0":
         parts.append("noHold")
     xi = (row.get("rayleighXi1") or "").strip()
-    if xi and xi not in ("0.03", "0.030"):
+    if xi and xi not in DEFAULT_XI1:
         parts.append(f"xi{_slug_part(xi)}")
     return "_".join(parts)
 
 
 def group_label(row: dict[str, str]) -> str:
-    """Short human label for logs / optional titles."""
+    """
+    Short human string for logs (not the folder name).
+
+    Args:    row
+    Returns: comma-separated knob summary
+    """
     bits = [
         row.get("soilMesh", ""),
         row.get("soilProfile", ""),
@@ -68,27 +96,42 @@ def group_label(row: dict[str, str]) -> str:
         row.get("soilConstitutive", ""),
         row.get("expElementType", ""),
     ]
-    hold = (row.get("holdPierON") or "").strip()
-    if hold == "0":
+    if (row.get("holdPierON") or "").strip() == "0":
         bits.append("hold=0")
     xi = (row.get("rayleighXi1") or "").strip()
-    if xi and xi not in ("0.03", "0.030"):
+    if xi and xi not in DEFAULT_XI1:
         bits.append(f"xi={xi}")
     return ", ".join(b for b in bits if b)
 
 
+# ------------------------------------------------------------
+# CSV → groups
+# ------------------------------------------------------------
+
+
 def load_lab_rows(path: Path | None = None) -> list[dict[str, str]]:
-    p = path or lab_runs_csv_path()
-    if not p.is_file():
+    """
+    Read the curated as-run matrix.
+
+    Args:    path  optional override (default: lab_runs_csv_path())
+    Returns: list of row dicts (empty if missing)
+    """
+    csv_path = path or lab_runs_csv_path()
+    if not csv_path.is_file():
         return []
-    with p.open(newline="", encoding="utf-8-sig") as f:
+    with csv_path.open(newline="", encoding="utf-8-sig") as f:
         return list(csv.DictReader(f))
 
 
 def groups_by_dump(
     path: Path | None = None,
 ) -> OrderedDict[str, list[dict[str, str]]]:
-    """slug → list of lab_runs rows (same DumpFolder order as CSV)."""
+    """
+    Compare-group slug → lab_runs rows (CSV order within each group).
+
+    Args:    path  optional CSV override
+    Returns: OrderedDict
+    """
     out: OrderedDict[str, list[dict[str, str]]] = OrderedDict()
     for row in load_lab_rows(path):
         dump = (row.get("DumpFolder") or "").strip()
@@ -100,9 +143,14 @@ def groups_by_dump(
 
 
 def dump_to_group(path: Path | None = None) -> dict[str, str]:
-    """DumpFolder name → compare group slug."""
-    m: dict[str, str] = {}
+    """
+    DumpFolder name → compare group slug.
+
+    Args:    path  optional CSV override
+    Returns: {dump_folder: slug}
+    """
+    mapping: dict[str, str] = {}
     for slug, rows in groups_by_dump(path).items():
-        for r in rows:
-            m[r["DumpFolder"]] = slug
-    return m
+        for row in rows:
+            mapping[row["DumpFolder"]] = slug
+    return mapping

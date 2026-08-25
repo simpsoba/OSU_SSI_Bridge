@@ -1,28 +1,29 @@
-# RunTestMatrix.py
-#
-# How to use:
-#   python RunTestMatrix.py --row 1
-#   python RunTestMatrix.py --row=-1
-# writes Overrides.tcl for that Run id (from TestMatrix.csv).
-#
-# Run sign is the EQ constraint handler: +N = Auto, -N = Transformation.
-# Same |N| is the same case. IDs start at 1. A case may omit +N (Transformation
-# only; stiffer soil is -13). Use --row=-N (equals); --row -1 is parsed as a flag.
-#
-# How to override more knobs later:
-#   1. Add a column to TestMatrix.csv (same name as the Tcl variable when possible).
-#   2. Add that name to PASS_THROUGH or to a special-case block below.
-#   3. Re-run this script for the row you want.
-# Leave cells blank to keep the Parameters.tcl / Run*.tcl default.
-#
-# soilProfile / soilMesh cells may be bare numbers (1) or labeled (0 (PRODUCTION));
-# both work. Wave Name lookup (Storm Wave, Big Tsunami): see WaveCatalog.csv
-# (prototype vs lab scale). Not written into Overrides.tcl yet.
-# Rayleigh: T/xi/offFac/stiff + region *ON columns; see analysis/RayleighDamping.tcl.
-#
-# This script only WRITES Overrides.tcl. You launch OpenSees yourself, e.g.:
-#   mpiexec -n 8 OpenSeesMP RunParallel.tcl Overrides.tcl
-#   OpenSees Run.tcl Overrides.tcl
+"""
+Goals
+-----
+Write Overrides.tcl from one row of TestMatrix.csv.
+Leave blank cells at their Parameters.tcl or Run*.tcl defaults.
+
+  python RunTestMatrix.py --row 1
+  python RunTestMatrix.py --row=-1
+
+Run sign selects the EQ constraint handler: +N = Auto and
+-N = Transformation. The same |N| is the same case. Use --row=-N for
+negative IDs because ``--row -1`` is parsed as a flag.
+
+To add another override:
+  1. Add a TestMatrix.csv column, preferably with the Tcl variable name.
+  2. Add the name to PASS_THROUGH or a special-case block below.
+  3. Run this script for the desired row.
+
+soilProfile and soilMesh may be bare numbers or labeled values such as
+``0 (PRODUCTION)``. Rayleigh columns map to analysis/RayleighDamping.tcl.
+Wave-catalog metadata is read only as metadata and is not written.
+
+This script writes Overrides.tcl; it does not launch OpenSees. Example launches:
+  mpiexec -n 8 OpenSeesMP RunParallel.tcl Overrides.tcl
+  OpenSees Run.tcl Overrides.tcl
+"""
 
 import argparse
 import csv
@@ -30,6 +31,10 @@ import datetime
 import os
 import re
 import sys
+
+# ------------------------------------------------------------
+# 1. PATHS AND CSV COLUMN GROUPS
+# ------------------------------------------------------------
 
 # Folder that holds this script (= repo root)
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -86,8 +91,18 @@ SPECIAL_COLUMNS = [
 ]
 
 
+# ------------------------------------------------------------
+# 2. CSV VALUE NORMALIZATION
+# ------------------------------------------------------------
+
+
 def clean_cell(raw):
-    """Empty / missing CSV cells -> None."""
+    """
+    Convert an empty or missing CSV cell to None.
+
+    Args:    raw
+    Returns: stripped string, or None
+    """
     if raw is None:
         return None
     s = str(raw).strip()
@@ -97,7 +112,12 @@ def clean_cell(raw):
 
 
 def strip_label(raw):
-    """Accept '1', '1 (FINE)', or '4 (SOFT)' -> the leading integer as a string."""
+    """
+    Remove a parenthetical label from a numeric matrix value.
+
+    Args:    raw  e.g. "1", "1 (FINE)", or "4 (SOFT)"
+    Returns: leading integer string, original value, or None
+    """
     s = clean_cell(raw)
     if s is None:
         return None
@@ -109,7 +129,12 @@ def strip_label(raw):
 
 
 def strip_paren_note(raw):
-    """'UmfPack (or ProfileSPD)' -> 'UmfPack'."""
+    """
+    Remove a trailing parenthetical note.
+
+    Args:    raw  e.g. "UmfPack (or ProfileSPD)"
+    Returns: base value, or None
+    """
     s = clean_cell(raw)
     if s is None:
         return None
@@ -119,6 +144,12 @@ def strip_paren_note(raw):
 
 
 def enum_soil_ele(raw):
+    """
+    Normalize accepted soil-element spellings.
+
+    Args:    raw
+    Returns: "SSPquad", "quad", original value, or None
+    """
     s = clean_cell(raw)
     if s is None:
         return None
@@ -131,6 +162,12 @@ def enum_soil_ele(raw):
 
 
 def enum_constitutive(raw):
+    """
+    Normalize the soil constitutive name to lowercase.
+
+    Args:    raw
+    Returns: lowercase value, or None
+    """
     s = clean_cell(raw)
     if s is None:
         return None
@@ -138,19 +175,34 @@ def enum_constitutive(raw):
 
 
 def tcl_quote(s):
-    """Wrap a string for Tcl: set x \"...\""""
+    """
+    Quote a string for a Tcl set command and normalize slashes.
+
+    Args:    s
+    Returns: Tcl double-quoted string
+    """
     return '"' + s.replace("\\", "/").replace('"', '\\"') + '"'
 
 
 def tcl_number_or_string(s):
-    """Use bare number if it looks numeric; else a quoted string."""
+    """
+    Keep numeric values bare and quote all other Tcl values.
+
+    Args:    s
+    Returns: Tcl value token
+    """
     if re.match(r"^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$", s):
         return s
     return tcl_quote(s)
 
 
 def slug(text, max_len=24):
-    """Filesystem-safe short name from Name/Goal."""
+    """
+    Build a short filesystem-safe token from Name or Goal.
+
+    Args:    text, max_len
+    Returns: slug string
+    """
     if not text:
         return ""
     out = []
@@ -163,8 +215,18 @@ def slug(text, max_len=24):
     return s[:max_len]
 
 
+# ------------------------------------------------------------
+# 3. RUN-ID CONVENTIONS
+# ------------------------------------------------------------
+
+
 def canon_run_id(raw):
-    """'8'/'+8'/'8.0' -> '8'; '-8' -> '-8'. No run 0."""
+    """
+    Canonicalize a nonzero signed run ID.
+
+    Args:    raw  e.g. "8", "+8", "8.0", or "-8"
+    Returns: canonical ID string, or None
+    """
     s = clean_cell(raw)
     if s is None:
         return None
@@ -181,20 +243,36 @@ def canon_run_id(raw):
 
 
 def run_handler(canon):
-    """+N -> Auto; -N -> Transformation."""
+    """
+    Map run sign to the required constraint handler.
+
+    Args:    canon  canonical run ID
+    Returns: "Auto" or "Transformation"
+    """
     if canon.startswith("-"):
         return "Transformation"
     return "Auto"
 
 
 def run_out_tag(canon):
-    """Filesystem slug: r+01, r-01, r+08, r-13."""
+    """
+    Format a canonical run ID for an output-directory name.
+
+    Args:    canon
+    Returns: tag such as r+01 or r-13
+    """
     if canon.startswith("-"):
         return "r-" + canon[1:].zfill(2)
     return "r+" + canon.zfill(2)
 
 
 def find_row(rows, row_id):
+    """
+    Find one TestMatrix row by canonical run ID.
+
+    Args:    rows, row_id
+    Returns: matching row dictionary, or None
+    """
     want = canon_run_id(row_id)
     if want is None:
         return None
@@ -205,7 +283,18 @@ def find_row(rows, row_id):
     return None
 
 
+# ------------------------------------------------------------
+# 4. READ MATRIX AND WRITE OVERRIDES
+# ------------------------------------------------------------
+
+
 def main():
+    """
+    Parse CLI options and write Overrides.tcl for one matrix row.
+
+    Args:    command-line arguments from argparse
+    Returns: none (exits on invalid input; writes Overrides.tcl)
+    """
     parser = argparse.ArgumentParser(
         description="Write Overrides.tcl from one TestMatrix.csv row."
     )

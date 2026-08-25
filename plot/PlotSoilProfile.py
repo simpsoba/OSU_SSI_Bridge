@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""Soil continuum parameters vs depth from plot/soil_profile.json.
+"""
+Goals
+-----
+Plot soil continuum parameters versus depth from soil_profile.json.
+Separate the general material overview from the full PDMY02 argument card.
 
   python3 plot/PlotSoilProfile.py [in.json] [out_dir]
 
-Default → plot/out/profile{N}/soil_profile/{overview,pdmy02}.png
+Default output:
+  plot/out/profile{N}/soil_profile/{overview,pdmy02}.png
 """
 
 from __future__ import annotations
@@ -19,16 +24,37 @@ from paths import HERE, soil_profile_dir
 
 DEFAULT_JSON = HERE / "soil_profile.json"
 
+# ------------------------------------------------------------
+# 1. LAYER STYLE
+# ------------------------------------------------------------
+
 LAYER_SAND = "#fff3e0"
 LAYER_CLAY = "#e3f2fd"
 
 
+# ------------------------------------------------------------
+# 2. INPUT AND DEPTH-PLOT HELPERS
+# ------------------------------------------------------------
+
+
 def load(path: Path) -> dict:
+    """
+    Read one soil-profile JSON file.
+
+    Args:    path
+    Returns: decoded profile dictionary
+    """
     with path.open() as f:
         return json.load(f)
 
 
 def shade_layers(ax, layers: list[dict]) -> None:
+    """
+    Shade contiguous soil layers and label them by name.
+
+    Args:    ax, layers
+    Returns: none (updates ax)
+    """
     i = 0
     n = len(layers)
     while i < n:
@@ -57,6 +83,12 @@ def shade_layers(ax, layers: list[dict]) -> None:
 
 
 def style_depth(ax, zmax: float) -> None:
+    """
+    Apply the common downward-positive depth axis style.
+
+    Args:    ax, zmax  maximum depth (m)
+    Returns: none (updates ax)
+    """
     ax.set_ylim(zmax * 1.02, 0.0)
     ax.set_ylabel("Depth below grade (m)")
     ax.grid(True, which="both", ls=":", alpha=0.45)
@@ -65,6 +97,12 @@ def style_depth(ax, zmax: float) -> None:
 
 
 def step_xy(layers: list[dict], key: str, scale: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Expand one layer value into a vertical step profile.
+
+    Args:    layers, key, scale
+    Returns: (values, depths) arrays
+    """
     zs: list[float] = []
     vs: list[float] = []
     for L in layers:
@@ -79,17 +117,40 @@ def step_xy(layers: list[dict], key: str, scale: float = 1.0) -> tuple[np.ndarra
 
 
 def plot_step(ax, layers, key, *, scale=1.0, color="#1565c0", label=None, ls="-"):
+    """
+    Plot one layer-wise property as a depth step.
+
+    Args:    ax, layers, key, scale, color, label, ls
+    Returns: none (updates ax)
+    """
     x, z = step_xy(layers, key, scale)
     ax.plot(x, z, ls, color=color, lw=1.8, label=label)
 
 
 def twin_legend(ax, ax2, loc="lower right"):
+    """
+    Combine legends from a primary and twinned x axis.
+
+    Args:    ax, ax2, loc
+    Returns: none (updates ax)
+    """
     h1, l1 = ax.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
     ax.legend(h1 + h2, l1 + l2, fontsize=8, loc=loc, framealpha=0.9)
 
 
+# ------------------------------------------------------------
+# 3. SOIL-PARAMETER OVERVIEW
+# ------------------------------------------------------------
+
+
 def plot_overview(data: dict, layers: list[dict], out: Path) -> None:
+    """
+    Write the eight-panel soil-parameter overview.
+
+    Args:    data, layers, out  destination PNG
+    Returns: none (writes PNG)
+    """
     zmax = max(float(L["depthBot"]) for L in layers)
     prof = int(data.get("soilProfile", 0))
 
@@ -199,8 +260,18 @@ def plot_overview(data: dict, layers: list[dict], out: Path) -> None:
     print(f"PlotSoilProfile: wrote {out}")
 
 
+# ------------------------------------------------------------
+# 4. PDMY02 MATERIAL CARD
+# ------------------------------------------------------------
+
+
 def plot_pdmy02(data: dict, layers: list[dict], out: Path) -> None:
-    """Full PDMY02 argument card vs depth (clay bands blank / N/A)."""
+    """
+    Write the full PDMY02 argument card versus depth.
+
+    Args:    data, layers, out  destination PNG
+    Returns: none (writes PNG; skips when no sand is present)
+    """
     zmax = max(float(L["depthBot"]) for L in layers)
     prof = int(data.get("soilProfile", 0))
     sands = [L for L in layers if L.get("sand")]
@@ -289,7 +360,18 @@ def plot_pdmy02(data: dict, layers: list[dict], out: Path) -> None:
     print(f"PlotSoilProfile: wrote {out}")
 
 
+# ------------------------------------------------------------
+# 5. COMMAND-LINE ENTRY POINT
+# ------------------------------------------------------------
+
+
 def main() -> int:
+    """
+    Read profile data and write both soil-profile figures.
+
+    Args:    command-line arguments in sys.argv
+    Returns: process status code
+    """
     json_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_JSON
     if not json_path.is_file():
         print(
