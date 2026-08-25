@@ -1,0 +1,198 @@
+{
+  "_comment": "Simulink .mat -> OpenSees dump. Lab Time = real (model scale); OpenSees t = numerical (prototype). Froude: ×√2.4. Paired by row name, np/Core, wall-clock order, and Time_last×√2.4 ≈ t_os_last.",
+  "mats": {
+    "0821_testBaseline_Run01.mat": {
+      "run": null,
+      "row": null,
+      "note": "short baseline (~107 s lab); no matching OpenSees dump"
+    },
+    "0821_testBaseline_Run02.mat": {
+      "run": "r+01_20260821_0836_Storm_Wave",
+      "row": "+01",
+      "note": "early r+01 (baseline naming)"
+    },
+    "0821_GusBridge_rowPos1.mat": {
+      "run": "r+01_20260821_0930_Storm_Wave",
+      "row": "+01",
+      "note": "np=8"
+    },
+    "0821_GusBridge_rowPos1_16Core.mat": {
+      "run": "r+01_20260821_0949_Storm_Wave",
+      "row": "+01",
+      "note": "np=16"
+    },
+    "0821_GusBridge_rowNeg2_8Core.mat": {
+      "run": "r-02_20260821_1601_Storm_Wave",
+      "row": "-02",
+      "note": "np=8"
+    },
+    "0821_GusBridge_rowNeg2_16Core.mat": {
+      "run": null,
+      "row": "-02",
+      "note": "~121 s lab; OpenSees dump not on Drive"
+    },
+    "0821_GusBridge_rowNeg4.mat": {
+      "run": "r-04_20260821_1010_Storm_Wave",
+      "row": "-04",
+      "note": "morning run"
+    },
+    "0821_GusBridge_rowNeg4_8Core_P1.mat": {
+      "run": "r-04_20260821_1625_Storm_Wave",
+      "row": "-04",
+      "note": "np=8 P1"
+    },
+    "0821_GusBridge_rowNeg6_Serial.mat": {
+      "run": "r-06_20260821_1528_Storm_Wave",
+      "row": "-06",
+      "note": "serial / incomplete (~128 s OS)"
+    },
+    "0821_GusBridge_rowNeg8.mat": {
+      "run": "r-08_20260821_1034_Storm_Wave",
+      "row": "-08",
+      "note": null
+    },
+    "0821_GusBridge_rowNeg8_16Core.mat": {
+      "run": null,
+      "row": "-08",
+      "note": "np=16; ~201 s lab; OpenSees dump not on Drive"
+    },
+    "0821_GusBridge_rowNeg80.mat": {
+      "run": "r-80_20260821_1054_Storm_Wave",
+      "row": "-80",
+      "note": "incomplete analysis"
+    },
+    "0821_GusBridge_rowNeg81.mat": {
+      "run": "r-81_20260821_1058_Storm_Wave",
+      "row": "-81",
+      "note": "incomplete analysis"
+    },
+    "0821_GusBridge_rowNeg9.mat": {
+      "run": "r-09_20260821_1102_Storm_Wave",
+      "row": "-09",
+      "note": "np=8"
+    },
+    "0821_GusBridge_rowNeg9_16Core.mat": {
+      "run": "r-09_20260821_1108_Storm_Wave",
+      "row": "-09",
+      "note": "np=16"
+    },
+    "0821_GusBridge_rowNeg9_18Core.mat": {
+      "run": null,
+      "row": "-09",
+      "note": "np=18; ~202 s lab; OpenSees dump not on Drive"
+    },
+    "0821_GusBridge_rowNeg9_19Core.mat": {
+      "run": null,
+      "row": "-09",
+      "note": "np=19; ~202 s lab; OpenSees dump not on Drive"
+    },
+    "0821_GusBridge_rowNeg9_20Core.mat": {
+      "run": "r-09_20260821_1303_Storm_Wave",
+      "row": "-09",
+      "note": "np=20"
+    },
+    "0821_GusBridge_rowNeg9_22Core.mat": {
+      "run": null,
+      "row": "-09",
+      "note": "np=22; ~207 s lab; OpenSees dump not on Drive"
+    },
+    "0821_GusBridge_rowNeg91_16Core.mat": {
+      "run": "r-91_20260821_1342_Storm_Wave",
+      "row": "-91",
+      "note": "np=16"
+    },
+    "0821_GusBridge_rowNeg91_20Core.mat": {
+      "run": "r-91_20260821_1358_Storm_Wave",
+      "row": "-91",
+      "note": "np=20"
+    },
+    "0821_GusBridge_rowNeg10_20Core.mat": {
+      "run": null,
+      "row": "-10",
+      "note": "~214 s lab; short / no matching dump"
+    },
+    "0821_GusBridge_rowNeg10_22Core.mat": {
+      "run": null,
+      "row": "-10",
+      "note": "~201 s lab; short / no matching dump"
+    },
+    "0821_GusBridge_rowNeg10_24Core.mat": {
+      "run": null,
+      "row": "-10",
+      "note": "~200 s lab; short / no matching dump"
+    },
+    "0821_GusBridge_rowNeg10_24Core_duplicate.mat": {
+      "run": "r-10_20260821_1312_Storm_Wave",
+      "row": "-10",
+      "note": "np=24; full-length mat (duplicate naming)"
+    },
+    "0821_GusBridge_rowNeg10_26Core.mat": {
+      "run": null,
+      "row": "-10",
+      "note": "~201 s lab; short / no matching dump"
+    },
+    "0821_GusBridge_rowNeg10_28Core.mat": {
+      "run": null,
+      "row": "-10",
+      "note": "~207 s lab; short / no matching dump"
+    },
+    "0821_GusBridge_rowNeg11_8Core.mat": {
+      "run": "r-11_20260821_1451_Storm_Wave",
+      "row": "-11",
+      "note": "np=8"
+    },
+    "0821_GusBridge_rowNeg120_20Core.mat": {
+      "run": "r-120_20260821_1512_Storm_Wave",
+      "row": "-120",
+      "note": "np=20; very short (~17 s OS)"
+    },
+    "0821_GusBridge_rowNeg121_20Core.mat": {
+      "run": "r-121_20260821_1516_Storm_Wave",
+      "row": "-121",
+      "note": "np=20; very short (~16 s OS)"
+    },
+    "0821_GusBridge_rowNeg13_8Core.mat": {
+      "run": "r-13_20260821_1535_Storm_Wave",
+      "row": "-13",
+      "note": "np=8"
+    },
+    "0821_GusBridge_rowNeg14_8Core.mat": {
+      "run": "r-14_20260821_1544_Storm_Wave",
+      "row": "-14",
+      "note": "np=8"
+    },
+    "0821_GusBridge_rowNeg15_8Core.mat": {
+      "run": "r-15_20260821_1521_Storm_Wave",
+      "row": "-15",
+      "note": "np=8"
+    },
+    "0821_GusBridge_rowNeg16_8Core_P1.mat": {
+      "run": "r-16_20260821_1639_Storm_Wave",
+      "row": "-16",
+      "note": "np=8 P1; incomplete (~109 s OS)"
+    },
+    "0821_GusBridge_rowNeg16_8Core_P1_alpha0.mat": {
+      "run": null,
+      "row": "-16",
+      "note": "~34 s lab; no matching dump"
+    },
+    "0821_GusBridge_rowNeg16_8Core_P1_alpha0_dry.mat": {
+      "run": "r-16_20260821_1644_Storm_Wave",
+      "row": "-16",
+      "note": "np=8 P1 alpha0 dry; incomplete (~59 s OS)"
+    },
+    "0821_GusBridge_rowNeg17_8Core_P1.mat": {
+      "run": "r-17_20260821_1649_Storm_Wave",
+      "row": "-17",
+      "note": "np=8 P1"
+    }
+  },
+  "runs_without_mat": [
+    "r-04_20260821_1515_Storm_Wave",
+    "r-04_20260821_1520_Storm_Wave",
+    "r-04_20260821_1615_Storm_Wave",
+    "r-09_20260821_1132_Storm_Wave",
+    "r-12_20260821_1503_Storm_Wave",
+    "r-16_20260821_1622_Storm_Wave"
+  ]
+}

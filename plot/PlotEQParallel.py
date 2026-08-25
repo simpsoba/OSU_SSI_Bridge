@@ -3,16 +3,16 @@
 
   python3 plot/PlotEQParallel.py
   python3 plot/PlotEQParallel.py /path/to/eqOutDir
-  python3 plot/PlotEQParallel.py /path/to/eqOutDir --plots-out OSU_SSI_PLOTS/run
+  python3 plot/PlotEQParallel.py /path/to/eqOutDir --plots-out DIR
 
 Reads np from window_meta.txt.0 (must match ranks 0..np-1). Stitches a serial
 folder, then calls PlotEQ.py. Lean window quads get corners from
 model_sketch.json here (PlotEQ.py stays serial-only).
 Panels: the DO_* switches in PlotEQ.py.
 
-Lab dumps under OSU_SSI_BRIDGE_DATA / Drive `opensees data` write PNGs to
-OSU_SSI_PLOTS/<run>/ (dump stays read-only). Local plot/out dumps still get
-<eqOutDir>/plots/.
+Lab dumps under Shared Drive / OSU_SSI_BRIDGE_DATA write PNGs to
+OSU_SSI_BRIDGE_DATA_LOCAL/plots/<run>/ (dump stays read-only). Local plot/out
+dumps still get <eqOutDir>/plots/.
 """
 
 from __future__ import annotations
@@ -26,6 +26,12 @@ from pathlib import Path
 import numpy as np
 
 import PlotEQ as peq
+from lab_paths import (
+    DRIVE_ROOT,
+    LOCAL_OPENSEES_DATA,
+    SHARED_DRIVE_OPENSEES_DATA,
+    plots_root,
+)
 from paths import HERE, elevation_dir, eq_dir
 
 EQ_OUT = eq_dir(4, "Shin", "SSPquad", "lumpedPlasticity", "parallel")
@@ -510,14 +516,14 @@ def stitch(eq: Path, dest: Path, np_run: int, metas: dict[int, dict[str, str]]) 
 
 
 REPO = HERE.parent
-PLOTS_ROOT = REPO / "OSU_SSI_PLOTS"
+PLOTS_ROOT = plots_root()
 
 HELP = """\
 usage: python3 plot/PlotEQParallel.py [eqOutDir] [--plots-out DIR]
 
   eqOutDir     MP recorder folder (default: EQ_OUT in this file)
-  --plots-out  write PNGs here (flat). Lab dumps under OSU_SSI_BRIDGE_DATA /
-               Drive `opensees data` default to OSU_SSI_PLOTS/<runName>/ so the
+  --plots-out  write PNGs here (flat). Lab dumps under Shared Drive /
+               OSU_SSI_BRIDGE_DATA default to LOCAL/plots/<runName>/ so the
                dump folder stays read-only.
   else         <eqOutDir>/plots/   (local plot/out style)
   np           from window_meta.txt.0; ranks must be 0..np-1
@@ -525,17 +531,20 @@ usage: python3 plot/PlotEQParallel.py [eqOutDir] [--plots-out DIR]
 
 
 def _is_lab_dump(eq: Path) -> bool:
-    """True if eq lives on the Drive data junction / shared opensees data folder."""
-    s = str(eq).replace("\\", "/").lower()
-    if "osu_ssi_bridge_data" in s:
-        return True
-    if "shortcut-targets-by-id" in s and "opensees data" in s:
-        return True
+    """True if eq lives on Shared Drive archive / junction / LOCAL mirror."""
     try:
-        eq.resolve().relative_to((REPO / "OSU_SSI_BRIDGE_DATA").resolve())
-        return True
-    except (ValueError, OSError):
-        return False
+        resolved = eq.resolve()
+    except OSError:
+        resolved = eq
+    s = str(resolved).replace("\\", "/").lower()
+    markers = (
+        str(SHARED_DRIVE_OPENSEES_DATA).replace("\\", "/").lower(),
+        str(DRIVE_ROOT).replace("\\", "/").lower(),
+        str(LOCAL_OPENSEES_DATA).replace("\\", "/").lower(),
+        "shortcut-targets-by-id",
+        "/opensees data",
+    )
+    return any(m and m in s for m in markers)
 
 
 def _parse_argv(argv: list[str]) -> tuple[Path, Path | None]:

@@ -46,7 +46,7 @@ DO_QUAD_PEAK = 1      # window peak |tau_xy| and |gamma_xy|
 DO_QUAD_HYST = 1      # tau_xy vs gamma_xy vs depth (center + near-FF columns)
 DO_HINGE = 1          # pier hinge hist + M-rot, P-axial, P-M, axial-rot
 DO_PILE_SEC = 1       # pile M-kappa hyst; peak M and kappa vs depth
-DO_FRAMES = 1         # window deform snapshots + MP4
+DO_FRAMES = 0         # window deform snapshots + MP4 (off for batch lab post-process)
 
 N_FRAMES = 0          # >0 = that many equally spaced; 0 = use FRAME_FPS
 FRAME_FPS = 30        # max PNGs per second of analysis (0 = every recorded sample)
@@ -265,8 +265,11 @@ def sym_xlim(ax, *vals: np.ndarray, pad: float = 1.05) -> None:
     for v in vals:
         if v is None or len(np.atleast_1d(v)) == 0:
             continue
-        m = max(m, float(np.nanmax(np.abs(v))))
-    if m <= 0:
+        a = np.asarray(v, dtype=float)
+        if not np.isfinite(a).any():
+            continue
+        m = max(m, float(np.nanmax(np.abs(a))))
+    if not np.isfinite(m) or m <= 0:
         m = 1.0
     ax.set_xlim(-pad * m, pad * m)
 
@@ -833,18 +836,27 @@ def plot_window_peak_field(
     znode /= np.maximum(cnt, 1.0)
 
     fig, ax = plt.subplots(figsize=(6.4, 8.0), constrained_layout=True)
+    vals = np.asarray(values, dtype=float)
+    face_v = vals[face]
+    if not np.isfinite(face_v).any():
+        print(f"PlotEQ: skip {name} (all-NaN field)")
+        plt.close(fig)
+        return
+    face_v = np.nan_to_num(face_v, nan=0.0)
+    zplot = np.nan_to_num(znode, nan=0.0)
     tpc = ax.tripcolor(
         tri,
-        facecolors=values[face],
+        facecolors=face_v,
         cmap="inferno",
         edgecolors="none",
         shading="flat",
     )
-    vmax = float(np.nanmax(values))
-    if vmax <= 0:
+    vmax = float(np.nanmax(face_v))
+    if not np.isfinite(vmax) or vmax <= 0:
         vmax = 1.0
     tpc.set_clim(0.0, vmax)
-    ax.tricontour(tri, znode, levels=8, colors="k", linewidths=0.35, alpha=0.45)
+    if np.isfinite(zplot).any() and float(np.nanmax(zplot) - np.nanmin(zplot)) > 0:
+        ax.tricontour(tri, zplot, levels=8, colors="k", linewidths=0.35, alpha=0.45)
     segs = []
     for a, b in lines:
         if a in xy and b in xy and max(a, b) < soil_base:
@@ -1309,8 +1321,12 @@ def plot_x_env(
         ax.plot(x, -cap_pos, color=GRAY, lw=1.2)
         ylim_vals = (vmin, vmax, cap_pos)
     ax.axhline(0.0, color="#bbb", lw=0.8)
-    m = max(float(np.nanmax(np.abs(v))) for v in ylim_vals)
-    if m <= 0:
+    m = 0.0
+    for v in ylim_vals:
+        a = np.asarray(v, dtype=float)
+        if a.size and np.isfinite(a).any():
+            m = max(m, float(np.nanmax(np.abs(a))))
+    if not np.isfinite(m) or m <= 0.0:
         m = 1.0
     ax.set_ylim(-1.05 * m, 1.05 * m)
     ax.set_xlabel("x (m)")

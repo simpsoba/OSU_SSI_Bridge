@@ -7,10 +7,13 @@ output/
 # Archived EQ dumps (named copies of trial1 / outDIR)
 runs/
 
-# Junction -> G:\My Drive\OSU_SSI_BRIDGE_DATA (lab dumps; read-only source)
+# Junction → Shared Drive …/2026-08-21-OSU-SSI-Bridge/opensees_data (read-only)
 OSU_SSI_BRIDGE_DATA/
 
-# Local post-process plots from Drive dumps (not the dump archive)
+# Local mirror + plots (opensees_data/, plots/, mat_extract/; SyncLabBackup.py)
+OSU_SSI_BRIDGE_DATA_LOCAL/
+
+# Legacy plot root (migrated to OSU_SSI_BRIDGE_DATA_LOCAL/plots/)
 OSU_SSI_PLOTS/
 
 # Matrix-generated knob overrides (recreate with RunTestMatrix.py --row N)
