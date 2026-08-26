@@ -5,7 +5,17 @@ Companion to `mat_run_map.json` (used by the plot scripts).
 
 **Archive:** `G:\Shared drives\Simpson team\Test Data\2026-08-21-OSU-SSI-Bridge\opensees_data\`  
 **Machine mirror:** `OSU_SSI_BRIDGE_DATA_LOCAL/opensees_data/` (gitignored)  
-**Plots:** `OSU_SSI_BRIDGE_DATA_LOCAL/plots/`
+**Plots:** `OSU_SSI_BRIDGE_DATA_LOCAL/plots/` — `runs/<dump>/{eq,os}/`, `mats/<stem>/os/`, `compare/<group>/`
+
+**Loading (2026-08-21):** folder names may include `Storm_Wave` (matrix / wave-catalog nickname).
+None of these runs are storm-wave-only. The OpenSees record is earthquake motion (then free
+vib / continued time), with the flume **tsunami** timed relative to the EQ per the lab.
+
+**Compare reference:** eventual true reference is offline OpenSees for each folder
+(`realTimeON 0`, no OpenFresco / Simulink). Until those exist, pairwise overlays
+(`plot/PlotEQComparePairs.py`) use the dump with the fewest `typeConv3→2` slowdowns
+inside the GM D5–95 window as the interim reference. Skip testBaseline mats and
+single-precision CuDSS runs (unstable OpenSees recorders).
 
 ---
 
@@ -22,6 +32,9 @@ Froude scale λ = 2.4 → multiply lab time by √λ for prototype overlays.
 **Slowdowns:** `stateOS` column 0 (`typeConv3`) = 2 marks OpenFresco waits. Many brief events
 (100–500+) can still give duration ratio ≈ 1.0 if wall time in state 2 stays below ~1%.
 
+**stateOS field guide:** `plot/opensees_data/STATEOS_SIGNALS.md` — Seki et al. (2026) §2.1
+signal-generation states, `typeConv3` / flag / count mapping, tar→com→mea, clocks.
+
 ---
 
 ## Confirmed pairs (mat ↔ dump)
@@ -37,14 +50,14 @@ Froude scale λ = 2.4 → multiply lab time by √λ for prototype overlays.
 | 08 | 10:58 | `0821_GusBridge_rowNeg81.mat` | `r-81_20260821_1058_Storm_Wave` | 8 | heavy slowdown | paired, incomplete OS |
 | 09 | 11:02 | `0821_GusBridge_rowNeg9.mat` | `r-09_20260821_1102_Storm_Wave` | 8 | ≥4 holds | paired |
 | 10 | 11:08 | `0821_GusBridge_rowNeg9_16Core.mat` | `r-09_20260821_1108_Storm_Wave` | 16 | ignore first 20 s | paired |
-| 11 | 11:32 | `0821_GusBridge_rowNeg9_24Core.mat` | `r-09_20260821_1132_Storm_Wave` | 24 | 1 hold | **mat pending upload** |
+| 11 | 11:32 | `0821_GusBridge_rowNeg9_24Core.mat` | `r-09_20260821_1132_Storm_Wave` | 24 | 1 hold | **mat not yet on Drive Simulink/** |
 | — | 13:03 | `0821_GusBridge_rowNeg9_20Core.mat` | `r-09_20260821_1303_Storm_Wave` | 20 | ~5 slowdowns | paired |
 | — | 13:12 | `0821_GusBridge_rowNeg10_24Core_duplicate.mat` | `r-10_20260821_1312_Storm_Wave` | 24 | heavy slowdowns | paired |
 | — | 13:42 | `0821_GusBridge_rowNeg91_16Core.mat` | `r-91_20260821_1342_Storm_Wave` | 16 | heavy slowdowns | paired |
 | — | 13:58 | `0821_GusBridge_rowNeg91_20Core.mat` | `r-91_20260821_1358_Storm_Wave` | 20 | heavy slowdowns | paired |
 | 17 | 14:51 | `0821_GusBridge_rowNeg11_8Core.mat` | `r-11_20260821_1451_Storm_Wave` | 8 | 2 slowdowns | paired |
 | 20 | 15:21 | `0821_GusBridge_rowNeg15_8Core.mat` | `r-15_20260821_1521_Storm_Wave` | 8 | 3 holds, 9 slowdowns | paired |
-| 22 | 15:28 | `0821_GusBridge_rowNeg6_Serial.mat` | `r-06_20260821_1528_Storm_Wave` | 1 | ≥35 holds; ~2/3 slowdown; ~80 s lab | paired, incomplete OS |
+| 22 | 15:28 | `0821_GusBridge_rowNeg6_Serial.mat` | `r-06_20260821_1528_Storm_Wave` | 1 | serial `Run.tcl`; ≥35 holds; ~2/3 slowdown; ~80 s lab | paired, incomplete OS |
 | 23 | 15:35 | `0821_GusBridge_rowNeg13_8Core.mat` | `r-13_20260821_1535_Storm_Wave` | 8 | no slowdowns | paired |
 | 24 | 15:44 | `0821_GusBridge_rowNeg14_8Core.mat` | `r-14_20260821_1544_Storm_Wave` | 8 | 1 slowdown @ 10 s | paired |
 | — | 15:12 | `0821_GusBridge_rowNeg120_20Core.mat` | `r-120_20260821_1512_Storm_Wave` | 20 | retry after 1503 NAN | paired, very short OS |
@@ -52,7 +65,7 @@ Froude scale λ = 2.4 → multiply lab time by √λ for prototype overlays.
 | 26 | 16:01 | `0821_GusBridge_rowNeg2_8Core.mat` | `r-02_20260821_1601_Storm_Wave` | 8 | ~10 slowdowns, 1–2 holds | paired |
 | 27 | 16:25 | `0821_GusBridge_rowNeg4_8Core_P1.mat` | `r-04_20260821_1625_Storm_Wave` | 8 | 1 slowdown | paired |
 | 28 | 16:39 | `0821_GusBridge_rowNeg16_8Core_P1.mat` | `r-16_20260821_1639_Storm_Wave` | 8 | crazy signal; 1 slowdown @ 25 s | paired, incomplete OS |
-| 29 | 16:44 | `0821_GusBridge_rowNeg16_8Core_P1_alpha0.mat` | `r-16_20260821_1644_Storm_Wave` | 8 | CudaMKRAlpha 0.0 | paired |
+| 29 | 16:44 | `0821_GusBridge_rowNeg16_8Core_P1_alpha0.mat` | `r-16_20260821_1644_Storm_Wave` | 8 | CudaMKRAlpha **0.0** (rhoInf) | paired |
 | 29 | 16:44 | `0821_GusBridge_rowNeg16_8Core_P1_alpha0_dry.mat` | `r-16_20260821_1644_Storm_Wave` | 8 | same session as row above | duplicate mat |
 | 30 | 16:49 | `0821_GusBridge_rowNeg17_8Core_P1.mat` | `r-17_20260821_1649_Storm_Wave` | 8 | no slowdown | paired |
 
@@ -64,8 +77,8 @@ Trial numbers without a row in the morning/afternoon sheets (np sweeps, extra se
 
 | Item | Expected partner | Notes |
 |------|------------------|-------|
-| `0821_GusBridge_rowNeg9_24Core.mat` | `r-09_20260821_1132_Storm_Wave` | Trial 11; dump on Drive, mat not in Simulink yet |
-| `0821_GusBridge_rowNeg8_16Core.mat` | new dump ~12:45 wall clock | 16-core `-08`; folder not on Drive yet |
+| `0821_GusBridge_rowNeg9_24Core.mat` | `r-09_20260821_1132_Storm_Wave` | Trial 11; dump on Drive. **Mat not yet visible** under Drive `Simulink/` from this machine (as of 2026-08-26). |
+| OpenSees dump ~12:45 for `-08` np=16 | `0821_GusBridge_rowNeg8_16Core.mat` | **Mat is on Drive + LOCAL** (~201 s lab). Dump folder still missing (only `r-08_1034` np=8). |
 
 ---
 
@@ -87,7 +100,7 @@ Trial numbers without a row in the morning/afternoon sheets (np sweeps, extra se
 |-----|----------:|-------------|
 | `0821_testBaseline_Run01.mat` | ~107 | Short baseline; no OpenSees dump. |
 | `0821_GusBridge_rowNeg2_16Core.mat` | ~121 | 16-core `-02` probe; only `r-02_1601` (8-core) on Drive. Dry / np check or incomplete. |
-| `0821_GusBridge_rowNeg8_16Core.mat` | ~201 | 16-core `-08`; morning dump is 8-core `1034`. Awaiting ~1245 folder. |
+| `0821_GusBridge_rowNeg8_16Core.mat` | ~201 | 16-core `-08`; **mat on Drive/LOCAL**. Morning dump is 8-core `1034`. Awaiting ~12:45 dump folder. |
 | `0821_GusBridge_rowNeg9_18Core.mat`, `_19Core`, `_22Core` | ~202–207 | `-09` np sweeps; no dump (duration ratio ~0.73 vs full runs). Dry trials. |
 | `0821_GusBridge_rowNeg10_20Core.mat` … `_28Core` | ~200–214 | `-10` np sweeps; no dump. Use `Neg10_24Core_duplicate` for `r-10_1312`. |
 
@@ -111,8 +124,13 @@ Heavy event count but duration ratio still ≈ 1.0:
 - `rowNeg10_24Core_duplicate` (~97)
 - `rowNeg9_20Core` (~5–7)
 
-Clock desync matters for **realtime** overlays (`hist_ux_*_realtime.png`), not for rejecting
-these pairs. Use OpenSees-time plots or early-window correlation when unsure.
+Clock desync matters for **realtime** *OS plots (`hist_os_*`), not for rejecting
+these mat↔dump pairs. Use OpenSees-time pairwise plots or early-window correlation
+when unsure.
+
+For **pairwise** figures, only slowdowns inside GM **D5–95** (Arias on `FKSH19.NS1.VT2`;
+≈ 56–139 s on the prototype / `t_num` clock when `gmStartTime` = 0) count toward the
+interim reference. Full-record event totals above are still useful for lab-log notes.
 
 ---
 
@@ -126,6 +144,7 @@ Gaps look like **dry trials or NAN aborts** where one side was kept.
 
 ## Maintenance
 
-- Machine map: `plot/opensees_data/mat_run_map.json` (used by `PlotMatOS.py`, `PlotEQCompareRuns.py`).
+- Machine map: `plot/opensees_data/mat_run_map.json` (used by `PlotMatOS.py`, `PlotEQCompareRuns.py`, `PlotEQComparePairs.py`).
+- Plots: `LOCAL/plots/runs/<dump>/{eq,os}/`, `mats/<stem>/os/`, `compare/<group>/` (+ `pairs/`).
 - After Drive adds files: `python plot/SyncLabBackup.py`, then refresh plots.
 - Update this file when new pairs are confirmed or uploads land.
