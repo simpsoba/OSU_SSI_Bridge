@@ -17,7 +17,7 @@ To add another override:
   3. Run this script for the desired row.
 
 soilProfile and soilMesh may be bare numbers or labeled values such as
-``0 (PRODUCTION)``. Rayleigh columns map to analysis/RayleighDamping.tcl.
+``0 (BASELINE)``. Rayleigh columns map to analysis/RayleighDamping.tcl.
 Wave-catalog metadata is read only as metadata and is not written.
 
 This script writes Overrides.tcl; it does not launch OpenSees. Example launches:

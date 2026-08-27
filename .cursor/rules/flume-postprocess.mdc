@@ -1,5 +1,5 @@
 ---
-description: Post-process lab dumps from Shared Drive; write plots under LOCAL/plots
+description: Post-process lab dumps from LOCAL mirror; ingest/archive via SyncLabBackup
 alwaysApply: true
 ---
 
@@ -9,18 +9,42 @@ alwaysApply: true
 
 | Path | Role |
 |------|------|
-| `OSU_SSI_BRIDGE_DATA/` | Junction → Shared Drive `…/2026-08-21-OSU-SSI-Bridge/opensees_data` — **read-only** dumps |
-| Shared Drive archive | `G:\Shared drives\Simpson team\Test Data\2026-08-21-OSU-SSI-Bridge\` (`opensees_data/` + `README.txt`) |
-| `OSU_SSI_BRIDGE_DATA_LOCAL/` | Local working mirror (gitignored). Under `opensees_data/`: run dumps, `Simulink/`, `mat_extract/`, manifest. Plots under `plots/`. |
-| `OSU_SSI_BRIDGE_DATA_LOCAL/plots/` | All post-process PNGs (`<run>/`, `compare/<group>/`) |
-| `plot/opensees_data/TestMatrix_lab_runs.csv` | Curated as-run matrix (git-tracked). Edit by hand; not regenerated. Working copy may also sit at `LOCAL/TestMatrix_lab_runs.csv`. |
-| `plot/opensees_data/mat_run_map.json` | Simulink `.mat` ↔ OpenSees run folder dictionary (git-tracked; copied into local tree on sync) |
+| Live ingest (Drive Desktop) | `G:\.shortcut-targets-by-id\1s4OLDygoKnrdIonCT7Ht3w9ywrrtK_pz\opensees data` — **ingest only** via `SyncLabBackup.py` |
+| `OSU_SSI_BRIDGE_DATA_LOCAL/opensees_data/` | **Working mirror** — all plotters / compare / extract read here |
+| `OSU_SSI_BRIDGE_DATA/` | Junction → `LOCAL/opensees_data` (same local tree; not Shared Drive) |
+| Shared Drive archive | `G:\Shared drives\Simpson team\Test Data\2026-OSU-SSI-Bridge\<YYYY-MM-DD>\opensees_data\` — **safety copy** from LOCAL after ingest (not for plotting) |
+| `OSU_SSI_BRIDGE_DATA_LOCAL/plots/` | Post-process PNGs (see layout below) |
+| `plot/lab/TestMatrix_lab_runs.csv` | **As-run index** (git-tracked): **`Test`** = `W##` / `F##` / `Fd##` / `Fx##` + campaign columns; **`DateTime`**, **`DumpFolder`**, **`MatFile`**, **`LabTrial`**, **`Note`** at end. Copy: `LOCAL/TestMatrix_lab_runs.csv`. |
+| `plot/lab/1_Monopile_matrix.xlsx` | Lab schedule / **Run Log** (Wed+Fri RTHS trials). Source of Lab Trial IDs; not ground truth for dump knobs. |
+| `plot/lab/mat_run_map.json` | **Orphan / pending mats only** (not paired runs). |
+| `plot/lab/LAB_RUN_MAP.md` | Narrative: pairing method, clocks, pending — not a second table. |
 
-List runs from the junction / Shared Drive `opensees_data` folder (31 run dirs + `Simulink/`).
+### Plot layout
 
-**Read-only rule:** never leave `plots/` (or other outputs) inside a Drive dump folder. `PlotEQParallel.py` auto-routes lab dumps to `OSU_SSI_BRIDGE_DATA_LOCAL/plots/<run>/`. If a Drive-side `plots/` appears, delete it after copying. Do not write recorder dumps into `LOCAL/plots/`.
+```text
+plots/
+  runs/F##|W##/eq/    OpenSees EQ figures (PlotEQ / PlotEQParallel); stem = Test ID
+  runs/F##|W##/os/    Simulink *OS when a mat is mapped (incl. dry mat-only Fd##)
+  mats/<stem>/os/     legacy unmapped-mat path (prefer runs/<Test>/os/)
+  compare/{Baseline,Moderate,Large,X-Large}/<variant>/pairs/
+                      Pairwise overlays (hist_ux_pair_F##.png)
+  compare/_excluded/<reason>/<variant>/pairs/
+                      twoNodeLink / single-precision
+  compare/stateos/    Campaign stateOS bars (+ optional _with_dry)
+```
 
-**Local backup:** before/while post-processing, run `python plot/SyncLabBackup.py`. It copies new/changed Drive files into `OSU_SSI_BRIDGE_DATA_LOCAL/opensees_data/` (skips `plots/`) and extracts `data` + `*OS` from new Simulink mats to `…/opensees_data/mat_extract/*.npz`. Re-run whenever Drive has more data.
+List runs from **LOCAL** `opensees_data` (or the `OSU_SSI_BRIDGE_DATA` junction to it).  
+**Never** run PlotEQ* / PlotMatOS / compare against the shortcut-targets ingest path or Shared Drive.
+
+**Read-only / write rules:** never leave `plots/` inside a dump folder. `PlotEQParallel.py` routes lab dumps to `OSU_SSI_BRIDGE_DATA_LOCAL/plots/runs/<run>/eq/`. Do not write recorder dumps into `LOCAL/plots/`.
+
+**Sync:** `python plot/SyncLabBackup.py`
+
+1. Ingest new/changed files from shortcut-targets → `LOCAL/opensees_data/` (skips `plots/`).
+2. Archive LOCAL → Shared Drive `opensees_data/` (skips `mat_extract/`, `plots/`).
+3. Extract `data` + `*OS` from new Simulink mats to `LOCAL/…/mat_extract/*.npz`.
+
+Re-run whenever the ingest folder has new data. Use `--no-archive` only if the Shared Drive copy must wait.
 
 ## Infer from the dump — not from the CSV
 
@@ -32,45 +56,61 @@ Read what the files say:
 2. **`np`** — `np` in `window_meta.txt.0`; confirm ranks `0 .. np-1` exist for meta (PlotEQParallel already does this). Sparse recorder shards on some ranks are normal (lean dump).
 3. **Model knobs** — same meta: `soilProfile`, `soilBoundary`, `soilEleType`, `pierHinge`, `pileEleType`, `recordersON`, `Trec`, `freeVibT`, `dtAnalysis`, `gmVelFile`, …
 4. **What was recorded** — glob the folder (`pier_node_*.out.*`, `Elmt*_ctrlDsp.out`, springs, quads). Plot only what is present; do not assume every TestMatrix instrument is there.
-5. **Incomplete uploads** — if meta/disp/hinge files are missing, skip and report; recheck later (Drive sync). Incomplete *analyses* (t_last ≪ Trec) are still plotted.
+5. **Incomplete uploads** — if meta/disp/hinge files are missing, skip and report; recheck later (ingest sync). Incomplete *analyses* (t_last ≪ Trec) are still plotted.
 
 Folder names may include `Storm_Wave` / `Big_Tsunami` (wave-catalog label from the
-matrix). That is the wave type in the campaign, not “wave-only”: the OpenSees
-record is earthquake motion (then free vib / continued time), with the flume wave
-timed relative to the EQ per the lab. Infer loading from the dump and lab notes,
-not from the folder nickname alone.
+matrix). **Friday 2026-08-21:** earthquake followed by wave (not storm-wave-only).
+**Wednesday 2026-08-19:** EQ together with deep-water waves. The OpenSees record is
+EQ motion (then free vib / continued time), with the flume wave timed relative to
+the EQ per the lab. Infer loading from the dump and lab notes, not from the folder
+nickname alone.
+
+**Compare reference:** eventual true reference = offline OpenSees for each dump
+folder (`realTimeON 0`, no OpenFresco / Simulink). Until those exist, pairwise
+plots use the fewest `typeConv3→2` slowdowns inside GM D5–95 as the interim
+reference (`plot/PlotEQComparePairs.py`, `plot/gm_duration.py`). Exclude
+testBaseline mats, single-precision CuDSS runs (often NaN / blow-up), and twoNodeLink.
 
 ## Scripts
 
 Always use the plotters in `plot/`:
 
 - OpenSeesMP: `python plot/PlotEQParallel.py <eqOutDir>`  
-  Lab dumps → `OSU_SSI_BRIDGE_DATA_LOCAL/plots/<run>/` automatically (or `--plots-out DIR`).
-- Serial: `python plot/PlotEQ.py <eqOutDir>` (prefer copying PNGs out of Drive if that path is a lab dump).
-- Pier-top ux overlays: `python plot/PlotEQCompareRuns.py`  
-  → `OSU_SSI_BRIDGE_DATA_LOCAL/plots/compare/<group>/hist_ux_*.png`  
-  Groups from `TestMatrix_lab_runs.csv` model knobs (mesh, soil, element, constitutive,
-  hybrid/hold, non-default Rayleigh ξ) — not solver/`np`. Same physical model stays
-  in one folder so overlays are fair.  
-  → `hist_ux_*_realtime.png`: Simulink **meaSigOS** (no OpenSees interp); primary =
-  prototype, secondary = model (λ = 2.4).  
-  Mat ↔ run map: `plot/opensees_data/mat_run_map.json`
-- Backup + mat extract: `python plot/SyncLabBackup.py`
+  Point `<eqOutDir>` at **LOCAL** (or `OSU_SSI_BRIDGE_DATA/…`). Plots → `LOCAL/plots/runs/<run>/eq/`.
+- Serial: `python plot/PlotEQ.py <eqOutDir>` (same — local dumps only).
+- Pier-top ux (pairwise vs interim ref): `python plot/PlotEQComparePairs.py`
+  (same as `PlotEQCompareRuns.py`)
+  → `OSU_SSI_BRIDGE_DATA_LOCAL/plots/compare/<Mesh>/<variant>/pairs/hist_ux_pair_F##.png`
+  + `*_opensees.png` companions + `reference.txt`
+  (`Mesh` = Baseline / Moderate / Large / X-Large; excluded → `_excluded/<reason>/…`)
+  Primary = Simulink meaSigOS + stateOS (same lab clock). OpenSees pier is
+  optional (`*_opensees.png`) — do not mix clocks on one figure.
+  Axis labels: $t$, $\Delta u$ prototype; $t/\sqrt{\lambda}$, $\Delta u/\lambda$ model.
+  Interim ref = fewest `typeConv3→2` in GM D5–95 (exclude baseline / single-precision CuDSS / twoNodeLink); grey ref / navy other.
+  Groups from `TestMatrix_lab_runs.csv` model knobs (mesh folder + soil/ele/constitutive/hybrid/ξ) — not solver/`np`.
+  Mat ↔ run: `TestMatrix_lab_runs.csv` (`MatFile` column); orphans in `mat_run_map.json`
+- Backup + archive + mat extract: `python plot/SyncLabBackup.py`
 - Simulink *OS: `python plot/PlotMatOS.py`  
-  → per run: `hist_os_com.png`, `hist_os_state.png`, `hist_os_tar_com_mea.png`  
-  → compare: `OSU_SSI_BRIDGE_DATA_LOCAL/plots/compare/<group>/hist_os_com.png`, `hist_os_state.png`
+  → mapped: `plots/runs/<Test>/os/hist_os_*.png`  
+  → unmapped: `plots/mats/<stem>/os/hist_os_*.png`
+- `stateOS` / Seki §2.1: `plot/lab/STATEOS_SIGNALS.md`
+- Campaign `stateOS` typeConv3 stacked bars by **Test** ID: `python plot/PlotStateOSBars.py`
+  → `LOCAL/plots/compare/stateos/bar_typeconv3_eq35_90.png` (lab window [35, 90] s; hatched unfinished)
+  → `LOCAL/plots/compare/stateos/bar_typeconv3_full.png`
+  → `…_with_dry.png` companions include dry mat-only (`Fd##`)
+  (`Test` = `W##` Wed / `F##` Fri RTHS Trial / `Fd##` dry lunch / `Fx##` abort; dry mat-only have empty `DumpFolder`)
+  Interim ref / bars keep twoNodeLink and single-precision out; dry OpenFresco baseline (**F01**) is included.
 
 On this machine prefer Anaconda `python.exe` if `python` is the Windows Store stub.
 
 ## When the user asks to post-process
 
-1. List run folders under `OSU_SSI_BRIDGE_DATA/` (junction → Shared Drive archive).
-2. Run `SyncLabBackup.py` if Drive has new/changed files (or always — it skips unchanged).
-3. Skip runs that already have PNGs under `OSU_SSI_BRIDGE_DATA_LOCAL/plots/<run>/` unless re-plotting.
+1. Run `SyncLabBackup.py` (ingest → LOCAL → archive) if the shortcut-targets folder may have new files.
+2. List run folders under `OSU_SSI_BRIDGE_DATA_LOCAL/opensees_data/` (or `OSU_SSI_BRIDGE_DATA/`).
+3. Skip runs that already have PNGs under `OSU_SSI_BRIDGE_DATA_LOCAL/plots/runs/<run>/eq/` unless re-plotting.
 4. Inspect meta + file list; choose PlotEQ vs PlotEQParallel from the dump.
-5. Run the plotter on that dump folder (lab path → plots land in `LOCAL/plots`).
-6. Remove any accidental Drive-side `<run>/plots/` after a successful copy.
-7. Refresh compare overlays (`PlotEQCompareRuns.py`) when several runs exist.
-8. Sanity-check from the data: last sample vs meta `Trec`, no NaN/Inf, pier top ux, hinge, OpenFresco channels if present. Report oddities.
+5. Run the plotter on the **local** dump folder → plots land in `LOCAL/plots/runs/.../eq`.
+6. Refresh pairwise compare refs (`PlotEQComparePairs.py` / `PlotEQCompareRuns.py`) when several runs exist.
+7. Sanity-check from the data: last sample vs meta `Trec`, no NaN/Inf, pier top ux, hinge, OpenFresco channels if present. Report oddities.
 
 Do not commit dump files, `OSU_SSI_BRIDGE_DATA/`, `OSU_SSI_BRIDGE_DATA_LOCAL/`, or bulky plot PNGs.

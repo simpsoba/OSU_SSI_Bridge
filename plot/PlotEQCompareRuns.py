@@ -2,29 +2,30 @@
 """
 Goals
 -----
-Overlay pier-top Δux for lab dumps that share the same *physical* model
-(mesh, soil, element type, constitutive, hybrid hold, non-default ξ).
-Solver / np / integrator variants stay in one compare folder so overlays
-are fair.
+Entry point for pier-top compare plots by physical-model group.
 
   python plot/PlotEQCompareRuns.py
   python plot/PlotEQCompareRuns.py <runDir> ...
 
-Writes under OSU_SSI_BRIDGE_DATA_LOCAL/plots/compare/<group>/ :
+Writes only pairwise figures (interim ref vs each other dump):
 
-  hist_ux_complete.png          OpenSees pier_top (numerical t), complete only
-  hist_ux_all.png               same, complete + incomplete (*)
-  hist_ux_*_realtime.png        Simulink meaSigOS feedback (no OpenSees interp)
+  OSU_SSI_BRIDGE_DATA_LOCAL/plots/compare/<group>/pairs/
+    hist_ux_pair_<other>.png
+    reference.txt
+
+Same as `python plot/PlotEQComparePairs.py`. Shared dump I/O helpers in this
+file are imported by PlotEQComparePairs.
 
 Units (from lab_paths)
 ----------------------
   λ = 2.4 (cylinder length scale). Froude time scale = √λ.
-  OpenSees pier recorder: prototype time (s), prototype disp (m).
-  Mat Time / meaSigOS: model real time (s), model disp (m).
-  Realtime plots: primary axes = prototype; secondary = model (_m).
+  OpenSees pier recorder: numerical time t_num (s, prototype), disp (m).
+  Mat Time / meaSigOS: lab real time t_lab (s, model), disp (m).
 
-Groups come from TestMatrix_lab_runs.csv via compare_groups.py — not from
-folder nicknames alone.
+Groups come from TestMatrix_lab_runs.csv via compare_groups.py. Folder
+Storm_Wave nicknames on 2026-08-21 are EQ then tsunami, not storm-wave-only.
+Interim pairwise ref = fewest D5–95 slowdowns (exclude baseline / single-precision
+CuDSS); offline OpenSees (no OpenFresco) is the eventual true reference.
 """
 
 from __future__ import annotations
@@ -39,14 +40,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from compare_groups import dump_to_group, group_label, groups_by_dump
+from compare_groups import dump_to_group, group_label, groups_by_dump, legend_labels_for_dumps
 from lab_paths import (
     CYLINDER_LENGTH_SCALE,
     MAT_EXTRACT_DIR,
+    M_TO_MM,
     TIME_SCALE_FROUDE,
-    load_mat_run_map,
-    plots_root,
+    compare_plots_dir,
     resolve_opensees_data,
+    run_to_mat_from_csv,
 )
 from paths import HERE
 
@@ -54,11 +56,10 @@ from paths import HERE
 # knobs
 # ------------------------------------------------------------
 REPO = HERE.parent
-PLOTS_ROOT = plots_root()
 
 DPI = 300
 TREC_TOL_S = 1.0  # complete if t_last >= Trec - this (match PlotEQ)
-UX_ABS_MAX_CM = 100.0  # skip dumps that clearly diverged
+UX_ABS_MAX_MM = 1000.0  # skip dumps that clearly diverged (~100 cm)
 
 # r±NN_YYYYMMDD_HHMM_…
 FOLDER_RE = re.compile(r"^r([+-]?\d+)_(\d{8})_(\d{4})_", re.IGNORECASE)
@@ -83,11 +84,10 @@ usage: python plot/PlotEQCompareRuns.py [runDir ...]
 
   no args   dumps from TestMatrix_lab_runs.csv (grouped by model knobs)
   runDir    one or more dump folders (still grouped if in lab_runs)
-  output    OSU_SSI_BRIDGE_DATA_LOCAL/plots/compare/<group>/hist_ux_*.png
+  output    LOCAL/plots/compare/<group>/pairs/hist_ux_pair_*.png
   groups    soilMesh + soilProfile + soilEleType + constitutive +
             expElement + hold + non-default xi  (not solver/np)
-  complete  t_last >= Trec - 1 s
-  realtime  meaSigOS (actuator feedback); dual proto/model axes
+  ref       fewest typeConv3->2 in GM D5-95 (see PlotEQComparePairs)
 """
 
 
@@ -191,22 +191,22 @@ def sym_ylim(ax: plt.Axes, pad: float = 1.05) -> None:
 
 def dual_proto_model_axes(ax: plt.Axes) -> None:
     """
-    Primary (bottom/left) = prototype; secondary (top/right) = model.
+    Primary (bottom/left) = lab time on prototype scale; secondary = model.
 
-      t_m = t / √λ ,   u_m = u / λ
+      t_lab,proto = t_lab · √λ ,   u_m = u / λ
 
-    Args:    ax  (data already plotted in prototype units)
+    Args:    ax  (data already plotted in prototype units from mat Time)
     Returns: none
     """
     length_scale = CYLINDER_LENGTH_SCALE
     time_scale = TIME_SCALE_FROUDE
-    ax.set_xlabel(r"$t$ (s)")
-    ax.set_ylabel(r"$\Delta u$ (cm)")
+    ax.set_xlabel(r"$t_\mathrm{lab}\sqrt{\lambda}$ (s)")
+    ax.set_ylabel(r"$\Delta u$ (mm)")
     sec_x = ax.secondary_xaxis(
         "top",
         functions=(lambda t_proto: t_proto / time_scale, lambda t_model: t_model * time_scale),
     )
-    sec_x.set_xlabel(r"$t_\mathrm{m}$ (s)")
+    sec_x.set_xlabel(r"$t_\mathrm{lab}$ (s)")
     sec_y = ax.secondary_yaxis(
         "right",
         functions=(
@@ -214,7 +214,7 @@ def dual_proto_model_axes(ax: plt.Axes) -> None:
             lambda u_model: u_model * length_scale,
         ),
     )
-    sec_y.set_ylabel(r"$\Delta u_\mathrm{m}$ (cm)")
+    sec_y.set_ylabel(r"$\Delta u/\lambda$ (mm) model scale")
 
 
 # ------------------------------------------------------------
@@ -341,26 +341,23 @@ def eq_motion_end_s(eq_dir: Path, trec_s: float) -> float | None:
 
 def short_label(eq_dir: Path, incomplete: bool = False) -> str:
     """
-    Compact legend tag: r±NN HH:MM (np=N)[*].
+    Legend tag from TestMatrix_lab_runs (fallback: folder name).
+
+    Prefer legend_labels_for_dumps when plotting a group so HH:MM
+    disambiguation applies. This helper is for one-off calls.
 
     Args:    eq_dir, incomplete  (append * when True)
     Returns: label string
     """
-    meta = read_meta(eq_dir)
-    np_str = meta.get("np", "?")
-    match = FOLDER_RE.match(eq_dir.name)
-    if match:
-        hhmm = match.group(3)
-        tag = f"r{match.group(1)} {hhmm[:2]}:{hhmm[2:]} (np={np_str})"
-    else:
-        tag = f"{eq_dir.name} (np={np_str})"
-    if incomplete:
-        tag += "*"
-    return tag
+    labels = legend_labels_for_dumps(
+        [eq_dir.name],
+        incomplete={eq_dir.name: incomplete},
+    )
+    return labels[eq_dir.name]
 
 
 # ------------------------------------------------------------
-# 3. SIMULINK meaSigOS (realtime overlays)
+# 3. SIMULINK meaSigOS helpers
 # ------------------------------------------------------------
 
 
@@ -368,16 +365,10 @@ def run_to_mat_name() -> dict[str, str]:
     """
     OpenSees dump folder name → Simulink .mat file name.
 
-    Args:    none (reads mat_run_map.json)
+    Args:    none (reads TestMatrix_lab_runs.csv)
     Returns: {run_folder: mat_name}
     """
-    mat_map = load_mat_run_map()
-    out: dict[str, str] = {}
-    for mat_name, info in mat_map.get("mats", {}).items():
-        run = info.get("run")
-        if run:
-            out[run] = mat_name
-    return out
+    return run_to_mat_from_csv()
 
 
 def load_mat_mea_feedback(mat_name: str) -> tuple[np.ndarray, np.ndarray] | None:
@@ -410,196 +401,25 @@ def load_mat_mea_feedback(mat_name: str) -> tuple[np.ndarray, np.ndarray] | None
     return data[:, time_col], data[:, signal_col]
 
 
-def model_disp_to_proto_cm(u_model_m: np.ndarray) -> np.ndarray:
+def model_disp_to_proto_mm(u_model_m: np.ndarray) -> np.ndarray:
     """
-    Model-scale metres → prototype centimetres (relative to first sample).
+    Model-scale metres → prototype millimetres (relative to first sample).
 
-      u_proto_cm = (u_model - u_model[0]) · λ · 100
+      u_proto_mm = (u_model - u_model[0]) · λ · 1000
 
     Args:    u_model_m  (m, model)
-    Returns: Δu (cm, prototype)
+    Returns: Δu (mm, prototype)
     """
-    return (u_model_m - u_model_m[0]) * CYLINDER_LENGTH_SCALE * 100.0
+    return (u_model_m - u_model_m[0]) * CYLINDER_LENGTH_SCALE * M_TO_MM
+
+
+def model_disp_to_proto_cm(u_model_m: np.ndarray) -> np.ndarray:
+    """Deprecated alias for ``model_disp_to_proto_mm`` (returns mm, not cm)."""
+    return model_disp_to_proto_mm(u_model_m)
 
 
 # ------------------------------------------------------------
-# 4. PLOT 1 — OpenSees pier_top (numerical prototype clock)
-# ------------------------------------------------------------
-
-
-def plot_compare_opensees(
-    runs: list[Path],
-    out: Path,
-    mark_incomplete: bool,
-) -> None:
-    """
-    Overlay OpenSees pier_top_disp Δux (cm) vs numerical t (s).
-
-    Complete runs: solid. Incomplete: dashed + * in legend; dotted
-    vertical at t_last. Grey dashed = EQ motion end (median of group).
-
-    Args:    runs, out, mark_incomplete
-    Returns: none (writes PNG)
-    """
-    out.parent.mkdir(parents=True, exist_ok=True)
-    apply_paper_style()
-    fig, ax = plt.subplots(figsize=(7.2, 3.6))
-
-    t_eq_ends: list[float] = []
-    n_plotted = 0
-
-    for eq_dir in runs:
-        pier = find_pier_top(eq_dir)
-        if pier is None:
-            print(f"PlotEQCompareRuns: skip {eq_dir.name} (no pier_top_disp)")
-            continue
-        data = loadtxt_partial(pier)
-        if data.size == 0 or data.shape[1] < 2:
-            print(f"PlotEQCompareRuns: skip {eq_dir.name} (empty pier_top)")
-            continue
-
-        t_last_s, trec_s, complete = run_duration(eq_dir)
-        t_s = data[:, 0]
-        ux_m = data[:, 1] - data[0, 1]
-        ux_cm = ux_m * 100.0
-
-        if not np.all(np.isfinite(ux_cm)) or float(np.nanmax(np.abs(ux_cm))) > UX_ABS_MAX_CM:
-            print(f"PlotEQCompareRuns: skip {eq_dir.name} (non-physical pier ux)")
-            continue
-
-        color = COLORS[n_plotted % len(COLORS)]
-        line_style = "-" if complete else "--"
-        ax.plot(
-            t_s,
-            ux_cm,
-            color=color,
-            lw=1.0 if complete else 0.9,
-            ls=line_style,
-            label=short_label(eq_dir, incomplete=mark_incomplete and not complete),
-        )
-        n_plotted += 1
-
-        t_eq = eq_motion_end_s(eq_dir, trec_s)
-        if t_eq is not None:
-            t_eq_ends.append(t_eq)
-        if not complete and t_last_s is not None:
-            ax.axvline(float(t_last_s), color=color, lw=0.6, ls=":", alpha=0.5)
-
-    if t_eq_ends:
-        ax.axvline(
-            float(np.median(t_eq_ends)),
-            color="0.45",
-            lw=0.8,
-            ls="--",
-            label="EQ end",
-        )
-
-    ax.set_xlabel(r"$t$ (s)")
-    ax.set_ylabel(r"$\Delta u_x$ (cm)")
-    sym_ylim(ax)
-    n_legend = n_plotted + (1 if t_eq_ends else 0)
-    place_legend_outside(fig, ax, n_legend)
-    fig.savefig(out, dpi=DPI, bbox_inches="tight", pad_inches=0.15)
-    plt.close(fig)
-    print(f"PlotEQCompareRuns: wrote {out}  ({n_plotted} series)")
-
-
-# ------------------------------------------------------------
-# 5. PLOT 2 — meaSigOS realtime (model mat → prototype axes)
-# ------------------------------------------------------------
-
-
-def plot_compare_realtime(
-    runs: list[Path],
-    out: Path,
-    mark_incomplete: bool,
-    run_mat: dict[str, str],
-) -> None:
-    """
-    Overlay Simulink meaSigOS feedback on prototype axes.
-
-    Skips dumps with no mat in mat_run_map (see runs_without_mat).
-    Does *not* interpolate onto OpenSees time — DAQ clock only.
-
-    Args:    runs, out, mark_incomplete, run_mat  {dump_name: mat_file}
-    Returns: none (writes PNG)
-    """
-    out.parent.mkdir(parents=True, exist_ok=True)
-    apply_paper_style()
-    fig, ax = plt.subplots(figsize=(7.2, 3.8))
-
-    t_eq_ends: list[float] = []
-    n_plotted = 0
-
-    for eq_dir in runs:
-        mat_name = run_mat.get(eq_dir.name)
-        if not mat_name:
-            print(f"PlotEQCompareRuns: skip realtime {eq_dir.name} (no mat)")
-            continue
-        pair = load_mat_mea_feedback(mat_name)
-        if pair is None:
-            print(f"PlotEQCompareRuns: skip realtime {eq_dir.name} (no meaSigOS)")
-            continue
-        t_model_s, u_model_m = pair
-        if t_model_s.size == 0:
-            continue
-
-        _, trec_s, complete = run_duration(eq_dir)
-
-        # Scale model mat → prototype for the primary axes
-        t_proto_s = t_model_s * TIME_SCALE_FROUDE
-        u_proto_cm = model_disp_to_proto_cm(u_model_m)
-
-        color = COLORS[n_plotted % len(COLORS)]
-        line_style = "-" if complete else "--"
-        ax.plot(
-            t_proto_s,
-            u_proto_cm,
-            color=color,
-            lw=1.0 if complete else 0.9,
-            ls=line_style,
-            label=short_label(eq_dir, incomplete=mark_incomplete and not complete),
-        )
-        n_plotted += 1
-
-        t_eq = eq_motion_end_s(eq_dir, trec_s)
-        if t_eq is not None:
-            t_eq_ends.append(t_eq)
-        if not complete:
-            # last lab sample, expressed on the prototype time axis
-            ax.axvline(
-                float(t_model_s[-1] * TIME_SCALE_FROUDE),
-                color=color,
-                lw=0.6,
-                ls=":",
-                alpha=0.5,
-            )
-
-    if n_plotted == 0:
-        print(f"PlotEQCompareRuns: no series for {out.name}")
-        plt.close(fig)
-        return
-
-    if t_eq_ends:
-        ax.axvline(
-            float(np.median(t_eq_ends)),
-            color="0.45",
-            lw=0.8,
-            ls="--",
-            label="EQ end",
-        )
-
-    dual_proto_model_axes(ax)
-    sym_ylim(ax)
-    n_legend = n_plotted + (1 if t_eq_ends else 0)
-    place_legend_outside(fig, ax, n_legend)
-    fig.savefig(out, dpi=DPI, bbox_inches="tight", pad_inches=0.15)
-    plt.close(fig)
-    print(f"PlotEQCompareRuns: wrote {out}  ({n_plotted} series)")
-
-
-# ------------------------------------------------------------
-# 6. DISCOVER / GROUP / WRITE
+# 4. DISCOVER / GROUP / WRITE (pairs only)
 # ------------------------------------------------------------
 
 
@@ -640,41 +460,19 @@ def write_group_plots(
     label: str,
 ) -> None:
     """
-    Four PNGs for one model-knob group (complete + all × OS + realtime).
+    Pairwise PNGs for one model-knob group (delegates to PlotEQComparePairs).
 
     Args:    slug, runs, run_mat, label  (human string for the log)
     Returns: none
     """
-    out_dir = PLOTS_ROOT / "compare" / slug
-    complete_runs = [r for r in runs if run_duration(r)[2]]
+    # Lazy import: PlotEQComparePairs imports helpers from this module.
+    from PlotEQComparePairs import arias_significant_duration, write_group_pairs
+
+    out_dir = compare_plots_dir(slug) / "pairs"
     print(f"\nPlotEQCompareRuns: group {slug}")
     print(f"  {label}")
-    print(f"  {len(runs)} dump(s), {len(complete_runs)} complete -> {out_dir}")
-
-    if complete_runs:
-        plot_compare_opensees(
-            complete_runs,
-            out_dir / "hist_ux_complete.png",
-            mark_incomplete=False,
-        )
-        plot_compare_realtime(
-            complete_runs,
-            out_dir / "hist_ux_complete_realtime.png",
-            mark_incomplete=False,
-            run_mat=run_mat,
-        )
-
-    plot_compare_opensees(
-        runs,
-        out_dir / "hist_ux_all.png",
-        mark_incomplete=True,
-    )
-    plot_compare_realtime(
-        runs,
-        out_dir / "hist_ux_all_realtime.png",
-        mark_incomplete=True,
-        run_mat=run_mat,
-    )
+    print(f"  {len(runs)} dump(s) -> {out_dir}")
+    write_group_pairs(slug, runs, run_mat, label, arias_significant_duration())
 
 
 def main() -> int:
@@ -736,7 +534,7 @@ def main() -> int:
         write_group_plots(slug, runs, run_mat, group_label(rows[0]))
         n_groups += 1
 
-    print(f"\nPlotEQCompareRuns: {n_groups} group folder(s) under compare/")
+    print(f"\nPlotEQCompareRuns: {n_groups} group folder(s) under compare/*/pairs/")
     return 0 if n_groups else 1
 
 

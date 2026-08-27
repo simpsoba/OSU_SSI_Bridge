@@ -11,7 +11,7 @@ Single-pier (or pier-focused) bridge SSI model:
 - Pier geometry from Shin et al. (2007), Mackie et al. (2008), and related
   PEER reports (`reference/`).
 - Hybrid simulation compatible with Neumann (2021) and Neumann et al. (2023);
-  similitude notes in Seki et al. (2026).
+  similitude / hydro-RTHS notes in Seki et al. (2026; Ocean Eng. and WEER).
 - Soil: layered continuum; profiles in `soil/Profiles.md`.
 - Motion in the **transverse** plane.
 - Above-grade pier: one base rotational spring with a stiff beam to the top.
@@ -69,7 +69,8 @@ Local PDFs in `reference/` (gitignored). BibTeX: `reference/references.bib`.
 |---|---|---|
 | `Neumann - 2021 - … Real-Time Hybrid Simulati.pdf` | `neumannFluidStructureInteraction2021` | OSU MS thesis; RTHS / FSI |
 | `Neumann et al. - 2023 - … Cascading Seismic and Tsunami Events.pdf` | `neumannHydrodynamicRealTimeHybrid2023` | Hydrodynamic RTHS demonstration |
-| `Seki et al. - 2026 - … monopile offshore.pdf` | `sekiHydrodynamicRealtimeHybrid2026` | Hydro-RTHS; similitude |
+| `Seki et al. - 2026 - … monopile offshore.pdf` | `sekiHydrodynamicRealtimeHybrid2026a` | Hydro-RTHS; similitude (Ocean Eng.) |
+| `Seki et al. - 2026 - … Computational capacity ….pdf` | `sekiComputationalCapacityHydrodynamic2026` | Hydro-RTHS computational capacity (WEER) |
 
 In the Neumann RTHS setup the **physically tested pier** is represented numerically as a
 very stiff `elasticBeamColumn` (`Iy × 1000` on that shaft) so flexure sits in

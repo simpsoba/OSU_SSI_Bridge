@@ -16,7 +16,7 @@ model_sketch.json before PlotEQ runs. Figure panels remain controlled by the
 DO_* switches in PlotEQ.py.
 
 Lab dumps under Shared Drive or OSU_SSI_BRIDGE_DATA write PNGs to
-OSU_SSI_BRIDGE_DATA_LOCAL/plots/<run>/. The dump remains read-only. Local
+OSU_SSI_BRIDGE_DATA_LOCAL/plots/runs/<run>/eq/. The dump remains read-only. Local
 plot/out dumps write to <eqOutDir>/plots/ unless --plots-out is given.
 """
 
@@ -34,8 +34,8 @@ import PlotEQ as peq
 from lab_paths import (
     DRIVE_ROOT,
     LOCAL_OPENSEES_DATA,
-    SHARED_DRIVE_OPENSEES_DATA,
-    plots_root,
+    SHARED_DRIVE_ARCHIVE,
+    run_eq_plots_dir,
 )
 from paths import HERE, elevation_dir, eq_dir
 
@@ -668,15 +668,14 @@ def stitch(eq: Path, dest: Path, np_run: int, metas: dict[int, dict[str, str]]) 
 # ------------------------------------------------------------
 
 REPO = HERE.parent
-PLOTS_ROOT = plots_root()
 
 HELP = """\
 usage: python3 plot/PlotEQParallel.py [eqOutDir] [--plots-out DIR]
 
   eqOutDir     MP recorder folder (default: EQ_OUT in this file)
   --plots-out  write PNGs here (flat). Lab dumps under Shared Drive /
-               OSU_SSI_BRIDGE_DATA default to LOCAL/plots/<runName>/ so the
-               dump folder stays read-only.
+               OSU_SSI_BRIDGE_DATA default to LOCAL/plots/runs/<run>/eq/
+               so the dump folder stays read-only.
   else         <eqOutDir>/plots/   (local plot/out style)
   np           from window_meta.txt.0; ranks must be 0..np-1
 """
@@ -684,10 +683,10 @@ usage: python3 plot/PlotEQParallel.py [eqOutDir] [--plots-out DIR]
 
 def _is_lab_dump(eq: Path) -> bool:
     """
-    Check whether a dump belongs to the read-only lab data trees.
+    Check whether a dump belongs to the lab data trees (route plots to LOCAL).
 
     Args:    eq  recorder folder
-    Returns: True for Shared Drive, junction, or local-mirror paths
+    Returns: True for LOCAL mirror, its junction, or legacy Drive paths
     """
     try:
         resolved = eq.resolve()
@@ -695,9 +694,9 @@ def _is_lab_dump(eq: Path) -> bool:
         resolved = eq
     s = str(resolved).replace("\\", "/").lower()
     markers = (
-        str(SHARED_DRIVE_OPENSEES_DATA).replace("\\", "/").lower(),
-        str(DRIVE_ROOT).replace("\\", "/").lower(),
         str(LOCAL_OPENSEES_DATA).replace("\\", "/").lower(),
+        str(DRIVE_ROOT).replace("\\", "/").lower(),
+        str(SHARED_DRIVE_ARCHIVE).replace("\\", "/").lower(),
         "shortcut-targets-by-id",
         "/opensees data",
     )
@@ -789,7 +788,7 @@ def main() -> int:
         )
         return 1
     if plots_out is None and _is_lab_dump(eq):
-        plots_out = (PLOTS_ROOT / eq.name).resolve()
+        plots_out = run_eq_plots_dir(eq.name).resolve()
         print(f"PlotEQParallel: lab dump -> plots-out {plots_out}")
     np_run, metas = load_np(eq)
     print(f"PlotEQParallel: np={np_run}  {eq}")

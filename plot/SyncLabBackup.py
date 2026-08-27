@@ -2,21 +2,27 @@
 """
 Goals
 -----
-Mirror the read-only Shared Drive lab dumps into
-`OSU_SSI_BRIDGE_DATA_LOCAL/opensees_data/`.
+Ingest lab dumps into the local working mirror, then archive to Shared Drive.
 
   python plot/SyncLabBackup.py
   python plot/SyncLabBackup.py --extract-only
   python plot/SyncLabBackup.py --no-extract
   python plot/SyncLabBackup.py --force-extract
+  python plot/SyncLabBackup.py --no-archive
 
-Copy new or changed files into the LOCAL mirror. Skip every `plots/`
-directory so generated figures never enter the backup tree. Extract the
-Simulink `data` and *OS channels named by `lab_paths.MAT_KEYS` into
-`LOCAL/opensees_data/mat_extract/<stem>.npz`.
+Flow
+----
+1. Read new/changed files from the live upload folder
+   ``G:/.shortcut-targets-by-id/…/opensees data/`` (ingest only).
+2. Copy into ``OSU_SSI_BRIDGE_DATA_LOCAL/opensees_data/`` (working mirror).
+3. Copy LOCAL dumps into the Shared Drive safety archive under date folders
+   ``…/2026-OSU-SSI-Bridge/<YYYY-MM-DD>/opensees_data/`` (skips ``mat_extract/``,
+   ``plots/``).
+4. Extract Simulink ``data`` + *OS channels into LOCAL ``mat_extract/``.
 
-The Shared Drive is read-only to this script. All writes go to LOCAL.
-Legacy local mirror and plot layouts are migrated before sync or extract.
+Post-process (PlotEQ*, PlotMatOS, compare) must use the LOCAL mirror only —
+never the ingest shortcut or Shared Drive. Skip every ``plots/`` directory so
+generated figures never enter dump trees.
 """
 
 from __future__ import annotations
@@ -33,18 +39,23 @@ import numpy as np
 import scipy.io as sio
 
 from lab_paths import (
+    ARCHIVE_SKIP_TOP,
     LOCAL_MAT_RUN_MAP_PATH,
     LOCAL_OPENSEES_DATA,
     LOCAL_ROOT,
     MANIFEST_PATH,
     MAT_EXTRACT_DIR,
     MAT_KEYS,
+    LAB_RUNS_CSV,
     MAT_RUN_MAP_PATH,
+    SHARED_DRIVE_ARCHIVE,
+    archive_day_from_name,
+    archive_opensees_data_for_day,
     cell_str,
-    load_mat_run_map,
     migrate_legacy_local_layout,
     migrate_legacy_plots,
-    resolve_opensees_data,
+    migrate_plots_layout,
+    resolve_lab_ingest_source,
     resolve_simulink_dir,
     signal_names,
     time_column,
@@ -104,20 +115,27 @@ def save_manifest(manifest: dict) -> None:
     )
 
 
-def iter_source_files(source_root: Path) -> list[Path]:
+def iter_source_files(
+    source_root: Path,
+    *,
+    skip_top: frozenset[str] | None = None,
+) -> list[Path]:
     """
-    Files below a source root, excluding anything inside `plots/`.
+    Files below a source root, excluding ``plots/`` and optional top dirs.
 
-    Args:    source_root  Drive, junction, or LOCAL opensees_data folder
+    Args:    source_root  ingest, LOCAL, or archive folder
+             skip_top     extra top-level names to skip (e.g. mat_extract)
     Returns: file paths in pathlib traversal order
     """
+    skip_top = skip_top or frozenset()
     source_files: list[Path] = []
     for path in source_root.rglob("*"):
         if not path.is_file():
             continue
-        relative_parts = {
-            part.lower() for part in path.relative_to(source_root).parts
-        }
+        rel = path.relative_to(source_root)
+        if rel.parts and rel.parts[0] in skip_top:
+            continue
+        relative_parts = {part.lower() for part in rel.parts}
         if "plots" in relative_parts:
             continue
         source_files.append(path)
@@ -133,7 +151,7 @@ def needs_copy(
     Whether a source file is new or changed since the last sync.
 
     Args:    source_path, destination_path, old_fingerprint
-    Returns: True when the file must be copied into LOCAL
+    Returns: True when the file must be copied
     """
     if not destination_path.is_file():
         return True
@@ -147,7 +165,7 @@ def needs_copy(
 
 
 # ------------------------------------------------------------
-# 2. DRIVE-TO-LOCAL SYNC
+# 2. TREE SYNC (ingest → LOCAL → archive)
 # ------------------------------------------------------------
 
 
@@ -155,20 +173,27 @@ def sync_tree(
     source_root: Path,
     destination_root: Path,
     manifest: dict,
+    *,
+    manifest_key: str = "files",
+    skip_top: frozenset[str] | None = None,
+    label: str = "copy",
 ) -> tuple[int, int, list[Path]]:
     """
-    Copy new or changed files from the source tree into LOCAL.
+    Copy new or changed files from source into destination.
 
     Args:    source_root, destination_root, manifest
+             manifest_key  dict key under manifest for fingerprints
+             skip_top      top-level dirs to omit
+             label         log prefix
     Returns: (copied count, skipped count, copied Simulink .mat paths)
     """
     destination_root.mkdir(parents=True, exist_ok=True)
-    manifest_files = manifest.setdefault("files", {})
+    manifest_files = manifest.setdefault(manifest_key, {})
     copied_count = 0
     skipped_count = 0
     copied_mat_paths: list[Path] = []
 
-    for source_path in iter_source_files(source_root):
+    for source_path in iter_source_files(source_root, skip_top=skip_top):
         relative_path = source_path.relative_to(source_root).as_posix()
         destination_path = destination_root / relative_path
         old_fingerprint = manifest_files.get(relative_path)
@@ -184,9 +209,52 @@ def sync_tree(
 
         if source_path.suffix.lower() == ".mat" and "Simulink" in source_path.parts:
             copied_mat_paths.append(destination_path)
-        print(f"  copy {relative_path}")
+        print(f"  {label} {relative_path}")
 
     return copied_count, skipped_count, copied_mat_paths
+
+
+def sync_archive_by_day(
+    local_root: Path,
+    manifest: dict,
+) -> tuple[int, int]:
+    """
+    Copy LOCAL opensees_data into ``…/2026-OSU-SSI-Bridge/<day>/opensees_data/``.
+
+    Day is inferred from the dump folder name or Simulink mat stem
+    (``0819_…`` → 2026-08-19, ``r-*_20260821_…`` / ``0821_…`` → 2026-08-21).
+
+    Args:    local_root  LOCAL opensees_data; manifest
+    Returns: (copied count, skipped count)
+    """
+    manifest_files = manifest.setdefault("archive_files", {})
+    copied_count = 0
+    skipped_count = 0
+
+    for source_path in iter_source_files(local_root, skip_top=ARCHIVE_SKIP_TOP):
+        relative = source_path.relative_to(local_root)
+        parts = relative.parts
+        if parts[0] == "Simulink" and len(parts) > 1:
+            day = archive_day_from_name(parts[1])
+        else:
+            day = archive_day_from_name(parts[0])
+        destination_root = archive_opensees_data_for_day(day)
+        destination_path = destination_root / relative
+        # Manifest key includes day so the same relative path can exist twice.
+        manifest_key = f"{day}/{relative.as_posix()}"
+        old_fingerprint = manifest_files.get(manifest_key)
+
+        if not needs_copy(source_path, destination_path, old_fingerprint):
+            skipped_count += 1
+            continue
+
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, destination_path)
+        manifest_files[manifest_key] = file_fingerprint(source_path)
+        copied_count += 1
+        print(f"  archive {day}/{relative.as_posix()}")
+
+    return copied_count, skipped_count
 
 
 # ------------------------------------------------------------
@@ -397,27 +465,34 @@ def report_map_coverage(source_root: Path) -> None:
     Args:    source_root  opensees_data folder used to check dump presence
     Returns: none
     """
-    mat_run_map = load_mat_run_map()
-    mat_names = {
-        path.name for path in list_local_or_drive_mats(source_root)
-    }
-    known_mat_names = set(mat_run_map.get("mats", {}))
+    from lab_paths import build_mat_run_catalog, load_mat_orphans
 
-    print("mat_run_map:", MAT_RUN_MAP_PATH)
-    for mat_name in sorted(mat_names - known_mat_names):
-        print(f"  UNMAPPED mat: {mat_name}")
+    catalog = build_mat_run_catalog()
+    orphans = load_mat_orphans()
+    mat_names = {path.name for path in list_local_or_drive_mats(source_root)}
+    known = set(catalog.get("mats", {}))
 
-    for mat_name, info in sorted(mat_run_map.get("mats", {}).items()):
+    print("as-run index:", LAB_RUNS_CSV)
+    print("orphan registry:", MAT_RUN_MAP_PATH)
+    for mat_name in sorted(mat_names - known):
+        print(f"  UNMAPPED mat on disk: {mat_name}")
+
+    for mat_name, info in sorted(catalog.get("mats", {}).items()):
         run_name = info.get("run")
         if run_name is None:
-            print(f"  {mat_name} -> (no OpenSees run)")
+            print(f"  {mat_name} -> (no OpenSees run)  [{info.get('note', '')}]")
             continue
         run_path = source_root / run_name
         status = "ok" if run_path.is_dir() else "MISSING DUMP"
         print(f"  {mat_name} -> {run_name}  [{status}]")
 
-    for run_name in mat_run_map.get("runs_without_mat", []):
+    for run_name in catalog.get("runs_without_mat", []):
         print(f"  run without mat: {run_name}")
+
+    for mat_name in orphans.get("pending_mat_upload", []):
+        print(f"  pending mat upload: {mat_name}")
+    for mat_name in orphans.get("pending_dump_upload", []):
+        print(f"  pending dump for mat: {mat_name}")
 
 
 # ------------------------------------------------------------
@@ -436,12 +511,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--extract-only",
         action="store_true",
-        help="only extract mats already on the local mirror (or Drive if no mirror)",
+        help="only extract mats already on the local mirror",
     )
     parser.add_argument(
         "--no-extract",
         action="store_true",
-        help="sync files only",
+        help="sync files only (ingest + archive)",
+    )
+    parser.add_argument(
+        "--no-archive",
+        action="store_true",
+        help="skip LOCAL → Shared Drive archive copy",
     )
     parser.add_argument(
         "--force-extract",
@@ -453,10 +533,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     """
-    Migrate local layouts, sync Drive files, extract MAT files, and report.
+    Migrate layouts, ingest → LOCAL → archive, extract mats, report coverage.
 
     Args:    none (reads CLI flags)
-    Returns: process status, 0 on success and 1 when no data root is found
+    Returns: process status, 0 on success and 1 when ingest/local missing
     """
     args = parse_args()
 
@@ -464,32 +544,58 @@ def main() -> int:
         print("SyncLabBackup: migrated legacy opensees data/ → opensees_data/")
     if migrate_legacy_plots():
         print("SyncLabBackup: migrated legacy OSU_SSI_PLOTS/ → LOCAL/plots/")
+    layout_stats = migrate_plots_layout()
+    if any(layout_stats.values()):
+        print(
+            "SyncLabBackup: plots layout → runs/{eq,os}, mats/*/os, compare/ "
+            f"({layout_stats})"
+        )
 
-    source_root = resolve_opensees_data()
-    if source_root is None:
-        print("SyncLabBackup: no opensees data folder found", file=sys.stderr)
-        return 1
-
-    print(f"SyncLabBackup: source {source_root}")
-    print(f"SyncLabBackup: local  {LOCAL_OPENSEES_DATA}")
+    ingest = resolve_lab_ingest_source()
+    archive = SHARED_DRIVE_ARCHIVE
     LOCAL_ROOT.mkdir(parents=True, exist_ok=True)
+    LOCAL_OPENSEES_DATA.mkdir(parents=True, exist_ok=True)
+
+    print(f"SyncLabBackup: ingest  {ingest or '(missing)'}")
+    print(f"SyncLabBackup: local   {LOCAL_OPENSEES_DATA}")
+    print(f"SyncLabBackup: archive {archive}  (<day>/opensees_data)")
 
     manifest = load_manifest()
     copied_mat_paths: list[Path] = []
 
     if not args.extract_only:
-        if source_root.resolve() == LOCAL_OPENSEES_DATA.resolve():
-            print("SyncLabBackup: source is already the local mirror; skip copy")
+        if ingest is None:
+            print(
+                "SyncLabBackup: no ingest folder "
+                "(shortcut-targets …/opensees data); skip ingest copy",
+                file=sys.stderr,
+            )
         else:
             copied_count, skipped_count, copied_mat_paths = sync_tree(
-                source_root,
+                ingest,
                 LOCAL_OPENSEES_DATA,
                 manifest,
+                manifest_key="files",
+                label="ingest",
             )
-            save_manifest(manifest)
             print(
-                f"SyncLabBackup: copied={copied_count} skipped={skipped_count}"
+                f"SyncLabBackup: ingest copied={copied_count} "
+                f"skipped={skipped_count}"
             )
+
+        if not args.no_archive:
+            if not _has_local_runs():
+                print(
+                    "SyncLabBackup: local mirror has no run dirs; skip archive",
+                    file=sys.stderr,
+                )
+            else:
+                ac, as_ = sync_archive_by_day(LOCAL_OPENSEES_DATA, manifest)
+                print(
+                    f"SyncLabBackup: archive copied={ac} skipped={as_}"
+                )
+
+        save_manifest(manifest)
 
         if MAT_RUN_MAP_PATH.is_file():
             LOCAL_MAT_RUN_MAP_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -497,21 +603,25 @@ def main() -> int:
 
     if not args.no_extract:
         local_mat_paths = list_local_or_drive_mats(LOCAL_OPENSEES_DATA)
-        source_mat_paths = list_local_or_drive_mats(source_root)
-        all_mat_paths = local_mat_paths if local_mat_paths else source_mat_paths
-
         if args.force_extract:
-            extract_mats(all_mat_paths, force=True)
+            extract_mats(local_mat_paths, force=True)
         elif copied_mat_paths:
             extract_mats(copied_mat_paths, force=False)
         else:
-            extract_mats(all_mat_paths, force=False)
+            extract_mats(local_mat_paths, force=False)
 
-    coverage_root = (
-        source_root if source_root.is_dir() else LOCAL_OPENSEES_DATA
-    )
-    report_map_coverage(coverage_root)
+    report_map_coverage(LOCAL_OPENSEES_DATA)
     return 0
+
+
+def _has_local_runs() -> bool:
+    """True when LOCAL_OPENSEES_DATA has at least one r± run folder."""
+    if not LOCAL_OPENSEES_DATA.is_dir():
+        return False
+    for child in LOCAL_OPENSEES_DATA.iterdir():
+        if child.is_dir() and child.name.startswith(("r+", "r-")):
+            return True
+    return False
 
 
 if __name__ == "__main__":

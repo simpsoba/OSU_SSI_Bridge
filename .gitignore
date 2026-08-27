@@ -1,13 +1,16 @@
 # Local scratch. Model does not source this folder.
 tmp/
 
+# Legacy Drive zip downloads (superseded by OSU_SSI_BRIDGE_DATA_LOCAL)
+FLUME_DATA/
+
 # Recorders (empty placeholder; dumps go under plot/out)
 output/
 
 # Archived EQ dumps (named copies of trial1 / outDIR)
 runs/
 
-# Junction → Shared Drive …/2026-08-21-OSU-SSI-Bridge/opensees_data (read-only)
+# Junction → LOCAL opensees_data (not Shared Drive; archive is 2026-OSU-SSI-Bridge/<day>/)
 OSU_SSI_BRIDGE_DATA/
 
 # Local mirror + plots (opensees_data/, plots/, mat_extract/; SyncLabBackup.py)

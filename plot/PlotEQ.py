@@ -2,9 +2,10 @@
 """Goals
 -----
 Post-process one serial OpenSees earthquake-window recorder dump.
-Use the ``DO_*`` switches to select history, envelope, hysteresis, quad,
-spring, pile-section, and frame plots. Write PNGs to ``<eqOutDir>/plots/``.
-Use ``PlotEQParallel.py`` for OpenSeesMP dumps whose files end in ``.$pid``.
+Use the ``DO_*`` switches to select history, depth-stacked pile/soil ux,
+envelope, hysteresis, quad, spring, pile-section, and frame plots. Write
+PNGs to ``<eqOutDir>/plots/``. Use ``PlotEQParallel.py`` for OpenSeesMP
+dumps whose files end in ``.$pid``.
 
 Units: N, m, s.
 """
@@ -24,12 +25,16 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import LineCollection, PolyCollection
+from matplotlib.gridspec import GridSpec
 from matplotlib.tri import Triangulation
 from matplotlib.colors import to_rgba
 from matplotlib.patches import Patch
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 
+from lab_paths import CYLINDER_LENGTH_SCALE, M_TO_MM, TIME_SCALE_FROUDE
 from paths import HERE, elevation_dir, eq_compare_dir, eq_dir, pile_springs_dir
 from PlotModelSketch import layer_style
+from gm_duration import arias_significant_duration
 
 # ------------------------------------------------------------
 # EDIT
@@ -38,6 +43,7 @@ from PlotModelSketch import layer_style
 EQ_OUT = eq_dir(3, "Shin", "quad", "forceBeamColumn")
 
 DO_HIST = 1
+DO_DEPTH_HIST = 1     # pile + soil ux vs t, one axes per depth
 DO_ENVELOPE = 1       # pile-node ux min/max (symmetric)
 DO_SPRING_ENV = 1     # spring defo vs y50/z50, force vs pult/tult/qult
 DO_HYST = 1           # all p-y, t-z, and q-z loops
@@ -45,7 +51,8 @@ DO_QUAD_PEAK = 1      # window peak |tau_xy| and |gamma_xy|
 DO_QUAD_HYST = 1      # tau_xy vs gamma_xy vs depth (center + near-FF columns)
 DO_HINGE = 1          # pier hinge hist + M-rot, P-axial, P-M, axial-rot
 DO_PILE_SEC = 1       # pile M-kappa hyst; peak M and kappa vs depth
-DO_FRAMES = 0         # window deform snapshots + MP4 (off for batch lab post-process)
+DO_FRAMES = 0         # 0=auto (on when every window node has disp); 1=force; -1=off
+DO_FRAME_HIST = 1     # ux history side panel on animation frames
 
 N_FRAMES = 0          # >0 = that many equally spaced; 0 = use FRAME_FPS
 FRAME_FPS = 30        # max PNGs per second of analysis (0 = every recorded sample)
@@ -56,8 +63,14 @@ PIER_TOP = 5
 PIER_BOT = 1
 DPI = 140
 FRAME_DPI = 80
-MOVIE_FPS = 30        # encode so MP4 duration = Trec (1:1)
+MOVIE_FPS = 30        # encode at this fps; duration = model-scale window length
+FRAME_T0_MODEL_S = 16.0  # skip frames before this lab/model time (s)
 SPRING_MINLEN = 0.30  # m, glyph floor so coincident zeroLength springs stay visible
+FRAME_HIST_DEPTH_M = (0.0, 2.5, 5.0, 10.0)  # pile/soil stations below grade
+FRAME_FS = 8          # frame tick / annotation / legend
+FRAME_FS_AXIS = 9     # frame axis labels and mesh title
+FRAME_FS_SUP = 10     # frame history supylabel
+PEAK_GAMMA_VMAX = 10.0  # window_peak_gamma_xy colorbar top (×10⁻³ units)
 # ------------------------------------------------------------
 
 GRAY = "#90a4ae"
@@ -566,6 +579,96 @@ def mark_last_sample(
                    label=f"last sample t={float(t[-1]):.2f} s")
 
 
+def load_d595_proto() -> tuple[float, float] | None:
+    """GM D5–95 bounds on the prototype / OpenSees ``t_num`` clock (gmStart≈0).
+
+    Returns:
+        ``(t5_s, t95_s)`` or ``None`` if the VT2 is missing.
+    """
+    try:
+        d = arias_significant_duration()
+    except (OSError, ValueError) as exc:
+        print(f"PlotEQ: D5-95 unavailable ({exc})")
+        return None
+    return float(d.t5_s), float(d.t95_s)
+
+
+def finish_full_zoom_pair(
+    ax_f,
+    ax_z,
+    d595: tuple[float, float] | None,
+    t,
+    t_eq: float | None,
+    t_cut: float | None,
+    *,
+    xlabel: bool = True,
+    zoom_title: bool = True,
+) -> None:
+    """Shared grid/markers; set D5–95 xlim on the zoom axes.
+
+    Args:
+        ax_f: Full-history axes.
+        ax_z: Zoom axes.
+        d595: ``(t5, t95)`` in s, or ``None``.
+        t, t_eq, t_cut: Recorder time and markers.
+        xlabel: Label both bottom x axes.
+        zoom_title: Title the zoom panel.
+    Returns:
+        None.
+    """
+    for ax in (ax_f, ax_z):
+        mark_last_sample(ax, t, t_eq, t_cut)
+        ax.grid(True, ls=":", alpha=0.45)
+    if d595 is not None:
+        ax_z.set_xlim(d595[0], d595[1])
+        if zoom_title:
+            ax_z.set_title(r"D5–95 zoom", fontsize=9, pad=4)
+    if xlabel:
+        ax_f.set_xlabel(r"$t_\mathrm{num}$ (s)")
+        ax_z.set_xlabel(r"$t_\mathrm{num}$ (s)")
+
+
+def subplots_full_zoom(
+    n_rows: int,
+    *,
+    fig_h: float,
+    fig_w: float = 12.8,
+    sharey: str | bool = "row",
+    wspace: float = 0.04,
+    hspace: float = 0.04,
+):
+    """Create ``n_rows × 2`` axes: full history | D5–95 zoom.
+
+    Uses ``layout='constrained'`` (not a separate ``constrained_layout=``
+    flag). Do not put ``wspace`` in ``gridspec_kw`` — that fights the
+    layout engine and leaves a wide gutter between columns.
+
+    Args:
+        n_rows: Number of signal rows.
+        fig_h: Figure height in inches.
+        fig_w: Figure width in inches.
+        sharey: Matplotlib ``sharey`` for the grid.
+        wspace, hspace: Constrained-layout gaps as a fraction of subplot size.
+    Returns:
+        ``(fig, axes_full, axes_zoom)`` — lists of length ``n_rows``.
+    """
+    fig, axes = plt.subplots(
+        n_rows,
+        2,
+        figsize=(fig_w, fig_h),
+        sharex="col",
+        sharey=sharey,
+        layout="constrained",
+        gridspec_kw={"width_ratios": [1.35, 1.0]},
+    )
+    engine = fig.get_layout_engine()
+    if engine is not None and hasattr(engine, "set"):
+        engine.set(w_pad=0.02, h_pad=0.02, wspace=wspace, hspace=hspace)
+    if n_rows == 1:
+        return fig, [axes[0]], [axes[1]]
+    return fig, list(axes[:, 0]), list(axes[:, 1])
+
+
 def hyst_loop(ax, x, y, xlabel: str, ylabel: str, title: str) -> None:
     """Draw one labeled hysteresis loop.
 
@@ -589,10 +692,17 @@ def hyst_loop(ax, x, y, xlabel: str, ylabel: str, title: str) -> None:
 
 
 def plot_hist(
-    out: Path, t, ux, uy, idx, groups, t_eq: float | None = None,
+    out: Path,
+    t,
+    ux,
+    uy,
+    idx,
+    groups,
+    t_eq: float | None = None,
     t_cut: float | None = None,
+    d595: tuple[float, float] | None = None,
 ) -> None:
-    """Plot pier and pile-head displacement histories.
+    """Plot pier and pile-head displacement histories (full | D5–95 zoom).
 
     Args:
         out: Plot output directory.
@@ -603,47 +713,619 @@ def plot_hist(
         groups: Pile names mapped to ordered node tags.
         t_eq: Earthquake end time in s, or ``None``.
         t_cut: Truncated recorder time in s, or ``None``.
+        d595: ``(t5, t95)`` prototype s for the zoom panel, or ``None``.
     Returns:
         None; writes ``hist_ux.png`` and ``hist_uy.png``.
     """
-    fig, ax = plt.subplots(figsize=(10.4, 4.2), constrained_layout=True)
-    if PIER_TOP in idx:
-        ax.plot(t, ux[:, idx[PIER_TOP]], color=ORANGE, lw=1.4,
-                label=f"pier top ({PIER_TOP}) ux")
-    if PIER_BOT in idx:
-        ax.plot(t, ux[:, idx[PIER_BOT]], color=ORANGE, lw=1.0, ls="--",
-                label=f"pier bot ({PIER_BOT}) ux")
-    for name, tags in groups.items():
-        if not tags:
-            continue
-        ax.plot(t, ux[:, idx[tags[0]]], color=COLORS.get(name, "#333"),
-                lw=1.0, label=f"pile {name} head ux")
-    mark_last_sample(ax, t, t_eq, t_cut)
-    ax.set_xlabel("t (s)")
-    ax.set_ylabel("ux (m)")
-    ax.legend(fontsize=8, ncol=2)
-    ax.grid(True, ls=":", alpha=0.45)
+
+    def _draw_ux(ax) -> None:
+        if PIER_TOP in idx:
+            ax.plot(
+                t,
+                to_mm(ux[:, idx[PIER_TOP]]),
+                color=ORANGE,
+                lw=1.4,
+                label=f"pier top ({PIER_TOP}) ux",
+            )
+        if PIER_BOT in idx:
+            ax.plot(
+                t,
+                to_mm(ux[:, idx[PIER_BOT]]),
+                color=ORANGE,
+                lw=1.0,
+                ls="--",
+                label=f"pier bot ({PIER_BOT}) ux",
+            )
+        for name, tags in groups.items():
+            if not tags:
+                continue
+            ax.plot(
+                t,
+                to_mm(ux[:, idx[tags[0]]]),
+                color=COLORS.get(name, "#333"),
+                lw=1.0,
+                label=f"pile {name} head ux",
+            )
+
+    def _draw_uy(ax) -> None:
+        if PIER_TOP in idx:
+            ax.plot(t, to_mm(uy[:, idx[PIER_TOP]]), color=ORANGE, lw=1.4, label="pier top uy")
+        if PIER_BOT in idx:
+            ax.plot(
+                t,
+                to_mm(uy[:, idx[PIER_BOT]]),
+                color=ORANGE,
+                lw=1.0,
+                ls="--",
+                label="pier bot uy",
+            )
+
+    if d595 is None:
+        fig, ax = plt.subplots(figsize=(10.4, 4.2), constrained_layout=True)
+        _draw_ux(ax)
+        mark_last_sample(ax, t, t_eq, t_cut)
+        ax.set_xlabel(r"$t_\mathrm{num}$ (s)")
+        ax.set_ylabel("ux (mm)")
+        ax.legend(fontsize=8, ncol=2)
+        ax.grid(True, ls=":", alpha=0.45)
+        fig.savefig(out / "hist_ux.png", dpi=DPI)
+        plt.close(fig)
+
+        fig, ax = plt.subplots(figsize=(10.4, 3.6), constrained_layout=True)
+        _draw_uy(ax)
+        mark_last_sample(ax, t, t_eq, t_cut)
+        ax.set_xlabel(r"$t_\mathrm{num}$ (s)")
+        ax.set_ylabel("uy (mm)")
+        ax.legend(fontsize=8)
+        ax.grid(True, ls=":", alpha=0.45)
+        fig.savefig(out / "hist_uy.png", dpi=DPI)
+        plt.close(fig)
+        return
+
+    fig, axes_f, axes_z = subplots_full_zoom(1, fig_h=4.2, sharey=True)
+    ax_f, ax_z = axes_f[0], axes_z[0]
+    _draw_ux(ax_f)
+    _draw_ux(ax_z)
+    finish_full_zoom_pair(ax_f, ax_z, d595, t, t_eq, t_cut)
+    ax_f.set_ylabel("ux (mm)")
+    ax_f.legend(fontsize=8, ncol=2)
     fig.savefig(out / "hist_ux.png", dpi=DPI)
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(10.4, 3.6), constrained_layout=True)
-    if PIER_TOP in idx:
-        ax.plot(t, uy[:, idx[PIER_TOP]], color=ORANGE, lw=1.4, label="pier top uy")
-    if PIER_BOT in idx:
-        ax.plot(t, uy[:, idx[PIER_BOT]], color=ORANGE, lw=1.0, ls="--",
-                label="pier bot uy")
-    mark_last_sample(ax, t, t_eq, t_cut)
-    ax.set_xlabel("t (s)")
-    ax.set_ylabel("uy (m)")
-    ax.legend(fontsize=8)
-    ax.grid(True, ls=":", alpha=0.45)
+    fig, axes_f, axes_z = subplots_full_zoom(1, fig_h=3.6, sharey=True)
+    ax_f, ax_z = axes_f[0], axes_z[0]
+    _draw_uy(ax_f)
+    _draw_uy(ax_z)
+    finish_full_zoom_pair(ax_f, ax_z, d595, t, t_eq, t_cut)
+    ax_f.set_ylabel("uy (mm)")
+    ax_f.legend(fontsize=8)
     fig.savefig(out / "hist_uy.png", dpi=DPI)
     plt.close(fig)
 
 
+def preferred_pile_tags(groups: dict[str, list[int]]) -> tuple[str, list[int]]:
+    """Pick the center pile shaft when present, else the first nonempty group.
+
+    Args:
+        groups: Pile names mapped to head-to-tip node tags.
+    Returns:
+        ``(name, tags)`` or ``("", [])`` when empty.
+    """
+    if groups.get("C"):
+        return "C", groups["C"]
+    for name in NAMES:
+        if groups.get(name):
+            return name, groups[name]
+    for name, tags in groups.items():
+        if tags:
+            return name, tags
+    return "", []
+
+
+def soil_column_nodes(
+    tags: list[int],
+    xy: dict[int, tuple[float, float]],
+    meta: dict,
+    x_tgt: float = 0.0,
+) -> list[tuple[int, float]]:
+    """Soil continuum nodes along one vertical column (nearest ``x_tgt``).
+
+    Args:
+        tags: Candidate node tags (usually ``disp_nodes``).
+        xy: Coordinates in m keyed by tag.
+        meta: Window metadata for soil tag bounds.
+        x_tgt: Target column x in m (center pile ≈ 0).
+    Returns:
+        ``(tag, y)`` pairs ordered head-to-tip (decreasing y).
+    """
+    soil_base, _spr, _soff, _bnd, soil_last = node_tag_bases(meta)
+    cands = [
+        t
+        for t in tags
+        if t in xy and soil_base <= t <= soil_last
+    ]
+    if not cands:
+        return []
+    # Prefer a narrow band around x_tgt; widen if the lean/full window is coarse.
+    for x_tol in (0.35, 1.0, 3.0):
+        near = [t for t in cands if abs(xy[t][0] - x_tgt) <= x_tol]
+        if near:
+            cands = near
+            break
+    by_y: dict[float, int] = {}
+    for t in cands:
+        x, y = xy[t]
+        yk = round(y, 3)
+        prev = by_y.get(yk)
+        if prev is None or abs(x - x_tgt) < abs(xy[prev][0] - x_tgt):
+            by_y[yk] = t
+    return [
+        (by_y[yk], float(yk))
+        for yk in sorted(by_y.keys(), reverse=True)
+    ]
+
+
+def _interp_ux(t_ref: np.ndarray, t_src: np.ndarray, u_src: np.ndarray) -> np.ndarray:
+    """Interpolate one displacement history onto a reference time grid.
+
+    Args:
+        t_ref: Target times in s.
+        t_src: Source times in s.
+        u_src: Source displacements in m.
+    Returns:
+        Displacements in m on ``t_ref``.
+    """
+    if len(t_src) == len(t_ref) and np.allclose(t_src, t_ref, atol=1e-6, rtol=0):
+        return np.asarray(u_src, dtype=float)
+    return np.interp(t_ref, t_src, u_src)
+
+
+def estimate_soil_ux_column(
+    eq: Path,
+    meta: dict,
+    js: dict | None,
+    t_pile: np.ndarray,
+    pile_tags: list[int],
+    xy: dict[int, tuple[float, float]],
+    idx: dict[int, int],
+    ux: np.ndarray,
+    ip_prefer: int = 1,
+) -> list[tuple[float, np.ndarray, str]] | None:
+    """Estimate soil ux(t) at SSI horizons: u_soil ≈ u_pile − u_py.
+
+    Spring is ``zeroLength soil→dup`` with dup equalDOF'd to the pile, so
+    recorded py deformation is u_dup − u_soil ≈ u_pile − u_soil. UX has no
+    fold datum; SUBTRACT_T0 on both series removes a constant uy-style offset
+    if the caller already zeroed the pile history.
+
+    Args:
+        eq: Serial (or stitched) dump directory.
+        meta: Window metadata.
+        js: Spring JSON, or ``None``.
+        t_pile: Pile recorder times in s.
+        pile_tags: Center-pile tags head-to-tip.
+        xy: Coordinates in m.
+        idx: Disp-column index by node tag.
+        ux: Nodal ux in m (already t0-relative if SUBTRACT_T0).
+        ip_prefer: Zero-based pile index (1 = center).
+    Returns:
+        ``(y, u_soil, label)`` rows tipward, or ``None`` when unavailable.
+    """
+    rows = read_pile_spring_eles(eq)
+    if not rows:
+        return None
+    stations = stations_for_plot(rows, js, meta)
+    if not stations or len(stations) != len(rows):
+        return None
+    try:
+        t_spr, _F, U = load_spring_pt(
+            eq, "pile_springs_force.out", "pile_springs_defo.out", len(rows)
+        )
+    except Exception:
+        return None
+    if U.ndim != 3 or U.shape[2] < 1 or len(t_spr) < 2:
+        return None
+
+    pile_pts = [
+        (t, xy[t][1], idx[t])
+        for t in pile_tags
+        if t in xy and t in idx
+    ]
+    if not pile_pts:
+        return None
+
+    out_rows: list[tuple[float, np.ndarray, str]] = []
+    for i, st in enumerate(stations):
+        if int(st.get("ip", -1)) != ip_prefer:
+            continue
+        if is_qz_station(st):
+            # Tip q-z is axial (dir 2); skip for lateral soil estimate.
+            continue
+        y_s = float(st["y"])
+        # Nearest pile node in elevation.
+        tag, y_p, icol = min(pile_pts, key=lambda p: abs(p[1] - y_s))
+        if abs(y_p - y_s) > 0.25:
+            continue
+        u_py = maybe_t0(U[:, i, 0])
+        u_py_i = _interp_ux(t_pile, t_spr, u_py)
+        u_pile = ux[:, icol]
+        u_soil = u_pile - u_py_i
+        out_rows.append((y_s, u_soil, f"y={y_s:.2f}"))
+    if not out_rows:
+        return None
+    out_rows.sort(key=lambda r: r[0], reverse=True)
+    return out_rows
+
+
+def format_depth_label(y: float) -> str:
+    """Depth below grade ``|y|`` with three significant figures.
+
+    Args:
+        y: Elevation in m (down is negative).
+    Returns:
+        Label such as ``0.00``, ``0.99``, ``1.91``, ``10.1``.
+    """
+    from math import floor, log10
+
+    d = abs(float(y))
+    if d < 0.05:
+        return "0.00"
+    if d < 1.0:
+        return f"{d:.2f}"
+    order = int(floor(log10(d)))
+    decimals = max(0, 2 - order)  # 3 significant figures in fixed point
+    return f"{d:.{decimals}f}"
+
+
+def foundation_cap_ux(
+    idx: dict[int, int],
+    xy: dict[int, tuple[float, float]],
+    ux: np.ndarray,
+    pile_tags: list[int],
+    meta: dict,
+) -> np.ndarray | None:
+    """Lateral motion at the pile head / cap BC (tag 1028 when present).
+
+    Args:
+        idx, xy, ux: Disp maps / histories (m).
+        pile_tags: Center-pile tags head-to-tip.
+        meta: Window metadata for soil tag bound.
+    Returns:
+        ux history in m, or ``None``.
+    """
+    soil_base, *_ = node_tag_bases(meta)
+    for tag in (1028, 1025):
+        if tag in idx and tag < soil_base:
+            return ux[:, idx[tag]]
+    if pile_tags:
+        head = pile_tags[0]
+        if head in idx:
+            return ux[:, idx[head]]
+    return None
+
+
+def plot_stacked_depth_hist(
+    out: Path,
+    fname: str,
+    t: np.ndarray,
+    rows: list[tuple[str, np.ndarray]],
+    color: str,
+    t_eq: float | None,
+    t_cut: float | None,
+    *,
+    qty_label: str,
+    d595: tuple[float, float] | None = None,
+) -> None:
+    """Depth-stacked time histories: full | D5–95, no figure titles.
+
+    Every axes shows ytick values and a depth ylabel; ``fig.supylabel`` is the
+    plotted quantity (e.g. ``$u_x$``).
+
+    Args:
+        out: Plot output directory.
+        fname: Output PNG name.
+        t: Times in s.
+        rows: ``(depth_label, series)`` head-to-tip.
+        color: Trace color.
+        t_eq, t_cut: Markers.
+        qty_label: Shared quantity (e.g. ``$u_x$ (mm)``).
+        d595: Zoom window, or ``None`` for a single column.
+    Returns:
+        None; writes ``fname``.
+    """
+    if not rows:
+        return
+    n = len(rows)
+    fig_h = max(3.0, 0.48 * n + 0.8)
+    all_u = [u for _, u in rows]
+    m = 0.0
+    for u in all_u:
+        a = np.asarray(u, dtype=float)
+        if np.isfinite(a).any():
+            m = max(m, float(np.nanmax(np.abs(a))))
+    ylim_u = m * M_TO_MM * 1.05 if m > 0 else 1e-4 * M_TO_MM
+
+    if d595 is None:
+        fig, axes = plt.subplots(n, 1, figsize=(9.2, fig_h), sharex=True)
+        axes_f = [axes] if n == 1 else list(axes)
+        axes_z = None
+        fig.subplots_adjust(
+            left=0.16, right=0.99, top=0.995, bottom=0.045, hspace=0.08
+        )
+    else:
+        fig, axes = plt.subplots(
+            n,
+            2,
+            figsize=(11.0, fig_h),
+            sharex="col",
+            sharey="row",
+            gridspec_kw={"width_ratios": [1.45, 1.0]},
+        )
+        # Room for supylabel + depth ylabel + tick numbers on both columns.
+        fig.subplots_adjust(
+            left=0.14,
+            right=0.995,
+            top=0.995,
+            bottom=0.045,
+            wspace=0.22,
+            hspace=0.08,
+        )
+        axes_f = [axes[0]] if n == 1 else list(axes[:, 0])
+        axes_z = [axes[1]] if n == 1 else list(axes[:, 1])
+
+    for i, (lab, u) in enumerate(rows):
+        ax_list = (axes_f[i],) if axes_z is None else (axes_f[i], axes_z[i])
+        for ax in ax_list:
+            ax.plot(t, to_mm(u), color=color, lw=0.9)
+            ax.axhline(0.0, color="#bbb", lw=0.6)
+            ax.set_ylim(-ylim_u, ylim_u)
+            ax.yaxis.set_major_locator(MaxNLocator(nbins=3))
+            ax.tick_params(labelsize=7, labelleft=True, pad=1)
+            ax.set_ylabel(
+                lab, fontsize=8, rotation=0, va="center", ha="right", labelpad=6
+            )
+            mark_last_sample(ax, t, t_eq, t_cut)
+            ax.grid(True, ls=":", alpha=0.4)
+        if axes_z is not None and d595 is not None:
+            axes_z[i].set_xlim(d595[0], d595[1])
+        if i == n - 1:
+            axes_f[i].set_xlabel(r"$t_\mathrm{num}$ (s)")
+            if axes_z is not None:
+                axes_z[i].set_xlabel(r"$t_\mathrm{num}$ (s)")
+
+    fig.supylabel(qty_label, fontsize=10)
+    fig.savefig(out / fname, dpi=DPI)
+    plt.close(fig)
+
+
+# Back-compat name used by older call sites.
+def plot_stacked_ux_depth(
+    out: Path,
+    fname: str,
+    t: np.ndarray,
+    rows: list[tuple[str, np.ndarray]],
+    color: str,
+    t_eq: float | None,
+    t_cut: float | None,
+    note: str = "",
+    d595: tuple[float, float] | None = None,
+) -> None:
+    """Deprecated wrapper: depth-stacked ``$u_x$`` (``note`` ignored)."""
+    del note
+    plot_stacked_depth_hist(
+        out,
+        fname,
+        t,
+        rows,
+        color,
+        t_eq,
+        t_cut,
+        qty_label=r"$u_x$ (mm)",
+        d595=d595,
+    )
+
+
+def load_pier_node_rz(
+    eq: Path, node_tag: int
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Load pier-node RZ from ``pier_node_<tag>.out`` (time, ux, uy, rz).
+
+    Args:
+        eq: Dump directory (serial or stitched).
+        node_tag: Pier node tag.
+    Returns:
+        ``(t_s, rz_rad)`` or ``None``.
+    """
+    cands = [eq / f"pier_node_{node_tag}.out"]
+    cands.extend(sorted(eq.glob(f"pier_node_{node_tag}.out.*")))
+    path = next((p for p in cands if p.is_file()), None)
+    if path is None:
+        return None
+    a = loadtxt_partial(path)
+    if a.size == 0:
+        return None
+    if a.ndim == 1:
+        a = a.reshape(1, -1)
+    if a.shape[1] < 4:
+        return None
+    return a[:, 0], a[:, 3]
+
+
+def pile_chord_rotations(
+    pile_tags: list[int],
+    xy: dict[int, tuple[float, float]],
+    idx: dict[int, int],
+    ux: np.ndarray,
+) -> list[tuple[int, np.ndarray]]:
+    """Approximate nodal RZ from adjacent pile chord slopes (``Δu_x / Δy``).
+
+    ``window_disp`` records only UX,UY. True RZ is available for pier nodes
+    via ``pier_node_*.out``; shaft nodes use this chord estimate.
+
+    Args:
+        pile_tags: Head-to-tip tags.
+        xy, idx, ux: Geometry and lateral disp (m).
+    Returns:
+        ``(tag, theta_rad)`` in the same order as ``pile_tags`` (subset).
+    """
+    tags = [t for t in pile_tags if t in idx and t in xy]
+    if len(tags) < 2:
+        return []
+    ys = np.array([xy[t][1] for t in tags], dtype=float)
+    cols = [idx[t] for t in tags]
+    out: list[tuple[int, np.ndarray]] = []
+    for i, tag in enumerate(tags):
+        if i == 0:
+            i0, i1 = 0, 1
+        elif i == len(tags) - 1:
+            i0, i1 = len(tags) - 2, len(tags) - 1
+        else:
+            i0, i1 = i - 1, i + 1
+        dy = float(ys[i0] - ys[i1])
+        if abs(dy) < 1e-9:
+            th = np.zeros(ux.shape[0], dtype=float)
+        else:
+            th = (ux[:, cols[i0]] - ux[:, cols[i1]]) / dy
+        out.append((tag, th))
+    return out
+
+
+def plot_depth_histories(
+    out: Path,
+    eq: Path,
+    meta: dict,
+    js: dict | None,
+    t: np.ndarray,
+    ux: np.ndarray,
+    idx: dict[int, int],
+    groups: dict[str, list[int]],
+    xy: dict[int, tuple[float, float]],
+    disp_tags: list[int],
+    t_eq: float | None,
+    t_cut: float | None,
+    d595: tuple[float, float] | None = None,
+) -> None:
+    """Write pile/soil ux and pile rotation depth-stacked histories.
+
+    Soil: recorded continuum column when present; else ``u_pile − u_py``.
+    Rotation: pier-base RZ from ``pier_node_1`` at grade when present; shaft
+    from chord slopes of ``window_disp`` UX (no RZ in that recorder).
+
+    Args:
+        out, eq, meta, js, t, ux, idx, groups, xy, disp_tags, t_eq, t_cut, d595
+    Returns:
+        None; writes depth-stack PNGs when data allow.
+    """
+    pname, pile_tags = preferred_pile_tags(groups)
+    pile_rows: list[tuple[str, np.ndarray]] = []
+    # Cap top / pier base at grade (depth 0) when recorded — keep pile head too.
+    if 1 in idx and 1 in xy:
+        pile_rows.append((format_depth_label(xy[1][1]), ux[:, idx[1]]))
+    for tag in pile_tags:
+        if tag not in idx or tag not in xy:
+            continue
+        pile_rows.append((format_depth_label(xy[tag][1]), ux[:, idx[tag]]))
+    if pile_rows:
+        plot_stacked_depth_hist(
+            out,
+            "hist_pile_ux_depth.png",
+            t,
+            pile_rows,
+            COLORS.get(pname, BROWN),
+            t_eq,
+            t_cut,
+            qty_label=r"$u_x$ (mm)",
+            d595=d595,
+        )
+        print(f"PlotEQ: wrote {out / 'hist_pile_ux_depth.png'}  ({len(pile_rows)} depths)")
+    else:
+        print("PlotEQ: no pile shaft in disp_nodes -- skip hist_pile_ux_depth")
+
+    soil_nodes = soil_column_nodes(disp_tags, xy, meta, x_tgt=0.0)
+    soil_rows: list[tuple[str, np.ndarray]] = []
+    if soil_nodes:
+        for tag, y in soil_nodes:
+            if tag not in idx:
+                continue
+            soil_rows.append((format_depth_label(y), ux[:, idx[tag]]))
+    if not soil_rows and pile_tags:
+        est = estimate_soil_ux_column(
+            eq, meta, js, t, pile_tags, xy, idx, ux, ip_prefer=1
+        )
+        if est:
+            soil_rows = [(format_depth_label(y), u) for y, u, _lab in est]
+    has_grade = any(lab == "0.00" for lab, _ in soil_rows)
+    if soil_rows and not has_grade:
+        if 1 in idx:
+            soil_rows = [(format_depth_label(xy.get(1, (0.0, 0.0))[1]), ux[:, idx[1]]), *soil_rows]
+        else:
+            u_cap = foundation_cap_ux(idx, xy, ux, pile_tags, meta)
+            if u_cap is not None:
+                soil_rows = [("0.00", u_cap), *soil_rows]
+    if soil_rows:
+        plot_stacked_depth_hist(
+            out,
+            "hist_soil_ux_depth.png",
+            t,
+            soil_rows,
+            GREEN,
+            t_eq,
+            t_cut,
+            qty_label=r"$u_x$ (mm)",
+            d595=d595,
+        )
+        print(f"PlotEQ: wrote {out / 'hist_soil_ux_depth.png'}  ({len(soil_rows)} depths)")
+    else:
+        print("PlotEQ: no soil disp / spring estimate -- skip hist_soil_ux_depth")
+
+    # --- rotation vs depth (cap + pile) ---
+    rz_rows: list[tuple[str, np.ndarray]] = []
+    pier_rz = load_pier_node_rz(eq, 1)
+    if pier_rz is not None:
+        t_p, rz_p = pier_rz
+        rz_grade = maybe_t0(_interp_ux(t, t_p, rz_p))
+        rz_rows.append(("0.00", rz_grade))
+    chords = pile_chord_rotations(pile_tags, xy, idx, ux)
+    for tag, th in chords:
+        th = maybe_t0(th)
+        # Skip duplicating head if we already placed pier RZ at 0.00 and head
+        # elevation is the soffit (~1 m) — still include head chord at its depth.
+        rz_rows.append((format_depth_label(xy[tag][1]), th))
+    # Deduplicate identical depth labels (keep first).
+    seen: set[str] = set()
+    rz_uniq: list[tuple[str, np.ndarray]] = []
+    for lab, series in rz_rows:
+        if lab in seen:
+            continue
+        seen.add(lab)
+        rz_uniq.append((lab, series))
+    if rz_uniq:
+        plot_stacked_depth_hist(
+            out,
+            "hist_pile_rz_depth.png",
+            t,
+            rz_uniq,
+            PURPLE,
+            t_eq,
+            t_cut,
+            qty_label=r"$\theta$ (rad)",
+            d595=d595,
+        )
+        print(
+            f"PlotEQ: wrote {out / 'hist_pile_rz_depth.png'}  ({len(rz_uniq)} depths)"
+            "  [grade=pier_node RZ; shaft=chord dux/dy]"
+        )
+    else:
+        print("PlotEQ: no pile rotation estimate -- skip hist_pile_rz_depth")
+
+
 def plot_pier_hinge(
-    out: Path, eq: Path, meta: dict, t_eq: float | None,
+    out: Path,
+    eq: Path,
+    meta: dict,
+    t_eq: float | None,
     t_cut: float | None = None,
+    d595: tuple[float, float] | None = None,
 ) -> None:
     """Plot pier-base hinge histories and hysteresis panels.
 
@@ -653,6 +1335,7 @@ def plot_pier_hinge(
         meta: Window metadata describing the hinge recorder.
         t_eq: Earthquake end time in s, or ``None``.
         t_cut: Truncated recorder time in s, or ``None``.
+        d595: ``(t5, t95)`` for history zoom, or ``None``.
     Returns:
         None; writes hinge PNGs when recorder files exist.
     """
@@ -679,7 +1362,7 @@ def plot_pier_hinge(
     # ZLS sectionDeformation = axial displacement, rotation (not strain/kappa).
     is_zls = kind == "lumpedPlasticity"
     if is_zls:
-        ax_lab = r"$\Delta u_\mathrm{ax}$ (m)" if SUBTRACT_T0 else r"$u_\mathrm{ax}$ (m)"
+        ax_lab = r"$\Delta u_\mathrm{ax}$ (mm)" if SUBTRACT_T0 else r"$u_\mathrm{ax}$ (mm)"
         rot_lab = r"$\Delta\theta$ (rad)" if SUBTRACT_T0 else r"$\theta$ (rad)"
         m_title = r"Mz vs $\theta$"
         p_title = r"P vs $u_\mathrm{ax}$"
@@ -692,27 +1375,51 @@ def plot_pier_hinge(
         ar_title = r"$\varepsilon$ vs $\kappa$"
     ax_plot = ax_d - ax_d[0] if SUBTRACT_T0 else ax_d
     rot_plot = rot_d - rot_d[0] if SUBTRACT_T0 else rot_d
+    if is_zls:
+        ax_plot = to_mm(ax_plot)
     P_kN = P / 1.0e3
     M_kNm = M / 1.0e3
 
-    fig, axes = plt.subplots(2, 2, figsize=(10.4, 6.2), sharex="col",
-                             constrained_layout=True)
-    axes[0, 0].plot(t, ax_plot, color=ORANGE, lw=1.2)
-    axes[1, 0].plot(t, rot_plot, color=ORANGE, lw=1.2)
-    axes[0, 1].plot(t, P_kN, color=BLUE, lw=1.2)
-    axes[1, 1].plot(t, M_kNm, color=BLUE, lw=1.2)
-    axes[0, 0].set_ylabel(ax_lab)
-    axes[1, 0].set_ylabel(rot_lab)
-    axes[0, 1].set_ylabel("P (kN)")
-    axes[1, 1].set_ylabel("Mz (kN·m)")
-    axes[1, 0].set_xlabel("t (s)")
-    axes[1, 1].set_xlabel("t (s)")
-    axes[0, 0].set_title(f"Pier base hinge  ({kind})")
-    for ax in axes.ravel():
-        mark_last_sample(ax, t, t_eq, t_cut)
-        ax.grid(True, ls=":", alpha=0.45)
-    fig.savefig(out / "hist_hinge.png", dpi=DPI)
-    plt.close(fig)
+    channels = [
+        (ax_plot, ax_lab, ORANGE),
+        (rot_plot, rot_lab, ORANGE),
+        (P_kN, "P (kN)", BLUE),
+        (M_kNm, "Mz (kN·m)", BLUE),
+    ]
+    if d595 is None:
+        fig, axes = plt.subplots(
+            2, 2, figsize=(10.4, 6.2), sharex="col", constrained_layout=True
+        )
+        flat = axes.ravel()
+        for ax, (y, ylab, col) in zip(flat, channels):
+            ax.plot(t, y, color=col, lw=1.2)
+            ax.set_ylabel(ylab)
+            mark_last_sample(ax, t, t_eq, t_cut)
+            ax.grid(True, ls=":", alpha=0.45)
+        axes[1, 0].set_xlabel(r"$t_\mathrm{num}$ (s)")
+        axes[1, 1].set_xlabel(r"$t_\mathrm{num}$ (s)")
+        axes[0, 0].set_title(f"Pier base hinge  ({kind})")
+        fig.savefig(out / "hist_hinge.png", dpi=DPI)
+        plt.close(fig)
+    else:
+        fig, axes_f, axes_z = subplots_full_zoom(4, fig_h=8.4, sharey="row")
+        for i, (y, ylab, col) in enumerate(channels):
+            for ax in (axes_f[i], axes_z[i]):
+                ax.plot(t, y, color=col, lw=1.2)
+            axes_f[i].set_ylabel(ylab)
+            finish_full_zoom_pair(
+                axes_f[i],
+                axes_z[i],
+                d595,
+                t,
+                t_eq,
+                t_cut,
+                xlabel=(i == 3),
+                zoom_title=(i == 0),
+            )
+        axes_f[0].set_title(f"Pier base hinge  ({kind})")
+        fig.savefig(out / "hist_hinge.png", dpi=DPI)
+        plt.close(fig)
 
     fig, axes = plt.subplots(2, 2, figsize=(9.2, 8.4), constrained_layout=True)
     hyst_loop(axes[0, 0], rot_plot, M_kNm, rot_lab, "Mz (kN·m)", m_title)
@@ -742,15 +1449,15 @@ def plot_envelope(out: Path, ux, idx, groups, xy) -> None:
     for name, tags in groups.items():
         y = np.array([xy[t][1] for t in tags])
         col = np.array([ux[:, idx[t]] for t in tags])
-        umin = col.min(axis=1)
-        umax = col.max(axis=1)
+        umin = to_mm(col.min(axis=1))
+        umax = to_mm(col.max(axis=1))
         c = COLORS.get(name, "#333")
         ax.plot(umin, y, color=c, lw=1.5, label=f"{name} min")
         ax.plot(umax, y, color=c, lw=1.5, ls="--", label=f"{name} max")
         xs.extend([umin, umax])
     ax.axvline(0.0, color="#bbb", lw=0.8)
     sym_xlim(ax, *xs)
-    ax.set_xlabel("ux min / max (m)")
+    ax.set_xlabel("ux min / max (mm)")
     ax.set_ylabel("y (m), down is negative")
     ax.legend(fontsize=8)
     ax.grid(True, ls=":", alpha=0.45)
@@ -1152,6 +1859,7 @@ def plot_window_peak_field(
     cbar_label: str,
     title: str,
     soil_base: int = 10000,
+    vmax: float | None = None,
 ) -> None:
     """Plot one peak quad field over the soil window.
 
@@ -1165,6 +1873,7 @@ def plot_window_peak_field(
         cbar_label: Colorbar label with units.
         title: Plot title.
         soil_base: First soil node tag.
+        vmax: Colorbar maximum; ``None`` = data max.
     Returns:
         None; writes the named PNG when values are finite.
     """
@@ -1195,10 +1904,10 @@ def plot_window_peak_field(
         edgecolors="none",
         shading="flat",
     )
-    vmax = float(np.nanmax(face_v))
-    if not np.isfinite(vmax) or vmax <= 0:
-        vmax = 1.0
-    tpc.set_clim(0.0, vmax)
+    vmax_use = float(vmax) if vmax is not None else float(np.nanmax(face_v))
+    if not np.isfinite(vmax_use) or vmax_use <= 0:
+        vmax_use = 1.0
+    tpc.set_clim(0.0, vmax_use)
     if np.isfinite(zplot).any() and float(np.nanmax(zplot) - np.nanmin(zplot)) > 0:
         ax.tricontour(tri, zplot, levels=8, colors="k", linewidths=0.35, alpha=0.45)
     segs = []
@@ -1285,6 +1994,7 @@ def plot_quad_shear_peaks(
             r"peak $|\gamma_{xy}|$ ($\times 10^{-3}$)",
             r"peak $|\gamma_{xy}|$  (max over $t$ and Gauss pts)",
             soil_base,
+            vmax=PEAK_GAMMA_VMAX,
         )
         print(
             f"PlotEQ: wrote {out / 'window_peak_gamma_xy.png'}  "
@@ -1909,14 +2619,14 @@ def plot_spring_envelopes(
     pult = np.array([float(stations[i]["pult"]) for i in i0])
     tult = np.array([float(stations[i]["tult"]) for i in i0])
 
-    def as_groups(minmax):
-        """Arrange extrema into pile depth-plot groups.
+    def as_groups_u(minmax):
+        """Spring deflection extrema (m → mm) by pile group."""
+        umin, umax = minmax
+        umin, umax = to_mm(umin), to_mm(umax)
+        return [(name, y, umin[idx], umax[idx]) for name, idx, y in g]
 
-        Args:
-            minmax: Minimum and maximum arrays in native units.
-        Returns:
-            Pile labels, elevations in m, and grouped extrema.
-        """
+    def as_groups(minmax):
+        """Force extrema by pile group (native N)."""
         umin, umax = minmax
         return [(name, y, umin[idx], umax[idx]) for name, idx, y in g]
 
@@ -1924,7 +2634,7 @@ def plot_spring_envelopes(
     f_py = env_minmax(Fp, 0)
     plot_depth_env(
         out, "spring_env_py_defo.png", y0, y50,
-        "u_py min / max (m)", r"$\pm y_{50}$", as_groups(u_py),
+        "u_py min / max (mm)", r"$\pm y_{50}$", as_groups_u(u_py),
     )
     plot_depth_env(
         out, "spring_env_py_force.png", y0, pult,
@@ -1947,21 +2657,19 @@ def plot_spring_envelopes(
             z50_s = np.array([float(stations[i]["z50"]) for i in i_s0])
             tult_s = np.array([float(stations[i]["tult"]) for i in i_s0])
 
-            def as_shaft(minmax):
-                """Arrange shaft-only extrema into pile depth groups.
+            def as_shaft_u(minmax):
+                umin, umax = minmax
+                umin, umax = to_mm(umin), to_mm(umax)
+                return [(nm, yi, umin[idx], umax[idx]) for nm, idx, yi in shaft_g]
 
-                Args:
-                    minmax: Minimum and maximum arrays in native units.
-                Returns:
-                    Shaft labels, elevations in m, and grouped extrema.
-                """
+            def as_shaft(minmax):
                 umin, umax = minmax
                 return [(nm, yi, umin[idx], umax[idx]) for nm, idx, yi in shaft_g]
 
             plot_depth_env(
                 out, "spring_env_tz_defo.png", y_s0, z50_s,
-                "u_tz min / max (m)", r"$\pm z_{50}$ (shaft t-z)",
-                as_shaft(u_tz),
+                "u_tz min / max (mm)", r"$\pm z_{50}$ (shaft t-z)",
+                as_shaft_u(u_tz),
             )
             plot_depth_env(
                 out, "spring_env_tz_force.png", y_s0, tult_s,
@@ -1981,8 +2689,8 @@ def plot_spring_envelopes(
             qult = np.array([float(stations[i]["tult"]) for i in tip])
             plot_x_env(
                 out, "spring_env_pile_qz_defo.png", xp,
-                u_tz[0][tip], u_tz[1][tip], z50q,
-                "u_qz min / max (m)", r"$z_{50}$ compression",
+                to_mm(u_tz[0][tip]), to_mm(u_tz[1][tip]), z50q,
+                "u_qz min / max (mm)", r"$z_{50}$ compression",
                 compression_only=True,
             )
             plot_x_env(
@@ -2018,6 +2726,16 @@ def plot_spring_envelopes(
         n2 = len(face_e) // 2
         yL = yf[:n2] if n2 else yf
 
+        def cap_groups_u(minmax, yf=yf, n2=n2):
+            umin, umax = minmax
+            umin, umax = to_mm(umin), to_mm(umax)
+            if not n2:
+                return [("cap", yf, umin, umax)]
+            return [
+                ("L", yf[:n2], umin[:n2], umax[:n2]),
+                ("R", yf[n2:], umin[n2:], umax[n2:]),
+            ]
+
         def cap_groups(minmax, yf=yf, n2=n2):
             """Arrange cap-face extrema into left/right depth groups.
 
@@ -2038,7 +2756,7 @@ def plot_spring_envelopes(
 
         plot_depth_env(
             out, "spring_env_cap_py_defo.png", yL, y50c_v[:n2] if n2 else y50c_v,
-            "u_py min / max (m)", r"$\pm y_{50}$ cap", cap_groups(env_minmax(Uc, 0)),
+            "u_py min / max (mm)", r"$\pm y_{50}$ cap", cap_groups_u(env_minmax(Uc, 0)),
         )
         plot_depth_env(
             out, "spring_env_cap_py_force.png", yL, pcap[:n2] if n2 else pcap,
@@ -2047,7 +2765,7 @@ def plot_spring_envelopes(
         if Uc.shape[2] > 1:
             plot_depth_env(
                 out, "spring_env_cap_tz_defo.png", yL, z50c_v[:n2] if n2 else z50c_v,
-                "u_tz min / max (m)", r"$\pm z_{50}$ cap", cap_groups(env_minmax(Uc, 1)),
+                "u_tz min / max (mm)", r"$\pm z_{50}$ cap", cap_groups_u(env_minmax(Uc, 1)),
             )
             plot_depth_env(
                 out, "spring_env_cap_tz_force.png", yL, tcap[:n2] if n2 else tcap,
@@ -2073,8 +2791,8 @@ def plot_spring_envelopes(
             qult = Q * trib / trib.sum()
             z50q = np.full(nsof, z50c)
         plot_x_env(
-            out, "spring_env_qz_defo.png", xq, umin, umax, z50q,
-            "u_qz min / max (m)", r"$z_{50}$ compression",
+            out, "spring_env_qz_defo.png", xq, to_mm(umin), to_mm(umax), z50q,
+            "u_qz min / max (mm)", r"$z_{50}$ compression",
             compression_only=True,
         )
         plot_x_env(
@@ -2180,22 +2898,23 @@ def plot_hyst(out: Path, eq: Path, js: dict | None, meta: dict) -> None:
             titles.append(f"{pile_name(int(s['ip']))}  y={float(s['y']):.2f}")
         else:
             titles.append(f"ele {e}")
+    Up_mm = Up * M_TO_MM
     hyst_grid(
-        out, "hyst_pile_py.png", Up, Fp, 0, titles, "u_py (m)", "p (N)", 3,
+        out, "hyst_pile_py.png", Up_mm, Fp, 0, titles, "u_py (mm)", "p (N)", 3,
         which=pile_hyst_order(stations, Up.shape[1]),
         share_x=True,
     )
     if Up.shape[2] > 1:
         hyst_grid(
-            out, "hyst_pile_tz.png", Up, Fp, 1, titles,
-            "u_tz (m)", "t (N)", 3, which=pile_hyst_order(stations, Up.shape[1], qz=False),
+            out, "hyst_pile_tz.png", Up_mm, Fp, 1, titles,
+            "u_tz (mm)", "t (N)", 3, which=pile_hyst_order(stations, Up.shape[1], qz=False),
             share_x=True,
         )
         qz_i = pile_hyst_order(stations, Up.shape[1], qz=True)
         if qz_i:
             hyst_grid(
-                out, "hyst_pile_qz.png", Up, Fp, 1, titles,
-                "u_qz (m)", "q (N)", 3, which=qz_i,
+                out, "hyst_pile_qz.png", Up_mm, Fp, 1, titles,
+                "u_qz (mm)", "q (N)", 3, which=qz_i,
                 share_x=True,
             )
 
@@ -2215,14 +2934,15 @@ def plot_hyst(out: Path, eq: Path, js: dict | None, meta: dict) -> None:
             else:
                 tcap.append(f"cap ele {e}")
         cap_ord = [0, 3, 1, 4, 2, 5] if len(face_e) == 6 else None
+        Uc_mm = Uc * M_TO_MM
         hyst_grid(
-            out, "hyst_cap_py.png", Uc, Fc, 0, tcap, "u_py (m)", "p (N)", 2,
+            out, "hyst_cap_py.png", Uc_mm, Fc, 0, tcap, "u_py (mm)", "p (N)", 2,
             which=cap_ord,
             share_x=True,
         )
         if Uc.shape[2] > 1:
             hyst_grid(
-                out, "hyst_cap_tz.png", Uc, Fc, 1, tcap, "u_tz (m)", "t (N)", 2,
+                out, "hyst_cap_tz.png", Uc_mm, Fc, 1, tcap, "u_tz (mm)", "t (N)", 2,
                 which=cap_ord,
                 share_x=True,
             )
@@ -2239,8 +2959,9 @@ def plot_hyst(out: Path, eq: Path, js: dict | None, meta: dict) -> None:
             else soffit_x_default(len(sof_e), sizes)
         )
         tsof = [f"qz x={x:.2f}" for x in xq]
+        Uq_mm = Uq * M_TO_MM
         hyst_grid(
-            out, "hyst_soffit_qz.png", Uq, Fq, ic, tsof, "u_qz (m)", "q (N)", 4,
+            out, "hyst_soffit_qz.png", Uq_mm, Fq, ic, tsof, "u_qz (mm)", "q (N)", 4,
             share_x=True,
         )
 
@@ -2249,28 +2970,515 @@ def plot_hyst(out: Path, eq: Path, js: dict | None, meta: dict) -> None:
 # 6. DEFORMED FRAMES AND MOVIES
 # ------------------------------------------------------------
 
+
+def _nearest_frame_depth(
+    column: list[tuple[int, float]],
+    targets: tuple[float, ...],
+    *,
+    y_grade: float,
+) -> list[tuple[int, float, float]]:
+    """Pick nodes nearest each target depth; always include tip.
+
+    Args:
+        column: ``(tag, y)`` head-to-tip.
+        targets: Depths below grade in m.
+        y_grade: Grade elevation in m.
+    Returns:
+        ``(tag, y, depth)`` unique, shallow to deep.
+    """
+    if not column:
+        return []
+    picked: list[tuple[int, float, float]] = []
+    used: set[int] = set()
+
+    def add_nearest(d_tgt: float) -> None:
+        best = None
+        best_err = 1e99
+        for tg, y in column:
+            if tg in used:
+                continue
+            d = abs(float(y) - y_grade)
+            err = abs(d - d_tgt)
+            if err < best_err:
+                best_err = err
+                best = (tg, float(y), d)
+        if best is not None:
+            used.add(best[0])
+            picked.append(best)
+
+    for d_tgt in targets:
+        add_nearest(d_tgt)
+    tip_tg, tip_y = column[-1]
+    if tip_tg not in used:
+        picked.append((tip_tg, float(tip_y), abs(float(tip_y) - y_grade)))
+    picked.sort(key=lambda r: r[2])
+    return picked
+
+
+def pick_frame_traces(
+    tags: list[int],
+    xy: dict[int, tuple[float, float]],
+    meta: dict,
+    idx: dict[int, int],
+) -> list[tuple[str, int, str]]:
+    """Pier top/base + pile and soil ux stations for frame side panels.
+
+    Args:
+        tags, xy, meta, idx: Window maps.
+    Returns:
+        ``(label, tag, color)`` in plot order.
+    """
+    cmap = plt.get_cmap("tab10")
+    out: list[tuple[str, int, str]] = []
+    ci = 0
+    has_pier_base = False
+
+    def push(lab: str, tg: int) -> None:
+        nonlocal ci
+        if tg not in idx or tg not in xy:
+            return
+        out.append((lab, tg, cmap(ci % 10)))
+        ci += 1
+
+    if PIER_TOP in idx:
+        push("pier top", PIER_TOP)
+    if PIER_BOT in idx:
+        push("pier base", PIER_BOT)
+        has_pier_base = True
+
+    groups = pile_groups({tg: xy[tg] for tg in tags if tg in xy})
+    _name, pile_tags = preferred_pile_tags(groups)
+    pile_col = [(tg, xy[tg][1]) for tg in pile_tags if tg in idx and tg in xy]
+    y_grade = float(pile_col[0][1]) if pile_col else 0.0
+    if 1 in xy:
+        y_grade = max(y_grade, float(xy[1][1]))
+
+    pile_targets = FRAME_HIST_DEPTH_M[1:] if has_pier_base else FRAME_HIST_DEPTH_M
+    for tg, y, d in _nearest_frame_depth(pile_col, pile_targets, y_grade=y_grade):
+        is_tip = pile_col and tg == pile_col[-1][0]
+        if is_tip:
+            push(f"pile base ({format_depth_label(y)} m)", tg)
+        elif abs(d) < 0.15 and not has_pier_base:
+            push("pile 0.0 m", tg)
+        else:
+            tgt = min(FRAME_HIST_DEPTH_M, key=lambda t: abs(t - d))
+            if abs(tgt - d) < 1.0:
+                push(f"pile {tgt:.1f} m", tg)
+            else:
+                push(f"pile {format_depth_label(y)} m", tg)
+
+    soil_col = soil_column_nodes(tags, xy, meta, x_tgt=0.0)
+    for tg, y, d in _nearest_frame_depth(soil_col, FRAME_HIST_DEPTH_M, y_grade=y_grade):
+        is_tip = soil_col and tg == soil_col[-1][0]
+        if is_tip:
+            push(f"soil base ({format_depth_label(y)} m)", tg)
+        elif abs(d) < 0.15:
+            push("soil 0.0 m", tg)
+        else:
+            tgt = min(FRAME_HIST_DEPTH_M, key=lambda t: abs(t - d))
+            if abs(tgt - d) < 1.0:
+                push(f"soil {tgt:.1f} m", tg)
+            else:
+                push(f"soil {format_depth_label(y)} m", tg)
+    return out
+
+
+def _frame_mesh_parts(
+    tags: list[int],
+    xy: dict[int, tuple[float, float]],
+    lines: list[list[int]],
+    quads: list[list[int]],
+    js: dict | None,
+    meta: dict | None,
+) -> dict:
+    """Soil patches, structure, and spring segments for deformed frames.
+
+    Returns:
+        Dict with idx, X0, Y0, q_idx, ij_s, ij_z, fb, face, names_used, prof,
+        xlim, ylim (limits filled by caller from amp).
+    """
+    idx = {tg: i for i, tg in enumerate(tags)}
+    X0 = np.array([xy[tg][0] for tg in tags])
+    Y0 = np.array([xy[tg][1] for tg in tags])
+    soil_base, spr_base, soffit_off, _bnd, soil_last = node_tag_bases(meta)
+
+    soil_quads = []
+    for q in quads:
+        if len(q) < 4:
+            continue
+        nn = q[:4]
+        if (
+            min(nn) >= soil_base
+            and max(nn) <= soil_last
+            and all(n in idx for n in nn)
+        ):
+            soil_quads.append(nn)
+    q_idx = (
+        np.array([[idx[n] for n in q] for q in soil_quads], dtype=int)
+        if soil_quads
+        else np.zeros((0, 4), dtype=int)
+    )
+
+    layers = list((js or {}).get("soil_layers") or (js or {}).get("layers") or [])
+    prof = (js or {}).get("soilProfile")
+    try:
+        prof = int(prof) if prof is not None else None
+    except (TypeError, ValueError):
+        prof = None
+    names_used: list[str] = []
+    face = []
+    for q in soil_quads:
+        yc = 0.25 * sum(xy[n][1] for n in q)
+        nm = layer_at_y(yc, layers)
+        st = layer_style(nm, profile=prof)
+        if nm not in names_used:
+            names_used.append(nm)
+        face.append(to_rgba(st["fill"], alpha=0.55))
+
+    struct, spr = [], []
+    for ln in lines:
+        if len(ln) < 2:
+            continue
+        a, b = ln[0], ln[1]
+        hi, lo = max(a, b), min(a, b)
+        if hi >= spr_base:
+            spr.append((lo, hi) if lo < spr_base else (a, b))
+        elif hi < soil_base:
+            struct.append((a, b))
+    ij_s = _pair_idx(struct, idx)
+    ij_z = _pair_idx(spr, idx)
+    fb = np.zeros((len(ij_z), 2))
+    fb[:, 0] = 1.0
+    spr_found = min((n for n in tags if n >= spr_base), default=spr_base)
+    for kk, (a, b) in enumerate(spr):
+        dup = b if b >= spr_base else a
+        if dup - spr_found >= soffit_off:
+            fb[kk] = (0.0, 1.0)
+
+    return {
+        "idx": idx,
+        "X0": X0,
+        "Y0": Y0,
+        "q_idx": q_idx,
+        "ij_s": ij_s,
+        "ij_z": ij_z,
+        "fb": fb,
+        "face": face,
+        "names_used": names_used,
+        "prof": prof,
+    }
+
+
+def to_mm(u) -> np.ndarray:
+    """Recorder displacement (m) → plot units (mm)."""
+    return np.asarray(u, dtype=float) * M_TO_MM
+
+
+def t_proto_to_model(t_proto: float | np.ndarray) -> np.ndarray:
+    """Prototype recorder time → Froude model (lab) time (s)."""
+    return np.asarray(t_proto, dtype=float) / TIME_SCALE_FROUDE
+
+
+def t_model_to_proto(t_model: float | np.ndarray) -> np.ndarray:
+    """Froude model (lab) time → prototype recorder time (s)."""
+    return np.asarray(t_model, dtype=float) * TIME_SCALE_FROUDE
+
+
+def frame_t0_proto() -> float:
+    """First prototype time included in animation frames (s)."""
+    return FRAME_T0_MODEL_S * TIME_SCALE_FROUDE
+
+
+def frame_time_title(t_proto: float, ifr: int, nfr: int) -> str:
+    """Mesh title with prototype and model clock plus deform scale."""
+    t_model = float(t_proto_to_model(t_proto))
+    return (
+        f"t = {t_model:.3f} s model  ({float(t_proto):.3f} s proto)   "
+        f"deform x{SCALE:g}   {ifr + 1}/{nfr}"
+    )
+
+
+def _frame_hist_mm_formatter() -> FuncFormatter:
+    """Integer mm tick labels (1 mm precision)."""
+    return FuncFormatter(lambda v, _: f"{int(round(v))}")
+
+
+def _finish_frame_hist_dual_axes(
+    fig: plt.Figure,
+    axes_h: list[plt.Axes],
+    ylim_u: float,
+) -> None:
+    """Model-scale time (top of history column) and ux/λ (per-panel secondary y).
+
+    Each history row keeps prototype ``u_x`` (mm) on the left. ``secondary_yaxis``
+    on the right mirrors primary tick positions with labels ÷ λ; one row carries
+    the shared y-label so ticks are not clipped by the figure edge.
+    """
+    mm_fmt = _frame_hist_mm_formatter()
+    visible = [ax for ax in axes_h if ax.get_visible()]
+    if not visible:
+        return
+
+    ax_top = visible[0]
+    label_row = len(visible) // 2  # shared y-label only once
+
+    sec_x = ax_top.secondary_xaxis(
+        "top",
+        functions=(
+            lambda t_p: t_proto_to_model(t_p),
+            lambda t_m: t_model_to_proto(t_m),
+        ),
+    )
+    sec_x.set_xlabel(
+        r"$t/\sqrt{\lambda}$ (s) model scale", fontsize=FRAME_FS_AXIS, labelpad=2
+    )
+    sec_x.tick_params(labelsize=FRAME_FS)
+
+    for i, ax in enumerate(visible):
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=3, integer=True))
+        ax.yaxis.set_major_formatter(mm_fmt)
+        sec_y = ax.secondary_yaxis(
+            "right",
+            functions=(
+                lambda u_p: np.asarray(u_p, dtype=float) / CYLINDER_LENGTH_SCALE,
+                lambda u_m: np.asarray(u_m, dtype=float) * CYLINDER_LENGTH_SCALE,
+            ),
+        )
+        ylo, yhi = ax.get_ylim()
+        yticks = [
+            y
+            for y in ax.get_yticks()
+            if ylo - 1e-9 <= float(y) <= yhi + 1e-9
+        ]
+        if yticks:
+            sec_y.set_yticks(
+                np.asarray(yticks, dtype=float) / CYLINDER_LENGTH_SCALE
+            )
+        sec_y.yaxis.set_major_formatter(mm_fmt)
+        sec_y.tick_params(
+            labelsize=FRAME_FS,
+            pad=1,
+            length=3,
+            labelright=True,
+        )
+        if i == label_row:
+            sec_y.set_ylabel(
+                r"$u_x/\lambda$ (mm) model scale",
+                fontsize=FRAME_FS_AXIS,
+                labelpad=4,
+            )
+
+def _create_frame_hist_figure(
+    t: np.ndarray,
+    ux: np.ndarray,
+    mesh: dict,
+    traces: list[tuple[str, int, str]],
+    xlim: tuple[float, float],
+    ylim: tuple[float, float],
+    nfr: int,
+) -> dict:
+    """Build mesh + ux-history figure for animation or preview.
+
+    Returns:
+        Artist handles and arrays for ``_update_frame_hist_figure``.
+    """
+    idx = mesh["idx"]
+    ntr = max(len(traces), 1)
+    fig = plt.figure(figsize=(12.5, 8.2))
+    gs = GridSpec(
+        ntr,
+        2,
+        figure=fig,
+        width_ratios=[1.05, 1.35],
+        wspace=0.22,
+        hspace=0.06,
+        left=0.08,
+        right=0.90,
+        top=0.94,
+        bottom=0.07,
+    )
+    ax_m = fig.add_subplot(gs[:, 0])
+    ax_m.set_aspect("equal")
+    ax_m.set_xlabel(r"$x$ (m) prototype scale", fontsize=FRAME_FS_AXIS)
+    ax_m.set_ylabel(r"$y$ (m) prototype scale", fontsize=FRAME_FS_AXIS)
+    ax_m.tick_params(labelsize=FRAME_FS)
+    ax_m.grid(True, ls=":", alpha=0.35)
+    ax_m.set_xlim(*xlim)
+    ax_m.set_ylim(*ylim)
+    ttl = ax_m.set_title("", fontsize=FRAME_FS_AXIS)
+
+    q_idx = mesh["q_idx"]
+    face = mesh["face"]
+    pc = PolyCollection(
+        np.zeros((max(len(q_idx), 1), 4, 2)),
+        facecolors=face if face else "#cfd8dc",
+        edgecolors="#333333",
+        linewidths=0.18,
+        zorder=0,
+    )
+    if len(q_idx) == 0:
+        pc.set_visible(False)
+    ax_m.add_collection(pc)
+    lc_s = LineCollection(
+        np.zeros((max(len(mesh["ij_s"]), 1), 2, 2)),
+        colors=ORANGE, linewidths=1.25, zorder=3,
+    )
+    if len(mesh["ij_s"]) == 0:
+        lc_s.set_visible(False)
+    ax_m.add_collection(lc_s)
+    lc_z = LineCollection(
+        np.zeros((max(len(mesh["ij_z"]), 1), 2, 2)),
+        colors=PURPLE, linewidths=1.55, zorder=4,
+    )
+    if len(mesh["ij_z"]) == 0:
+        lc_z.set_visible(False)
+    ax_m.add_collection(lc_z)
+
+    prof = mesh["prof"]
+    handles = [
+        Patch(
+            facecolor=to_rgba(layer_style(nm, profile=prof)["fill"], alpha=0.55),
+            edgecolor="#333333",
+            label=layer_style(nm, profile=prof).get("label", nm),
+        )
+        for nm in mesh["names_used"]
+    ]
+    handles.append(plt.Line2D([0], [0], color=ORANGE, lw=1.4, label="structure"))
+    handles.append(plt.Line2D([0], [0], color=PURPLE, lw=1.6, label="springs"))
+    ax_m.legend(handles=handles, loc="lower left", fontsize=FRAME_FS, framealpha=0.88)
+
+    umax = 1e-4
+    for _lab, tg, _c in traces:
+        if tg not in idx:
+            continue
+        a = np.asarray(ux[:, idx[tg]], dtype=float)
+        if np.isfinite(a).any():
+            umax = max(umax, float(np.nanmax(np.abs(a))))
+    ylim_mm = umax * M_TO_MM * 1.08
+
+    markers = []
+    for _lab, tg, col in traces:
+        if tg not in idx:
+            markers.append(None)
+            continue
+        ln, = ax_m.plot([], [], "o", ms=5, color=col, zorder=6,
+                        markeredgecolor="k", markeredgewidth=0.35)
+        markers.append(ln)
+
+    hist = []
+    axes_h = [fig.add_subplot(gs[i, 1]) for i in range(ntr)]
+    for i, (lab, tg, col) in enumerate(traces):
+        ax = axes_h[i]
+        if tg not in idx:
+            ax.set_visible(False)
+            hist.append(None)
+            continue
+        u = ux[:, idx[tg]] * M_TO_MM
+        ax.plot(t, u, color="#b0b0b0", lw=0.9, zorder=1)
+        run_ln, = ax.plot([], [], color=col, lw=1.15, zorder=2)
+        vln = ax.axvline(float(t[0]), color="#555", ls="--", lw=0.7, zorder=3)
+        ax.axhline(0.0, color="#bbb", lw=0.5)
+        ax.set_ylim(-ylim_mm, ylim_mm)
+        ax.tick_params(labelsize=FRAME_FS, pad=2)
+        ax.grid(True, ls=":", alpha=0.35)
+        ax.text(
+            0.97, 0.08, lab, transform=ax.transAxes,
+            ha="right", va="bottom", fontsize=FRAME_FS, color=col, zorder=5,
+            bbox=dict(boxstyle="round,pad=0.25", facecolor="white",
+                      alpha=0.82, edgecolor="none"),
+        )
+        if i < ntr - 1:
+            ax.tick_params(labelbottom=False)
+        else:
+            ax.set_xlabel(r"$t$ (s) prototype scale", fontsize=FRAME_FS_AXIS)
+        ax.set_xlim(float(t[0]), float(t[-1]))
+        hist.append({"run": run_ln, "vline": vln})
+
+    _finish_frame_hist_dual_axes(fig, axes_h, ylim_mm)
+
+    pos = axes_h[ntr // 2].get_position()
+    fig.supylabel(r"$u_x$ (mm) prototype scale", fontsize=FRAME_FS_SUP, x=pos.x0 - 0.045)
+
+    return {
+        "fig": fig,
+        "ax_m": ax_m,
+        "ttl": ttl,
+        "pc": pc,
+        "lc_s": lc_s,
+        "lc_z": lc_z,
+        "q_idx": q_idx,
+        "ij_s": mesh["ij_s"],
+        "ij_z": mesh["ij_z"],
+        "fb": mesh["fb"],
+        "markers": markers,
+        "hist": hist,
+        "traces": traces,
+        "idx": idx,
+        "X0": mesh["X0"],
+        "Y0": mesh["Y0"],
+        "t": t,
+        "ux": ux,
+        "nfr": nfr,
+    }
+
+
+def _update_frame_hist_figure(ctx: dict, k: int, ifr: int, ux_k: np.ndarray, uy_k: np.ndarray) -> None:
+    """Refresh one animation frame (mesh deformation + running histories)."""
+    X = ctx["X0"] + SCALE * ux_k
+    Y = ctx["Y0"] + SCALE * uy_k
+    q_idx = ctx["q_idx"]
+    if len(q_idx):
+        ctx["pc"].set_verts(np.stack((X[q_idx], Y[q_idx]), axis=-1))
+    if len(ctx["ij_s"]):
+        ctx["lc_s"].set_segments(_line_segments(X, Y, ctx["ij_s"]))
+    if len(ctx["ij_z"]):
+        ctx["lc_z"].set_segments(_spring_segments(X, Y, ctx["ij_z"], ctx["fb"], SPRING_MINLEN))
+    t_now = float(ctx["t"][k])
+    ctx["ttl"].set_text(frame_time_title(t_now, ifr, ctx["nfr"]))
+    for (lab, tg, _col), mk, ha in zip(ctx["traces"], ctx["markers"], ctx["hist"]):
+        if tg not in ctx["idx"] or mk is None or ha is None:
+            continue
+        i = ctx["idx"][tg]
+        mk.set_data([X[i]], [Y[i]])
+        u = ctx["ux"][:, i] * M_TO_MM
+        ha["run"].set_data(ctx["t"][: k + 1], u[: k + 1])
+        ha["vline"].set_xdata([t_now, t_now])
+
+
 def frame_steps(t: np.ndarray) -> np.ndarray:
     """Select recorder samples for deformed-shape frames.
 
+    Window starts at ``FRAME_T0_MODEL_S`` on the model clock. Frame count
+    follows model-scale duration at ``FRAME_FPS`` (or ``N_FRAMES``).
+
     Args:
-        t: Recorder times in s.
+        t: Recorder times in s (prototype / ``t_num``).
     Returns:
         Sample indices; ``N_FRAMES`` takes precedence over ``FRAME_FPS``.
     """
     nt = len(t)
     if nt < 1:
         return np.zeros(0, dtype=int)
+    t0 = frame_t0_proto()
+    i0 = int(np.searchsorted(t, t0, side="left"))
+    i0 = min(max(i0, 0), nt - 1)
+    if i0 >= nt - 1:
+        return np.array([nt - 1], dtype=int)
+    win = np.arange(i0, nt, dtype=int)
+    nw = len(win)
     if N_FRAMES and N_FRAMES > 0:
-        nfr = min(int(N_FRAMES), nt)
-        return np.unique(np.linspace(0, nt - 1, nfr).round().astype(int))
+        nfr = min(int(N_FRAMES), nw)
+        local = np.unique(np.linspace(0, nw - 1, nfr).round().astype(int))
+        return win[local]
     fps = float(FRAME_FPS)
-    if fps <= 0 or nt < 2:
-        return np.arange(nt, dtype=int)
-    T = float(t[-1] - t[0])
-    if T <= 0:
-        return np.arange(nt, dtype=int)
-    nfr = min(nt, max(2, int(round(T * fps)) + 1))
-    return np.unique(np.linspace(0, nt - 1, nfr).round().astype(int))
+    if fps <= 0 or nw < 2:
+        return win
+    T_model = (float(t[-1]) - float(t[i0])) / TIME_SCALE_FROUDE
+    if T_model <= 0:
+        return win
+    nfr = min(nw, max(2, int(round(T_model * fps)) + 1))
+    local = np.unique(np.linspace(0, nw - 1, nfr).round().astype(int))
+    return win[local]
 
 
 def plot_frames(
@@ -2285,7 +3493,10 @@ def plot_frames(
     js: dict | None,
     meta: dict | None = None,
 ) -> None:
-    """Render deformed soil, structure, and spring frames and an MP4.
+    """Render deformed soil, structure, spring frames and an MP4.
+
+    When ``DO_FRAME_HIST`` and trace nodes exist, each frame includes running
+    ``u_x(t)`` histories (gray full trace + colored segment to current time).
 
     Args:
         out: Plot output directory.
@@ -2308,142 +3519,104 @@ def plot_frames(
 
     steps = frame_steps(t)
     nfr = len(steps)
-
-    idx = {tg: i for i, tg in enumerate(tags)}
-    X0 = np.array([xy[tg][0] for tg in tags])
-    Y0 = np.array([xy[tg][1] for tg in tags])
-
-    soil_base, spr_base, soffit_off, _bnd_base, soil_last = node_tag_bases(meta)
-
-    soil_quads = []
-    for q in quads:
-        if len(q) < 4:
-            continue
-        nn = q[:4]
-        if (
-            min(nn) >= soil_base
-            and max(nn) <= soil_last
-            and all(n in idx for n in nn)
-        ):
-            soil_quads.append(nn)
-    q_idx = (
-        np.array([[idx[n] for n in q] for q in soil_quads], dtype=int)
-        if soil_quads
-        else np.zeros((0, 4), dtype=int)
-    )
-
-    layers = list(
-        (js or {}).get("soil_layers") or (js or {}).get("layers") or []
-    )
-    prof = (js or {}).get("soilProfile")
-    try:
-        prof = int(prof) if prof is not None else None
-    except (TypeError, ValueError):
-        prof = None
-    names_used: list[str] = []
-    face = []
-    for q in soil_quads:
-        yc = 0.25 * sum(xy[n][1] for n in q)
-        nm = layer_at_y(yc, layers)
-        st = layer_style(nm, profile=prof)
-        if nm not in names_used:
-            names_used.append(nm)
-        face.append(to_rgba(st["fill"], alpha=0.55))
-
-    struct = []
-    spr = []
-    for ln in lines:
-        if len(ln) < 2:
-            continue
-        a, b = ln[0], ln[1]
-        hi, lo = max(a, b), min(a, b)
-        # Spring dups sit at/above spr_base (bnd may be below or above after bumps).
-        if hi >= spr_base:
-            spr.append((lo, hi) if lo < spr_base else (a, b))
-        elif hi < soil_base:
-            struct.append((a, b))
-    ij_s = _pair_idx(struct, idx)
-    ij_z = _pair_idx(spr, idx)
-    fb = np.zeros((len(ij_z), 2))
-    fb[:, 0] = 1.0
-    spr_found = min((n for n in tags if n >= spr_base), default=spr_base)
-    for k, (a, b) in enumerate(spr):
-        dup = b if b >= spr_base else a
-        if dup - spr_found >= soffit_off:
-            fb[k] = (0.0, 1.0)
-
-    amp = float(np.max(np.abs(ux[steps])))
-    amp = max(amp, float(np.max(np.abs(uy[steps]))))
+    mesh = _frame_mesh_parts(tags, xy, lines, quads, js, meta)
+    idx = mesh["idx"]
+    amp = float(np.max(np.abs(ux[steps]))) if len(steps) else 0.0
+    amp = max(amp, float(np.max(np.abs(uy[steps]))) if len(steps) else 0.0)
     pad = SCALE * amp + 0.5
-    xlim = (float(X0.min()) - pad, float(X0.max()) + pad)
-    ylim = (float(Y0.min()) - pad, float(Y0.max()) + pad)
+    xlim = (float(mesh["X0"].min()) - pad, float(mesh["X0"].max()) + pad)
+    ylim = (float(mesh["Y0"].min()) - pad, float(mesh["Y0"].max()) + pad)
 
-    fig, ax = plt.subplots(figsize=(6.0, 8.0))
-    ax.set_aspect("equal")
-    ax.set_xlabel("x (m)")
-    ax.set_ylabel("y (m)")
-    ax.grid(True, ls=":", alpha=0.35)
-    ttl = ax.set_title("", fontsize=10)
-    ax.set_xlim(*xlim)
-    ax.set_ylim(*ylim)
-
-    pc = PolyCollection(
-        np.zeros((max(len(q_idx), 1), 4, 2)),
-        facecolors=face if face else "#cfd8dc",
-        edgecolors="#333333",
-        linewidths=0.18,
-        zorder=0,
-    )
-    if len(q_idx) == 0:
-        pc.set_visible(False)
-    ax.add_collection(pc)
-    lc_s = LineCollection(
-        np.zeros((max(len(ij_s), 1), 2, 2)),
-        colors=ORANGE, linewidths=1.25, zorder=3,
-    )
-    if len(ij_s) == 0:
-        lc_s.set_visible(False)
-    ax.add_collection(lc_s)
-    lc_z = LineCollection(
-        np.zeros((max(len(ij_z), 1), 2, 2)),
-        colors=PURPLE, linewidths=1.55, zorder=4,
-    )
-    if len(ij_z) == 0:
-        lc_z.set_visible(False)
-    ax.add_collection(lc_z)
-
-    handles = [
-        Patch(facecolor=to_rgba(layer_style(nm, profile=prof)["fill"], alpha=0.55),
-              edgecolor="#333333", label=layer_style(nm, profile=prof).get("label", nm))
-        for nm in names_used
-    ]
-    handles.append(plt.Line2D([0], [0], color=ORANGE, lw=1.4, label="structure"))
-    handles.append(plt.Line2D([0], [0], color=PURPLE, lw=1.6, label="springs"))
-    ax.legend(handles=handles, loc="lower left", fontsize=7, framealpha=0.88)
-    fig.subplots_adjust(left=0.12, right=0.98, bottom=0.07, top=0.95)
+    traces: list[tuple[str, int, str]] = []
+    if DO_FRAME_HIST and meta is not None:
+        traces = pick_frame_traces(tags, xy, meta, idx)
 
     ndig = max(4, len(str(max(nfr - 1, 0))))
-    for ifr, k in enumerate(steps):
-        X = X0 + SCALE * ux[k]
-        Y = Y0 + SCALE * uy[k]
-        if len(q_idx):
-            verts = np.stack((X[q_idx], Y[q_idx]), axis=-1)
-            pc.set_verts(verts)
-        if len(ij_s):
-            lc_s.set_segments(_line_segments(X, Y, ij_s))
-        if len(ij_z):
-            lc_z.set_segments(_spring_segments(X, Y, ij_z, fb, SPRING_MINLEN))
-        ttl.set_text(f"t = {t[k]:.3f} s   scale x{SCALE:g}   {ifr + 1}/{nfr}")
-        fig.savefig(
-            d / f"frame_{ifr:0{ndig}d}.png",
-            dpi=FRAME_DPI,
-            facecolor="white",
-            pil_kwargs={"compress_level": 1},
+
+    if traces:
+        ctx = _create_frame_hist_figure(t, ux, mesh, traces, xlim, ylim, nfr)
+        fig = ctx["fig"]
+        for ifr, k in enumerate(steps):
+            _update_frame_hist_figure(ctx, k, ifr, ux[k], uy[k])
+            fig.savefig(
+                d / f"frame_{ifr:0{ndig}d}.png",
+                dpi=FRAME_DPI,
+                facecolor="white",
+                pil_kwargs={"compress_level": 1},
+            )
+            if ifr == 0 or (ifr + 1) % 400 == 0 or ifr + 1 == nfr:
+                print(f"PlotEQ: frames {ifr + 1}/{nfr}", flush=True)
+        plt.close(fig)
+        print(f"PlotEQ: {nfr} frames (+ histories) -> {d}")
+    else:
+        fig, ax = plt.subplots(figsize=(6.0, 8.0))
+        ax.set_aspect("equal")
+        ax.set_xlabel(r"$x$ (m) prototype scale")
+        ax.set_ylabel(r"$y$ (m) prototype scale")
+        ax.grid(True, ls=":", alpha=0.35)
+        ttl = ax.set_title("", fontsize=FRAME_FS_AXIS)
+        ax.set_xlim(*xlim)
+        ax.set_ylim(*ylim)
+
+        q_idx = mesh["q_idx"]
+        pc = PolyCollection(
+            np.zeros((max(len(q_idx), 1), 4, 2)),
+            facecolors=mesh["face"] if mesh["face"] else "#cfd8dc",
+            edgecolors="#333333",
+            linewidths=0.18,
+            zorder=0,
         )
-        if ifr == 0 or (ifr + 1) % 400 == 0 or ifr + 1 == nfr:
-            print(f"PlotEQ: frames {ifr + 1}/{nfr}", flush=True)
-    plt.close(fig)
-    print(f"PlotEQ: {nfr} frames -> {d}")
+        if len(q_idx) == 0:
+            pc.set_visible(False)
+        ax.add_collection(pc)
+        lc_s = LineCollection(
+            np.zeros((max(len(mesh["ij_s"]), 1), 2, 2)),
+            colors=ORANGE, linewidths=1.25, zorder=3,
+        )
+        if len(mesh["ij_s"]) == 0:
+            lc_s.set_visible(False)
+        ax.add_collection(lc_s)
+        lc_z = LineCollection(
+            np.zeros((max(len(mesh["ij_z"]), 1), 2, 2)),
+            colors=PURPLE, linewidths=1.55, zorder=4,
+        )
+        if len(mesh["ij_z"]) == 0:
+            lc_z.set_visible(False)
+        ax.add_collection(lc_z)
+
+        prof = mesh["prof"]
+        handles = [
+            Patch(facecolor=to_rgba(layer_style(nm, profile=prof)["fill"], alpha=0.55),
+                  edgecolor="#333333", label=layer_style(nm, profile=prof).get("label", nm))
+            for nm in mesh["names_used"]
+        ]
+        handles.append(plt.Line2D([0], [0], color=ORANGE, lw=1.4, label="structure"))
+        handles.append(plt.Line2D([0], [0], color=PURPLE, lw=1.6, label="springs"))
+        ax.legend(handles=handles, loc="lower left", fontsize=FRAME_FS, framealpha=0.88)
+        fig.subplots_adjust(left=0.12, right=0.98, bottom=0.07, top=0.95)
+
+        X0, Y0 = mesh["X0"], mesh["Y0"]
+        for ifr, k in enumerate(steps):
+            X = X0 + SCALE * ux[k]
+            Y = Y0 + SCALE * uy[k]
+            if len(q_idx):
+                pc.set_verts(np.stack((X[q_idx], Y[q_idx]), axis=-1))
+            if len(mesh["ij_s"]):
+                lc_s.set_segments(_line_segments(X, Y, mesh["ij_s"]))
+            if len(mesh["ij_z"]):
+                lc_z.set_segments(_spring_segments(X, Y, mesh["ij_z"], mesh["fb"], SPRING_MINLEN))
+            ttl.set_text(frame_time_title(float(t[k]), ifr, nfr))
+            fig.savefig(
+                d / f"frame_{ifr:0{ndig}d}.png",
+                dpi=FRAME_DPI,
+                facecolor="white",
+                pil_kwargs={"compress_level": 1},
+            )
+            if ifr == 0 or (ifr + 1) % 400 == 0 or ifr + 1 == nfr:
+                print(f"PlotEQ: frames {ifr + 1}/{nfr}", flush=True)
+        plt.close(fig)
+        print(f"PlotEQ: {nfr} frames -> {d}")
+
     if mux_frame_mp4(out, d, t, steps, ndig):
         prune_movie_frames(d, steps, t, ux, uy, tags, ndig)
 
@@ -2469,12 +3642,12 @@ def ffmpeg_bin() -> str | None:
 def mux_frame_mp4(
     out: Path, d: Path, t: np.ndarray, steps: np.ndarray, ndig: int
 ) -> bool:
-    """Encode rendered frames at one-to-one analysis duration.
+    """Encode frames so MP4 wall-clock duration matches model-scale window.
 
     Args:
         out: Plot output directory.
         d: Frame PNG directory.
-        t: Recorder times in s.
+        t: Recorder times in s (prototype).
         steps: Recorder sample indices used for frames.
         ndig: Zero-padding width in frame filenames.
     Returns:
@@ -2487,10 +3660,10 @@ def mux_frame_mp4(
     if not ff:
         print("PlotEQ: no ffmpeg -- PNGs only")
         return False
-    T = float(t[steps[-1]] - t[steps[0]])
-    if T <= 0:
-        T = float(nfr - 1) * 0.02
-    in_fps = nfr / T
+    T_model = (float(t[steps[-1]]) - float(t[steps[0]])) / TIME_SCALE_FROUDE
+    if T_model <= 0:
+        T_model = float(nfr - 1) * 0.02
+    in_fps = nfr / T_model
     out_fps = min(float(MOVIE_FPS), in_fps)
     mp4 = out / "eq_window.mp4"
     cmd = [
@@ -2504,7 +3677,12 @@ def mux_frame_mp4(
     ]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode == 0:
-        print(f"PlotEQ: movie {mp4}  ({out_fps:.1f} fps, {T:.2f} s)")
+        t0m = t_proto_to_model(float(t[steps[0]]))
+        t1m = t_proto_to_model(float(t[steps[-1]]))
+        print(
+            f"PlotEQ: movie {mp4}  ({out_fps:.1f} fps, {T_model:.2f} s model; "
+            f"{t0m:.2f}–{t1m:.2f} s model)"
+        )
         return True
     print(f"PlotEQ: ffmpeg skipped ({r.stderr.strip() or r.returncode})")
     return False
@@ -2630,11 +3808,11 @@ def overlay_bcs(
     t_eq = eq_end_time(meta, t_s)
 
     fig, ax = plt.subplots(figsize=(10.4, 4.2), constrained_layout=True)
-    ax.plot(t_s, ux_s, color="#1565c0", lw=1.35, label="Shin  pier top ux")
-    ax.plot(t_a, ux_a, color="#c45c12", lw=1.15, ls="--", label="ASDEA  pier top ux")
+    ax.plot(t_s, to_mm(ux_s), color="#1565c0", lw=1.35, label="Shin  pier top ux")
+    ax.plot(t_a, to_mm(ux_a), color="#c45c12", lw=1.15, ls="--", label="ASDEA  pier top ux")
     mark_eq_end(ax, t_eq)
-    ax.set_xlabel("t (s)")
-    ax.set_ylabel("ux (m)")
+    ax.set_xlabel(r"$t_\mathrm{num}$ (s)")
+    ax.set_ylabel("ux (mm)")
     ax.set_title(f"Profile {profile}  {pier_ele}  Shin vs ASDEA  (pier top, Δ from t0)")
     ax.legend(fontsize=8)
     ax.grid(True, ls=":", alpha=0.45)
@@ -2642,11 +3820,11 @@ def overlay_bcs(
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(10.4, 3.6), constrained_layout=True)
-    ax.plot(t_s, uy_s, color="#1565c0", lw=1.35, label="Shin  pier top uy")
-    ax.plot(t_a, uy_a, color="#c45c12", lw=1.15, ls="--", label="ASDEA  pier top uy")
+    ax.plot(t_s, to_mm(uy_s), color="#1565c0", lw=1.35, label="Shin  pier top uy")
+    ax.plot(t_a, to_mm(uy_a), color="#c45c12", lw=1.15, ls="--", label="ASDEA  pier top uy")
     mark_eq_end(ax, t_eq)
-    ax.set_xlabel("t (s)")
-    ax.set_ylabel("uy (m)")
+    ax.set_xlabel(r"$t_\mathrm{num}$ (s)")
+    ax.set_ylabel("uy (mm)")
     ax.set_title(f"Profile {profile}  {pier_ele}  Shin vs ASDEA  (pier top, Δ from t0)")
     ax.legend(fontsize=8)
     ax.grid(True, ls=":", alpha=0.45)
@@ -2701,7 +3879,15 @@ def main() -> int:
     idx = {t: i for i, t in enumerate(disp_tags)}
     lines, quads = read_eles(eq)
     disp_files = meta.get("dispFiles", "window_disp.out").split()
-    need_disp = DO_HIST or DO_ENVELOPE or DO_FRAMES
+    # Frames: 0=auto when every window node has a disp column; 1=force; -1=off.
+    full_window_disp = len(tags) > 0 and len(disp_tags) >= len(tags)
+    if DO_FRAMES < 0:
+        want_frames = False
+    elif DO_FRAMES > 0:
+        want_frames = True
+    else:
+        want_frames = full_window_disp
+    need_disp = DO_HIST or DO_DEPTH_HIST or DO_ENVELOPE or want_frames
     if need_disp:
         t, ux, uy = load_window_disp(eq, disp_tags, disp_files)
         if SUBTRACT_T0:
@@ -2721,16 +3907,35 @@ def main() -> int:
 
     t_eq = eq_end_time(meta, t) if t is not None else None
     t_cut = truncated_end(meta, t)
+    d595 = load_d595_proto()
+    if d595 is not None:
+        print(f"PlotEQ: D5-95 zoom  [{d595[0]:.1f}, {d595[1]:.1f}] s  (prototype / t_num)")
     if t is not None and len(t) > 1:
         print(
             f"PlotEQ: n={len(t)}  t={float(t[0]):.3g}..{float(t[-1]):.3g} s"
             + (f"  Trec={meta.get('Trec', '?')} s (incomplete)" if t_cut else "")
         )
     if DO_HIST:
-        plot_hist(out, t, ux, uy, idx, groups, t_eq, t_cut)
+        plot_hist(out, t, ux, uy, idx, groups, t_eq, t_cut, d595=d595)
         print(f"PlotEQ: wrote {out / 'hist_ux.png'}")
+    if DO_DEPTH_HIST and t is not None:
+        plot_depth_histories(
+            out,
+            eq,
+            meta,
+            js,
+            t,
+            ux,
+            idx,
+            groups,
+            xy,
+            disp_tags,
+            t_eq,
+            t_cut,
+            d595=d595,
+        )
     if DO_HINGE:
-        plot_pier_hinge(out, eq, meta, t_eq, t_cut)
+        plot_pier_hinge(out, eq, meta, t_eq, t_cut, d595=d595)
     if DO_PILE_SEC:
         plot_pile_section(out, eq, meta, xy)
     if DO_ENVELOPE:
@@ -2746,14 +3951,14 @@ def main() -> int:
         plot_quad_shear_peaks(out, eq, meta, xy, lines)
     if DO_QUAD_HYST:
         plot_quad_shear_hyst(out, eq, meta, xy)
-    if DO_FRAMES:
-        # Soil patches need a displacement per corner; without them the frames
-        # would mix a deformed structure with an undeformed mesh.
-        if len(disp_tags) < len(tags):
+    if want_frames:
+        if not full_window_disp:
             print(
                 f"PlotEQ: {len(tags) - len(disp_tags)} window nodes have no disp"
                 " column (lean dump) -- skip frames"
             )
+        elif t is None:
+            print("PlotEQ: no window_disp -- skip frames")
         else:
             plot_frames(out, t, ux, uy, disp_tags, xy, lines, quads, js, meta)
 

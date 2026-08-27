@@ -1,0 +1,25 @@
+{
+  "_comment": "Orphan / pending mats only. Paired runs: plot/lab/TestMatrix_lab_runs.csv (Test=W/F/Fd/Fx, DumpFolder, MatFile, LabTrial, Note).",
+  "mats_without_dump": {
+    "0819_testGus.mat": {
+      "row": null,
+      "labTrial": null,
+      "note": "Wed probe / not a bridge Trial 1–7 mat"
+    },
+    "0821_testBaseline_Run01.mat": {
+      "row": null,
+      "labTrial": null,
+      "note": "short baseline (~107 s lab); no OpenSees dump"
+    },
+    "0821_GusBridge_rowNeg2_16Core.mat": {
+      "row": "-02",
+      "labTrial": null,
+      "note": "16-core -02 probe ~121 s lab; only r-02_1601 (8-core) on Drive"
+    }
+  },
+  "pending_mat_upload": [],
+  "pending_dump_upload": [],
+  "duplicate_mats": {
+    "0821_GusBridge_rowNeg16_8Core_P1_alpha0_dry.mat": "0821_GusBridge_rowNeg16_8Core_P1_alpha0.mat"
+  }
+}
