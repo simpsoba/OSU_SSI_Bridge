@@ -245,6 +245,8 @@ def mesh_short(text: str) -> str:
     name = m.group(2).replace("XLARGE", "X-large").title()
     if name.lower() in ("production", "baseline"):
         return "Baseline"
+    if name.upper() in ("WED0819", "WED"):
+        return "Wed0819"
     return name
 
 

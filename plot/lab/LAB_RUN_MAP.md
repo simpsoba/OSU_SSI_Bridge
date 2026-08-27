@@ -21,7 +21,7 @@ pair table here** — use the CSV.
 
 | Prefix | Meaning |
 |--------|---------|
-| **W##** | Wednesday 2026-08-19 bridge RTHS Trial (Run Log). Knobs ≈ `2026-08-19` tag + **constraints Auto** + **ParallelProfileSPD** (same family as Fri `r+01`). |
+| **W##** | Wednesday 2026-08-19 bridge RTHS Trial (Run Log). Knobs ≈ `2026-08-19` tag + **constraints Auto** + **ParallelProfileSPD** (same family as Fri `r+01`). Horizontal mesh = **`soilMesh 19`** in HEAD (`SoilDxBands.tcl`: then-production outer **20 ft → 200 ft**), not today's `soilMesh 0` (outer 30 ft). |
 | **F##** | Friday 2026-08-21 bridge RTHS Trial (gaps OK: no F02, F16, …). |
 | **Fd##** | Friday lunch dry (no OpenSees dump). |
 | **Fx##** | Friday dump without a clean Trial number (abort / early stop). |

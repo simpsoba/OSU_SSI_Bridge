@@ -23,7 +23,7 @@ proc ApplySoilDxBands {} {
 		error "SoilDxBands.tcl: foot missing (source Parameters.tcl first)"
 	}
 	if {$soilMesh == 0} {
-		# production (2026-08-19 tag): 3 ft SSI to 12 ft; outer 30 ft to 200 ft
+		# production / Fri Baseline: 3 ft SSI to 12 ft; outer 30 ft to 200 ft
 		set soilDxBands [list \
 			[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
 			[list [expr { 7.0*$foot}] [expr { 40.0*$foot}]] \
@@ -59,6 +59,17 @@ proc ApplySoilDxBands {} {
 			[list [expr { 3.0*$foot}] [expr {123.0*$foot}]] \
 			[list [expr { 7.0*$foot}] [expr {200.0*$foot}]] \
 			]
+	} elseif {$soilMesh == 19} {
+		# 2026-08-19 Wed flume: then-production mesh 0 (outer 20 ft to 200 ft).
+		# Kept as 19 so HEAD can rebuild that mesh without checking out the tag.
+		# Differs from today's soilMesh 0 only in the outer ring (20 vs 30 ft).
+		set soilDxBands [list \
+			[list [expr { 3.0*$foot}] [expr { 12.0*$foot}]] \
+			[list [expr { 7.0*$foot}] [expr { 40.0*$foot}]] \
+			[list [expr {15.0*$foot}] [expr {100.0*$foot}]] \
+			[list [expr {20.0*$foot}] [expr {140.0*$foot}]] \
+			[list [expr {20.0*$foot}] [expr {200.0*$foot}]] \
+			]
 	} elseif {$soilMesh == -1} {
 		# coarse: same inner SSI; ~25 x-stations
 		set soilDxBands [list \
@@ -76,7 +87,7 @@ proc ApplySoilDxBands {} {
 			[list [expr {55.0*$foot}] [expr {200.0*$foot}]] \
 			]
 	} else {
-		error "SoilDxBands.tcl: soilMesh must be -2, -1, 0, 1, 2, 3, or 4 (got '$soilMesh')"
+		error "SoilDxBands.tcl: soilMesh must be -2, -1, 0, 1, 2, 3, 4, or 19 (got '$soilMesh')"
 	}
 	set L_half [lindex [lindex $soilDxBands end] 1]
 }

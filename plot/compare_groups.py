@@ -47,6 +47,7 @@ MESH_FOLDER: dict[str, str] = {
     "1": "Moderate",
     "2": "Large",
     "3": "X-Large",
+    "19": "Wed0819",
 }
 
 SKIP_FOLDER: dict[str, str] = {
@@ -372,6 +373,7 @@ MESH_NEQN: dict[int, int] = {
     2: 4620,
     3: 5484,
     4: 5900,  # still estimate
+    19: 2136,  # 2026-08-19 Wed flume (outer 20 ft → 200 ft); OpenSees probe 2026-08-27
 }
 
 

@@ -261,14 +261,15 @@ set nSeg_below_tip 5;                     # <-- EDIT  (-) L5 below tip (15 ft)
 
 # Horizontal mesh, |x| from the pier (near field).
 # soilMesh picks a band list; {mesh size, x end} rows live in soil/SoilDxBands.tcl.
-#    0  production / 2026-08-19 tag (~35 x-stations)
+#    0  production / Fri Baseline (~35 x-stations; outer 30 ft → 200 ft)
 #    1  moderate SSI (3 ft to 39 ft; ~57 x-stations)
 #    2  large SSI    (3 ft to 84 ft; ~83 x-stations)
 #    3  x-large SSI  (3 ft to 114 ft; ~99 x-stations)
 #    4  xx-large SSI (3 ft to 123 ft; ~107 x-stations)
+#   19  2026-08-19 Wed flume (= then-production mesh 0; outer 20 ft → 200 ft)
 #   -1  coarse    (~25 x-stations)
 #   -2  coarser   (~19 x-stations)
-set soilMesh 0;                           # <-- EDIT  -2 | -1 | 0 | 1 | 2 | 3 | 4
+set soilMesh 0;                           # <-- EDIT  -2 | -1 | 0 | 1 | 2 | 3 | 4 | 19
 source [file join [file dirname [file normalize [info script]]] soil SoilDxBands.tcl]
 # ApplySoilDxBands + dtAnalysis: RefreshDerivedKnobs, after DT_FACTOR
 
