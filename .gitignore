@@ -4,10 +4,10 @@ tmp/
 # Legacy Drive zip downloads (superseded by OSU_SSI_BRIDGE_DATA_LOCAL)
 FLUME_DATA/
 
-# Recorders (empty placeholder; dumps go under plot/out)
+# Legacy recorder root (unused; dumps go under plot/out or LOCAL)
 output/
 
-# Archived EQ dumps (named copies of trial1 / outDIR)
+# Legacy named EQ dump copies (unused; lab dumps live under LOCAL)
 runs/
 
 # Junction → LOCAL opensees_data (not Shared Drive; archive is 2026-OSU-SSI-Bridge/<day>/)

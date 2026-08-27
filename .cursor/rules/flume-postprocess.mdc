@@ -14,7 +14,7 @@ alwaysApply: true
 | `OSU_SSI_BRIDGE_DATA/` | Junction → `LOCAL/opensees_data` (same local tree; not Shared Drive) |
 | Shared Drive archive | `G:\Shared drives\Simpson team\Test Data\2026-OSU-SSI-Bridge\<YYYY-MM-DD>\opensees_data\` — **safety copy** from LOCAL after ingest (not for plotting) |
 | `OSU_SSI_BRIDGE_DATA_LOCAL/plots/` | Post-process PNGs (see layout below) |
-| `plot/lab/TestMatrix_lab_runs.csv` | **As-run index** (git-tracked): **`Test`** = `W##` / `F##` / `Fd##` / `Fx##` + campaign columns; **`DateTime`**, **`DumpFolder`**, **`MatFile`**, **`LabTrial`**, **`Note`** at end. Copy: `LOCAL/TestMatrix_lab_runs.csv`. |
+| `plot/lab/TestMatrix_lab_runs.csv` | **As-run index** (git-tracked): **`Test`** = `W##` / `F##` / `Fd##` / `Fx##` + campaign columns (incl. **`DOFs`** = `systemSize`); **`DateTime`**, **`DumpFolder`**, **`MatFile`**, **`LabTrial`**, **`Note`** at end. Copy: `LOCAL/TestMatrix_lab_runs.csv`. |
 | `plot/lab/1_Monopile_matrix.xlsx` | Lab schedule / **Run Log** (Wed+Fri RTHS trials). Source of Lab Trial IDs; not ground truth for dump knobs. |
 | `plot/lab/mat_run_map.json` | **Orphan / pending mats only** (not paired runs). |
 | `plot/lab/LAB_RUN_MAP.md` | Narrative: pairing method, clocks, pending — not a second table. |

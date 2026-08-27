@@ -360,20 +360,31 @@ def has_hybrid_execute(row: dict[str, str]) -> bool:
     )
 
 
-# Approximate full-model equation count (systemSize) by soilMesh.
+# Fallback when a row has no DOFs cell: OpenSees systemSize after gravity
+# (Run.tcl / RunParallel.tcl "Model size … DOFs"), serial probe 2026-08-27.
+# Profile 4, Shin, SSPquad/quad, inelastic, lumpedPlasticity + disp piles.
+# (quad vs SSPquad and expElementType twoNodeLink do not change this count.)
 MESH_NEQN: dict[int, int] = {
-    -2: 1200,
-    -1: 1500,
-    0: 2000,
-    1: 3200,
-    2: 4600,
-    3: 5500,
-    4: 5900,
+    -2: 1200,  # still estimate (not in campaign; not re-probed)
+    -1: 1500,  # still estimate
+    0: 2028,
+    1: 3216,
+    2: 4620,
+    3: 5484,
+    4: 5900,  # still estimate
 }
 
 
 def mesh_neqn(row: dict[str, str]) -> str:
-    """DOF count for footnote tables (approx. systemSize)."""
+    """
+    DOF count for footnote tables.
+
+    Prefer the as-run ``DOFs`` column (OpenSees ``systemSize``). Fall back to
+    ``MESH_NEQN`` from ``soilMesh`` when the cell is blank.
+    """
+    raw = (row.get("DOFs") or "").strip().replace(",", "")
+    if raw.isdigit():
+        return f"{int(raw):,}"
     mesh = (row.get("soilMesh") or "").strip()
     m = re.match(r"^(-?\d+)", mesh)
     if not m:

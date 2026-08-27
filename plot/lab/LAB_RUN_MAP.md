@@ -7,7 +7,7 @@ pair table here** — use the CSV.
 
 | File | Role |
 |------|------|
-| **`plot/lab/TestMatrix_lab_runs.csv`** | One row per as-run. Campaign/model knobs first; trailing **`DateTime`**, **`DumpFolder`**, **`MatFile`**, **`LabTrial`**, **`Note`**. Leading **`Test`** = `W##` (Wed) / `F##` (Fri RTHS Trial) / `Fd##` (dry lunch) / `Fx##` (abort / no Trial). Git-tracked; working copy: `OSU_SSI_BRIDGE_DATA_LOCAL/TestMatrix_lab_runs.csv`. |
+| **`plot/lab/TestMatrix_lab_runs.csv`** | One row per as-run. Campaign/model knobs first (incl. **`DOFs`** = OpenSees `systemSize` after gravity); trailing **`DateTime`**, **`DumpFolder`**, **`MatFile`**, **`LabTrial`**, **`Note`**. Leading **`Test`** = `W##` (Wed) / `F##` (Fri RTHS Trial) / `Fd##` (dry lunch) / `Fx##` (abort / no Trial). Git-tracked; working copy: `OSU_SSI_BRIDGE_DATA_LOCAL/TestMatrix_lab_runs.csv`. |
 | **`plot/lab/1_Monopile_matrix.xlsx`** | Lab schedule workbook (**Run Log** = wall-clock and Trial IDs). |
 | **`plot/lab/mat_run_map.json`** | **Orphans only:** mats without a dump, pending uploads, duplicate mat aliases. Not paired runs. |
 | **`plot/lab/STATEOS_SIGNALS.md`** | Seki §2.1 / `typeConv3` field guide for `hist_os_state.png`. |
