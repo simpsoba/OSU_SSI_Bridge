@@ -4,8 +4,9 @@
 Post-process one serial OpenSees earthquake-window recorder dump.
 Use the ``DO_*`` switches to select history, depth-stacked pile/soil ux,
 envelope, hysteresis, quad, spring, pile-section, and frame plots. Write
-PNGs to ``<eqOutDir>/plots/``. Use ``PlotEQParallel.py`` for OpenSeesMP
-dumps whose files end in ``.$pid``.
+PNGs to ``LOCAL/plots/runs/<Test>/eq/`` for lab dumps, else
+``<eqOutDir>/plots/``. Use ``PlotEQParallel.py`` for OpenSeesMP dumps
+whose files end in ``.$pid``.
 
 Units: N, m, s.
 """
@@ -31,7 +32,13 @@ from matplotlib.colors import to_rgba
 from matplotlib.patches import Patch
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 
-from lab_paths import CYLINDER_LENGTH_SCALE, M_TO_MM, TIME_SCALE_FROUDE
+from lab_paths import (
+    CYLINDER_LENGTH_SCALE,
+    M_TO_MM,
+    TIME_SCALE_FROUDE,
+    is_lab_dump,
+    run_eq_plots_dir,
+)
 from paths import HERE, elevation_dir, eq_compare_dir, eq_dir, pile_springs_dir
 from PlotModelSketch import layer_style
 from gm_duration import arias_significant_duration
@@ -39,7 +46,6 @@ from gm_duration import arias_significant_duration
 # ------------------------------------------------------------
 # EDIT
 # ------------------------------------------------------------
-# Lab dumps use PlotEQParallel.py, which sets the plots folder through lab_paths.
 EQ_OUT = eq_dir(3, "Shin", "quad", "forceBeamColumn")
 
 DO_HIST = 1
@@ -3842,7 +3848,7 @@ usage: python3 plot/PlotEQ.py [eqOutDir]
 
   eqOutDir   serial recorder folder (default: EQ_OUT in this file)
   --overlay  Shin vs ASDEA overlay for that soil profile
-  plots      <eqOutDir>/plots/   (panels: DO_* switches above)
+  plots      lab dumps → LOCAL/plots/runs/<Test>/eq/; else <eqOutDir>/plots/
   MP dumps   python3 plot/PlotEQParallel.py [eqOutDir]
 """
 
@@ -3896,7 +3902,11 @@ def main() -> int:
     else:
         t = ux = uy = None
 
-    out = eq / "plots"
+    if is_lab_dump(eq):
+        out = run_eq_plots_dir(eq.name).resolve()
+        print(f"PlotEQ: lab dump -> plots-out {out}")
+    else:
+        out = eq / "plots"
     out.mkdir(parents=True, exist_ok=True)
     # Pile groups drive the ux history and envelope, so key them off the nodes
     # that own a displacement column.

@@ -32,9 +32,7 @@ import numpy as np
 
 import PlotEQ as peq
 from lab_paths import (
-    DRIVE_ROOT,
-    LOCAL_OPENSEES_DATA,
-    SHARED_DRIVE_ARCHIVE,
+    is_lab_dump,
     run_eq_plots_dir,
 )
 from paths import HERE, elevation_dir, eq_dir
@@ -681,28 +679,6 @@ usage: python3 plot/PlotEQParallel.py [eqOutDir] [--plots-out DIR]
 """
 
 
-def _is_lab_dump(eq: Path) -> bool:
-    """
-    Check whether a dump belongs to the lab data trees (route plots to LOCAL).
-
-    Args:    eq  recorder folder
-    Returns: True for LOCAL mirror, its junction, or legacy Drive paths
-    """
-    try:
-        resolved = eq.resolve()
-    except OSError:
-        resolved = eq
-    s = str(resolved).replace("\\", "/").lower()
-    markers = (
-        str(LOCAL_OPENSEES_DATA).replace("\\", "/").lower(),
-        str(DRIVE_ROOT).replace("\\", "/").lower(),
-        str(SHARED_DRIVE_ARCHIVE).replace("\\", "/").lower(),
-        "shortcut-targets-by-id",
-        "/opensees data",
-    )
-    return any(m and m in s for m in markers)
-
-
 def _parse_argv(argv: list[str]) -> tuple[Path, Path | None]:
     """
     Parse the recorder folder and optional plot destination.
@@ -787,7 +763,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    if plots_out is None and _is_lab_dump(eq):
+    if plots_out is None and is_lab_dump(eq):
         plots_out = run_eq_plots_dir(eq.name).resolve()
         print(f"PlotEQParallel: lab dump -> plots-out {plots_out}")
     np_run, metas = load_np(eq)

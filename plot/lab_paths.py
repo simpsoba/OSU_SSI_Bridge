@@ -131,6 +131,31 @@ def run_plot_stem(dump_name: str) -> str:
     return dump_name
 
 
+def is_lab_dump(eq: Path) -> bool:
+    """
+    True when a recorder folder lives under the lab data trees.
+
+    Lab EQ/OS plotters then write to LOCAL/plots/runs/<Test>/… so the dump
+    stays free of a nested plots/ folder.
+
+    Args:    eq  recorder folder
+    Returns: True for LOCAL mirror, junction, Shared Drive archive, or ingest
+    """
+    try:
+        resolved = eq.resolve()
+    except OSError:
+        resolved = eq
+    s = str(resolved).replace("\\", "/").lower()
+    markers = (
+        str(LOCAL_OPENSEES_DATA).replace("\\", "/").lower(),
+        str(DRIVE_ROOT).replace("\\", "/").lower(),
+        str(SHARED_DRIVE_ARCHIVE).replace("\\", "/").lower(),
+        "shortcut-targets-by-id",
+        "/opensees data",
+    )
+    return any(m and m in s for m in markers)
+
+
 def run_eq_plots_dir(run_name: str) -> Path:
     """
     OpenSees EQ PNGs for one dump: plots/runs/F##/eq/.
