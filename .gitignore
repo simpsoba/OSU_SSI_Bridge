@@ -19,7 +19,7 @@ OSU_SSI_BRIDGE_DATA_LOCAL/
 # Legacy plot root (migrated to OSU_SSI_BRIDGE_DATA_LOCAL/plots/)
 OSU_SSI_PLOTS/
 
-# Matrix-generated knob overrides (recreate with RunTestMatrix.py --row N)
+# Matrix-generated knob overrides (recreate with RunTestMatrix.py --test F07)
 Overrides.tcl
 
 # Figures, EQ dumps, partition maps, JSON copies next to plotters

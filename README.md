@@ -5,9 +5,10 @@
 Parameters of the model are mostly changed in `Parameters.tcl` (`# <-- EDIT`). 
 The main file to run is: `Run.tcl`
 
-Optional campaign row: edit `TestMatrix.csv`, then
-`python RunTestMatrix.py --row N` (or `--row=-N`) writes `Overrides.tcl`.
-Positive `N` is `constraints Auto`; negative is `Transformation`; the same `|N|` is the same case (IDs start at 1). Launch with that file as argv
+Optional as-run / replay row: edit `TestMatrix.csv`, then
+`python RunTestMatrix.py --test F07` (or `S04F07`, `S04F07a`, `W01`, …) writes `Overrides.tcl`.
+`constraintsHandler` comes from the CSV (`S04F##a` = Auto twin of a Transformation lab case).
+Launch with that file as argv
 (`OpenSees Run.tcl Overrides.tcl` or `mpiexec -n N OpenSeesMP RunParallel.tcl Overrides.tcl`).
 Drivers default `overridesON 1`; with no argv file they force it to 0.
 

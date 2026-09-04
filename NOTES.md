@@ -133,8 +133,8 @@ OSU_SSI_Bridge/
   Parameters.tcl           # knobs (# <-- EDIT); TAGS CONVENTION
   Run.tcl                  # driver (runEQ 0|1); optional Overrides.tcl argv
   RunParallel.tcl          # OpenSeesMP driver; optional Overrides.tcl argv
-  TestMatrix.csv           # campaign rows
-  RunTestMatrix.py         # --row N -> Overrides.tcl (gitignored)
+  TestMatrix.csv           # as-run + dry replay rows (Test = F## / S04F## / …)
+  RunTestMatrix.py         # --test F07 -> Overrides.tcl (gitignored)
   BuildModel.tcl           # structure nodes + soil quads + SSI springs as needed;
                            # pier/deck/cap/pile beam-columns after soil gravity
   reference/
@@ -147,7 +147,7 @@ OSU_SSI_Bridge/
 
 Knobs in `Parameters.tcl` (`# <-- EDIT`); IDs in the TAGS CONVENTION section.
 `tmp/` is gitignored; `Run.tcl` and `PlotModel.tcl` do not source it.
-Matrix runs: `python RunTestMatrix.py --row N` (or `--row=-N`) then pass `Overrides.tcl` as argv to `Run.tcl` / `RunParallel.tcl` (`overridesON` defaults to 1; no file → forced off). `+N` = Auto, `-N` = Transformation.
+Matrix runs: `python RunTestMatrix.py --test F07` (or `S04F07` / `S04F07a`) then pass `Overrides.tcl` as argv to `Run.tcl` / `RunParallel.tcl` (`overridesON` defaults to 1; no file → forced off). Handler is the CSV `constraintsHandler` cell.
 Wave Name (Storm Wave / Big Tsunami) prototype vs lab depths/heights/periods: `WaveCatalog.csv` (documentation only for now).
 
 ---

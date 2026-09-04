@@ -1,24 +1,25 @@
 """
 Goals
 -----
-Write Overrides.tcl from one row of TestMatrix.csv.
+Write Overrides.tcl from one TestMatrix.csv row (keyed by Test).
 Leave blank cells at their Parameters.tcl or Run*.tcl defaults.
 
-  python RunTestMatrix.py --row 1
-  python RunTestMatrix.py --row=-1
+  python RunTestMatrix.py --test F07
+  python RunTestMatrix.py --test S04F07
+  python RunTestMatrix.py --test S04F07a
+  python RunTestMatrix.py --test S04F22p
 
-Run sign selects the EQ constraint handler: +N = Auto and
--N = Transformation. The same |N| is the same case. Use --row=-N for
-negative IDs because ``--row -1`` is parsed as a flag.
+``Test`` is unique (W## / F## / Fd## / Fx## / S04F## / S04F##a / S04F22p / …).
+``constraintsHandler`` comes from the CSV cell (no sign-derived rule).
 
 To add another override:
   1. Add a TestMatrix.csv column, preferably with the Tcl variable name.
   2. Add the name to PASS_THROUGH or a special-case block below.
-  3. Run this script for the desired row.
+  3. Run this script for the desired Test.
 
 soilProfile and soilMesh may be bare numbers or labeled values such as
 ``0 (BASELINE)``. Rayleigh columns map to analysis/RayleighDamping.tcl.
-Wave-catalog metadata is read only as metadata and is not written.
+Lab-log metadata (DumpFolder, MatFile, Note, …) is not written as set lines.
 
 This script writes Overrides.tcl; it does not launch OpenSees. Example launches:
   mpiexec -n 8 OpenSeesMP RunParallel.tcl Overrides.tcl
@@ -77,7 +78,19 @@ PASS_THROUGH = [
 ]
 
 # Columns we read for comments / hints / outDIR slug — not written as set lines
-META_COLUMNS = ["Run", "File", "Number of Procs", "Name", "Goal"]
+META_COLUMNS = [
+    "Test",
+    "File",
+    "Number of Procs",
+    "Name",
+    "Goal",
+    "DOFs",
+    "DateTime",
+    "DumpFolder",
+    "MatFile",
+    "LabTrial",
+    "Note",
+]
 
 # Columns handled in special blocks below (not in PASS_THROUGH)
 SPECIAL_COLUMNS = [
@@ -216,71 +229,60 @@ def slug(text, max_len=24):
 
 
 # ------------------------------------------------------------
-# 3. RUN-ID CONVENTIONS
+# 3. TEST-ID CONVENTIONS
 # ------------------------------------------------------------
 
 
-def canon_run_id(raw):
+def canon_test_id(raw):
     """
-    Canonicalize a nonzero signed run ID.
+    Canonicalize a Test ID (case + digit padding).
 
-    Args:    raw  e.g. "8", "+8", "8.0", or "-8"
-    Returns: canonical ID string, or None
+    Args:    raw  e.g. "f7", "F07", "s04f7a", "W01", "Fd01"
+    Returns: canonical Test string, or None
     """
     s = clean_cell(raw)
     if s is None:
         return None
-    m = re.match(r"^([+-])?(\d+)(?:\.0+)?$", s)
-    if not m:
-        return None
-    sign, digits = m.group(1), m.group(2)
-    mag = int(digits)
-    if mag == 0:
-        return None
-    if sign == "-":
-        return "-" + str(mag)
-    return str(mag)
+
+    m = re.fullmatch(r"(W|F|Fd|Fx)(\d+)", s, flags=re.IGNORECASE)
+    if m:
+        prefix = {"w": "W", "f": "F", "fd": "Fd", "fx": "Fx"}[m.group(1).lower()]
+        return "%s%02d" % (prefix, int(m.group(2)))
+
+    # S04F07 / S04F07a / S04F22p / S04F22ma (month-day dry + optional letter suffix)
+    m = re.fullmatch(r"(S)(\d{2})(F)(\d+)([A-Za-z]*)", s, flags=re.IGNORECASE)
+    if m:
+        return "S%sF%02d%s" % (m.group(2), int(m.group(4)), m.group(5).lower())
+
+    # Unknown shape: keep stripped text with letters as typed length
+    return s
 
 
-def run_handler(canon):
+def find_row_by_test(rows, test_id):
     """
-    Map run sign to the required constraint handler.
+    Find one TestMatrix row by canonical Test ID.
 
-    Args:    canon  canonical run ID
-    Returns: "Auto" or "Transformation"
-    """
-    if canon.startswith("-"):
-        return "Transformation"
-    return "Auto"
-
-
-def run_out_tag(canon):
-    """
-    Format a canonical run ID for an output-directory name.
-
-    Args:    canon
-    Returns: tag such as r+01 or r-13
-    """
-    if canon.startswith("-"):
-        return "r-" + canon[1:].zfill(2)
-    return "r+" + canon.zfill(2)
-
-
-def find_row(rows, row_id):
-    """
-    Find one TestMatrix row by canonical run ID.
-
-    Args:    rows, row_id
+    Args:    rows, test_id
     Returns: matching row dictionary, or None
     """
-    want = canon_run_id(row_id)
+    want = canon_test_id(test_id)
     if want is None:
         return None
     for r in rows:
-        got = canon_run_id(r.get("Run"))
-        if got is not None and got == want:
+        got = canon_test_id(r.get("Test"))
+        if got is not None and got.lower() == want.lower():
             return r
     return None
+
+
+def test_out_tag(test_id):
+    """
+    Format a Test ID for an output-directory name.
+
+    Args:    test_id  canonical Test
+    Returns: filesystem-safe tag (same as Test for current IDs)
+    """
+    return re.sub(r"[^\w.+-]+", "_", test_id)
 
 
 # ------------------------------------------------------------
@@ -296,13 +298,13 @@ def main():
     Returns: none (exits on invalid input; writes Overrides.tcl)
     """
     parser = argparse.ArgumentParser(
-        description="Write Overrides.tcl from one TestMatrix.csv row."
+        description="Write Overrides.tcl from one TestMatrix.csv row (Test ID)."
     )
     parser.add_argument(
-        "--row",
+        "--test",
         type=str,
         required=True,
-        help="Run id from TestMatrix.csv (1, -1, 8, -8). Use --row=-N for negatives.",
+        help="Test id from TestMatrix.csv (F07, S04F07, S04F07a, W01, …).",
     )
     parser.add_argument(
         "--csv",
@@ -317,7 +319,7 @@ def main():
     parser.add_argument(
         "--outDIR",
         default=None,
-        help="Force exact outDIR (skips row/timestamp naming)",
+        help="Force exact outDIR (skips Test/timestamp naming)",
     )
     args = parser.parse_args()
 
@@ -328,14 +330,23 @@ def main():
     with open(args.csv, newline="", encoding="utf-8-sig") as f:
         rows = list(csv.DictReader(f))
 
-    row_id = canon_run_id(args.row)
-    if row_id is None:
-        print("ERROR: bad Run id", repr(args.row), "(want 1, -1, 8, -8, ...; no 0)", file=sys.stderr)
+    if rows and "Test" not in rows[0]:
+        print(
+            "ERROR: %s has no Test column (expected lab-style matrix)." % args.csv,
+            file=sys.stderr,
+        )
         sys.exit(1)
-    row = find_row(rows, row_id)
+
+    test_id = canon_test_id(args.test)
+    if test_id is None:
+        print("ERROR: bad Test id", repr(args.test), file=sys.stderr)
+        sys.exit(1)
+    row = find_row_by_test(rows, test_id)
     if row is None:
-        print("ERROR: no Run ==", row_id, "in", args.csv, file=sys.stderr)
+        print("ERROR: no Test ==", test_id, "in", args.csv, file=sys.stderr)
         sys.exit(1)
+    # Prefer the CSV spelling after canon match
+    test_id = canon_test_id(row.get("Test")) or test_id
 
     # Warn about unknown columns (ignored on purpose, e.g. wave metadata)
     known = set(PASS_THROUGH + META_COLUMNS + SPECIAL_COLUMNS)
@@ -347,6 +358,7 @@ def main():
     goal = clean_cell(row.get("Goal")) or ""
     file_tcl = clean_cell(row.get("File")) or "RunParallel.tcl"
     np_hint = clean_cell(row.get("Number of Procs")) or "?"
+    note = clean_cell(row.get("Note")) or ""
 
     # --- outDIR: always set for matrix rows ---
     if args.outDIR is not None:
@@ -357,16 +369,17 @@ def main():
         base = clean_cell(row.get("outDIR"))
         if base is None:
             base = "runs"
-        tag = "%s_%s" % (run_out_tag(row_id), stamp)
+        tag = "%s_%s" % (test_out_tag(test_id), stamp)
         extra = slug(name) or slug(goal)
         if extra:
             tag = tag + "_" + extra
-        # if CSV gave a base folder, append the tag
         out_dir = base.rstrip("/\\") + "/" + tag
 
     lines = []
     lines.append("# Overrides.tcl — generated by RunTestMatrix.py")
-    lines.append("# row=%s  Name=%s  Goal=%s" % (row_id, name, goal))
+    lines.append("# Test=%s  Name=%s  Goal=%s" % (test_id, name, goal))
+    if note:
+        lines.append("# Note=%s" % note)
     lines.append("# File=%s  np=%s (hint only — launch OpenSees yourself)" % (file_tcl, np_hint))
     lines.append("# Applied only if Run*.tcl has overridesON 1 and this path is argv.")
     lines.append("")
@@ -379,10 +392,18 @@ def main():
         if col in ("eqIntegrator", "prePartitionSystem", "postPartitionSystem", "constraintsHandler"):
             val = strip_paren_note(val)
         if col == "constraintsHandler":
-            want = run_handler(row_id)
-            if val != want:
-                print("ERROR: Run %s must use constraintsHandler %s (got %s)" % (
-                    row_id, want, val), file=sys.stderr)
+            if val not in ("Auto", "Transformation"):
+                print(
+                    "ERROR: constraintsHandler must be Auto|Transformation, got",
+                    repr(val),
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+        if col == "realTimeON":
+            try:
+                val = "1" if float(val) > 0 else "0"
+            except ValueError:
+                print("ERROR: realTimeON must be a number, got", repr(val), file=sys.stderr)
                 sys.exit(1)
         if col == "rayleighStiff":
             val = val.lower()
@@ -442,6 +463,7 @@ def main():
         f.write(text)
 
     print("Wrote", args.out)
+    print("  Test =", test_id)
     print("  outDIR =", out_dir)
     if file_tcl.lower().endswith("runparallel.tcl"):
         print("  hint: mpiexec -n %s OpenSeesMP %s %s" % (np_hint, file_tcl, os.path.basename(args.out)))

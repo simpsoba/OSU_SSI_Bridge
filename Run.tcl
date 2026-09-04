@@ -9,7 +9,7 @@
 # Neumann (2021); Neumann et al. (2023). See reference/ and NOTES.md.
 #
 # Knobs: Parameters.tcl (TAGS CONVENTION for IDs). Switches + analysis knobs below.
-# Optional: OpenSees Run.tcl Overrides.tcl  (see overridesON; RunTestMatrix.py --row N)
+# Optional: OpenSees Run.tcl Overrides.tcl  (see overridesON; RunTestMatrix.py --test F07)
 
 # Folders next to this file (structure/, soil/, analysis/, plot/).
 set runDir [file dirname [file normalize [info script]]]
