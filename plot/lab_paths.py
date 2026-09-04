@@ -91,6 +91,15 @@ M_TO_MM = 1.0e3  # recorder displacement (m) → plot (mm)
 # Simulink *OS displacement at model scale (m) → prototype plot (mm).
 DISP_M_TO_PROTO_MM = CYLINDER_LENGTH_SCALE * M_TO_MM
 
+# Full | D5–95 time histories: fixed full-panel window (model clock 0–300 s).
+XLIM_FULL_MODEL_S = (0.0, 300.0)
+XLIM_FULL_PROTO_S = (
+    XLIM_FULL_MODEL_S[0] * TIME_SCALE_FROUDE,
+    XLIM_FULL_MODEL_S[1] * TIME_SCALE_FROUDE,
+)
+# Symmetric prototype displacement for ux / actuator overlays (mm).
+YLIM_DISP_PROTO_MM = (-200.0, 200.0)
+
 # Lab dump folder names: r+01_YYYYMMDD_HHMM_… / r-02_…
 _RUN_FOLDER_RE = re.compile(r"^r[+-]?\d+_", re.IGNORECASE)
 _OS_PNG_PREFIX = "hist_os_"

@@ -51,6 +51,8 @@ from lab_paths import (
     DISP_M_TO_PROTO_MM,
     MAT_EXTRACT_DIR,
     TIME_SCALE_FROUDE,
+    XLIM_FULL_MODEL_S,
+    YLIM_DISP_PROTO_MM,
     all_mat_names_for_plot,
     build_mat_run_catalog,
     mat_os_plots_dir,
@@ -181,12 +183,18 @@ def finish_lab_full_zoom(
     *,
     dual_time: bool = True,
     zoom_title: bool = True,
+    full_xlim: tuple[float, float] | None = XLIM_FULL_MODEL_S,
+    full_ylim: tuple[float, float] | None = None,
 ) -> None:
-    """Grid + dual time; xlim zoom to lab-mapped D5–95."""
+    """Grid + dual time; full panel 0–300 s model; zoom to lab-mapped D5–95."""
     for ax in (ax_f, ax_z):
         ax.grid(True, ls=":", alpha=0.45)
         if dual_time:
             dual_time_xaxis(ax)
+    if full_xlim is not None:
+        ax_f.set_xlim(*full_xlim)
+    if full_ylim is not None:
+        ax_f.set_ylim(*full_ylim)
     if d595_lab is not None:
         ax_z.set_xlim(d595_lab[0], d595_lab[1])
         if zoom_title:
@@ -379,7 +387,9 @@ def plot_com(
         )
         for ax in (ax_f, ax_z):
             ax.plot(time_model_s, y, color=COLORS[1], lw=1.05, label=label)
-        finish_lab_full_zoom(ax_f, ax_z, d595_lab)
+        finish_lab_full_zoom(
+            ax_f, ax_z, d595_lab, full_ylim=YLIM_DISP_PROTO_MM
+        )
         ax_f.set_ylabel(r"command $u$ (mm, prototype)")
         ax_f.set_title(title, fontsize=10)
         ax_f.legend(fontsize=8, loc="best")
@@ -456,7 +466,9 @@ def plot_tar_com_mea(
         )
         _draw(ax_f)
         _draw(ax_z)
-        finish_lab_full_zoom(ax_f, ax_z, d595_lab)
+        finish_lab_full_zoom(
+            ax_f, ax_z, d595_lab, full_ylim=YLIM_DISP_PROTO_MM
+        )
         ax_f.set_ylabel(ylab)
         ax_f.set_title(title, fontsize=10)
         ax_f.legend(fontsize=8, loc="best")

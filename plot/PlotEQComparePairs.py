@@ -76,6 +76,8 @@ from lab_paths import (
     MAT_EXTRACT_DIR,
     M_TO_MM,
     TIME_SCALE_FROUDE,
+    XLIM_FULL_PROTO_S,
+    YLIM_DISP_PROTO_MM,
     compare_plots_dir,
     resolve_opensees_data,
 )
@@ -84,14 +86,13 @@ from PlotEQCompareRuns import (
     DPI,
     UX_ABS_MAX_MM,
     apply_paper_style,
-    find_pier_top,
     load_mat_mea_feedback,
+    load_pier_ux_mm,
     loadtxt_partial,
     model_disp_to_proto_mm,
     resolve_run_path,
     run_duration,
     run_to_mat_name,
-    sym_ylim,
 )
 from PlotMatOS import load_block, non_time_cols
 
@@ -106,8 +107,8 @@ PAIR_DPI = DPI
 # grey = reference / baseline; navy = comparison series.
 COLOR_REF = "#B0B0B0"
 COLOR_OTHER = "#001F3F"
-# Fixed prototype-time window for pair figures (matches campaign Trec ≈ 450 s).
-XLIM_PROTO_S = (0.0, 450.0)
+# Full-panel prototype window (0–300 s model); see lab_paths.XLIM_FULL_PROTO_S.
+XLIM_PROTO_S = XLIM_FULL_PROTO_S
 
 HELP = """\
 usage: python plot/PlotEQComparePairs.py [runDir ...]
@@ -295,26 +296,6 @@ def load_mea_ux_proto(mat_name: str) -> tuple[np.ndarray, np.ndarray] | None:
     if not np.all(np.isfinite(ux_mm)) or float(np.nanmax(np.abs(ux_mm))) > UX_ABS_MAX_MM:
         return None
     return t_proto_s, ux_mm
-
-
-def load_pier_ux_mm(eq_dir: Path) -> tuple[np.ndarray, np.ndarray] | None:
-    """
-    OpenSees pier-top Δux (mm) vs t_num (s).
-
-    Args:    eq_dir
-    Returns: (t_num_s, ux_mm) or None
-    """
-    pier = find_pier_top(eq_dir)
-    if pier is None:
-        return None
-    data = loadtxt_partial(pier)
-    if data.size == 0 or data.shape[1] < 2:
-        return None
-    t_s = data[:, 0]
-    ux_mm = (data[:, 1] - data[0, 1]) * M_TO_MM
-    if not np.all(np.isfinite(ux_mm)) or float(np.nanmax(np.abs(ux_mm))) > UX_ABS_MAX_MM:
-        return None
-    return t_s, ux_mm
 
 
 def apply_pair_style() -> None:
@@ -510,7 +491,7 @@ def plot_pair_simulink(
     for ax in (ax_ux_f, ax_ux_z):
         ax.plot(t_ref, u_ref, color=COLOR_REF, lw=1.2, ls=ls_ref, zorder=2)
         ax.plot(t_oth, u_oth, color=COLOR_OTHER, lw=1.1, ls=ls_other, zorder=3)
-    sym_ylim(ax_ux_f)
+    ax_ux_f.set_ylim(*YLIM_DISP_PROTO_MM)
 
     y_stack: list[np.ndarray] = []
     for ax in (ax_st_f, ax_st_z):
@@ -615,7 +596,7 @@ def plot_pair_opensees(
     for ax in (ax_f, ax_z):
         ax.plot(t_ref, u_ref, color=COLOR_REF, lw=1.2, ls=ls_ref, zorder=2)
         ax.plot(t_oth, u_oth, color=COLOR_OTHER, lw=1.1, ls=ls_other, zorder=3)
-    sym_ylim(ax_f)
+    ax_f.set_ylim(*YLIM_DISP_PROTO_MM)
 
     add_dual_disp_yaxis(ax_f, source="pier", primary_label=True)
     add_dual_disp_yaxis(ax_z, source="pier", primary_label=False)

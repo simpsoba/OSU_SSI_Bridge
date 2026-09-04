@@ -12,8 +12,11 @@ Reads:
   LOCAL/mat_extract/*.npz           (stateOS via TestMatrix_lab_runs.csv)
 
 Writes:
-  OSU_SSI_BRIDGE_DATA_LOCAL/plots/compare/stateos/bar_typeconv3_eq35_90.png
-  OSU_SSI_BRIDGE_DATA_LOCAL/plots/compare/stateos/bar_typeconv3_full.png
+  OSU_SSI_BRIDGE_DATA_LOCAL/plots/compare/stateos/bar_typeconv3_eq35_90_wed.png
+  OSU_SSI_BRIDGE_DATA_LOCAL/plots/compare/stateos/bar_typeconv3_eq35_90_fri.png
+  OSU_SSI_BRIDGE_DATA_LOCAL/plots/compare/stateos/bar_typeconv3_full_wed.png
+  OSU_SSI_BRIDGE_DATA_LOCAL/plots/compare/stateos/bar_typeconv3_full_fri.png
+  …_with_dry.png companions (Fri includes Fd## dry mat-only)
 
 Windows:
   eq35_90 — fixed lab-clock band [35, 90] s (semi–D5–95). Not Arias /
@@ -96,12 +99,14 @@ KEY_HEADERS = (
 # Bar order: mesh small→large; within mesh standard Soft/SSPQuad by np, variants last.
 # twoNodeLink / single-precision omitted (analysis_skip_reason).
 MESH_RANK: dict[str, int] = {
+    "Wed0819": -1,
     "Baseline": 0,
     "Moderate": 1,
     "Large": 2,
     "X-Large": 3,
 }
 BAR_ORDER_BY_MESH: dict[str, tuple[str, ...]] = {
+    "Wed0819": ("W01", "W02", "W03", "W04", "W05", "W06", "W07"),
     # F01 = dry OpenFresco baseline (0836); kept in the main campaign set.
     "Baseline": (
         "F01",
@@ -121,6 +126,35 @@ BAR_ORDER_BY_MESH: dict[str, tuple[str, ...]] = {
     "X-Large": ("F13",),
 }
 MESH_GROUP_GAP = 0.55  # x-axis spacer between mesh blocks
+
+# W## vs F## / Fd## / Fx## — separate PNGs per lab day.
+CAMPAIGN_DAYS: tuple[tuple[str, str], ...] = (
+    ("wed", "Wed"),
+    ("fri", "Fri"),
+)
+
+
+def campaign_day(test_id: str) -> str | None:
+    """
+    Lab-day bucket for one Test ID.
+
+    Args:    test_id  W## | F## | Fd## | Fx##
+    Returns: ``wed`` | ``fri`` | None
+    """
+    tid = (test_id or "").strip()
+    if tid.startswith("W"):
+        return "wed"
+    if tid.startswith("F"):
+        return "fri"
+    return None
+
+
+def filter_trials_by_day(
+    trials: list[TrialFractions],
+    day: str,
+) -> list[TrialFractions]:
+    """Keep trials whose Test ID belongs to one lab-day bucket."""
+    return [t for t in trials if campaign_day(t.test_id) == day]
 
 
 @dataclass
@@ -747,38 +781,58 @@ def main() -> int:
     def full_fn(_t_lab_s: np.ndarray, state: np.ndarray) -> tuple[dict[STAGE_KEY, float], int, float]:
         return fractions_full_history(state)
 
-    def run_suite(*, include_dry: bool, tag: str) -> bool:
+    def run_suite(*, include_dry: bool, day: str, day_label: str) -> bool:
         trials_eq, skips = collect_trials(eq_fn, include_dry=include_dry)
-        print(f"\n--- stateOS bars {tag} ---")
+        trials_eq = filter_trials_by_day(trials_eq, day)
+        print(f"\n--- stateOS bars {day_label} ---")
         for msg in skips:
             if include_dry or "dry mat-only" not in msg:
                 print(f"  skip: {msg}")
-        suffix = "_with_dry" if include_dry else ""
+        dry_suffix = "_with_dry" if include_dry else ""
         plot_stacked_bars(
             trials_eq,
-            out_dir / f"bar_typeconv3_eq35_90{suffix}.png",
+            out_dir / f"bar_typeconv3_eq35_90_{day}{dry_suffix}.png",
             ylabel=f"fraction of lab window [{t0:.0f}, {t1:.0f}] s (%)",
         )
         trials_full, skips_full = collect_trials(full_fn, include_dry=include_dry)
+        trials_full = filter_trials_by_day(trials_full, day)
         for msg in skips_full:
             if msg not in skips and (include_dry or "dry mat-only" not in msg):
                 print(f"  skip: {msg}")
         plot_stacked_bars(
             trials_full,
-            out_dir / f"bar_typeconv3_full{suffix}.png",
+            out_dir / f"bar_typeconv3_full_{day}{dry_suffix}.png",
             ylabel="fraction of full-record samples (%)",
         )
         return bool(trials_eq or trials_full)
 
-    ok_main = run_suite(include_dry=False, tag="campaign (wet + dry+OS baseline)")
-    ok_dry = run_suite(include_dry=True, tag="with dry mat-only")
+    ok = False
+    for day, day_label in CAMPAIGN_DAYS:
+        ok_main = run_suite(
+            include_dry=False,
+            day=day,
+            day_label=f"{day_label} (wet + dry+OS baseline)",
+        )
+        ok_dry = run_suite(
+            include_dry=True,
+            day=day,
+            day_label=f"{day_label} with dry mat-only",
+        )
+        ok = ok or ok_main or ok_dry
 
-    old = out_dir / "bar_typeconv3_gm_d595.png"
-    if old.is_file():
-        old.unlink()
-        print(f"PlotStateOSBars: removed obsolete {old.name}")
+    for obsolete in (
+        "bar_typeconv3_eq35_90.png",
+        "bar_typeconv3_full.png",
+        "bar_typeconv3_eq35_90_with_dry.png",
+        "bar_typeconv3_full_with_dry.png",
+        "bar_typeconv3_gm_d595.png",
+    ):
+        old = out_dir / obsolete
+        if old.is_file():
+            old.unlink()
+            print(f"PlotStateOSBars: removed obsolete {old.name}")
 
-    return 0 if ok_main or ok_dry else 1
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

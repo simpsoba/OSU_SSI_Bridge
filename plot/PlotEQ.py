@@ -36,6 +36,8 @@ from lab_paths import (
     CYLINDER_LENGTH_SCALE,
     M_TO_MM,
     TIME_SCALE_FROUDE,
+    XLIM_FULL_PROTO_S,
+    YLIM_DISP_PROTO_MM,
     is_lab_dump,
     run_eq_plots_dir,
 )
@@ -609,8 +611,10 @@ def finish_full_zoom_pair(
     *,
     xlabel: bool = True,
     zoom_title: bool = True,
+    full_xlim: tuple[float, float] | None = XLIM_FULL_PROTO_S,
+    full_ylim: tuple[float, float] | None = None,
 ) -> None:
-    """Shared grid/markers; set D5–95 xlim on the zoom axes.
+    """Shared grid/markers; full-panel window + D5–95 xlim on the zoom axes.
 
     Args:
         ax_f: Full-history axes.
@@ -619,12 +623,18 @@ def finish_full_zoom_pair(
         t, t_eq, t_cut: Recorder time and markers.
         xlabel: Label both bottom x axes.
         zoom_title: Title the zoom panel.
+        full_xlim: Prototype-time window for the full panel (default 0–300 s model).
+        full_ylim: Optional shared y limits (e.g. ±200 mm for ux).
     Returns:
         None.
     """
     for ax in (ax_f, ax_z):
         mark_last_sample(ax, t, t_eq, t_cut)
         ax.grid(True, ls=":", alpha=0.45)
+    if full_xlim is not None:
+        ax_f.set_xlim(*full_xlim)
+    if full_ylim is not None:
+        ax_f.set_ylim(*full_ylim)
     if d595 is not None:
         ax_z.set_xlim(d595[0], d595[1])
         if zoom_title:
@@ -792,7 +802,9 @@ def plot_hist(
     ax_f, ax_z = axes_f[0], axes_z[0]
     _draw_ux(ax_f)
     _draw_ux(ax_z)
-    finish_full_zoom_pair(ax_f, ax_z, d595, t, t_eq, t_cut)
+    finish_full_zoom_pair(
+        ax_f, ax_z, d595, t, t_eq, t_cut, full_ylim=YLIM_DISP_PROTO_MM
+    )
     ax_f.set_ylabel("ux (mm)")
     ax_f.legend(fontsize=8, ncol=2)
     fig.savefig(out / "hist_ux.png", dpi=DPI)
@@ -802,7 +814,9 @@ def plot_hist(
     ax_f, ax_z = axes_f[0], axes_z[0]
     _draw_uy(ax_f)
     _draw_uy(ax_z)
-    finish_full_zoom_pair(ax_f, ax_z, d595, t, t_eq, t_cut)
+    finish_full_zoom_pair(
+        ax_f, ax_z, d595, t, t_eq, t_cut, full_ylim=YLIM_DISP_PROTO_MM
+    )
     ax_f.set_ylabel("uy (mm)")
     ax_f.legend(fontsize=8)
     fig.savefig(out / "hist_uy.png", dpi=DPI)
@@ -1094,6 +1108,7 @@ def plot_stacked_depth_hist(
             ax.grid(True, ls=":", alpha=0.4)
         if axes_z is not None and d595 is not None:
             axes_z[i].set_xlim(d595[0], d595[1])
+        axes_f[i].set_xlim(*XLIM_FULL_PROTO_S)
         if i == n - 1:
             axes_f[i].set_xlabel(r"$t_\mathrm{num}$ (s)")
             if axes_z is not None:

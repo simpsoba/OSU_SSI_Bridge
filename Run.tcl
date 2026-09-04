@@ -70,6 +70,7 @@ set postPartitionSystem "UmfPack";                              # <-- EDIT
 set constraintsHandler  "Auto";                                 # <-- EDIT
 
 # EQ integrator string (name + args). Algorithm/test follow from the name.
+#   "MKRAlphaExplicit 0.5 -incrementalAccel"          -> dense (needs FullGeneral)
 #   "MKRAlphaExplicitMultiSOE 0.5 -incrementalAccel"  -> Linear, no test
 #   "MKRAlphaExplicitMultiSOE 0.5"
 #   "CudaMKRAlpha 0.5 -incrementalAccel"              -> forces CuDSS
@@ -372,10 +373,14 @@ if {!$runEQ} {
 	set intName [lindex $eqIntegrator 0]
 
 	# system of equations + solver (+ matching numberer inside applySystem).
-	# CudaMKRAlpha needs CuDSS.
+	# CudaMKRAlpha needs CuDSS; dense MKRAlphaExplicit needs FullGeneral (Mhat).
 	if {$intName eq "CudaMKRAlpha" && [lindex $postPartitionSystem 0] ne "CuDSS"} {
 		puts "CudaMKRAlpha -> forcing postPartitionSystem CuDSS (was $postPartitionSystem)"
 		set postPartitionSystem "CuDSS"
+	}
+	if {$intName eq "MKRAlphaExplicit" && [lindex $postPartitionSystem 0] ne "FullGeneral"} {
+		puts "MKRAlphaExplicit -> forcing postPartitionSystem FullGeneral (was $postPartitionSystem)"
+		set postPartitionSystem "FullGeneral"
 	}
 	applySystem $postPartitionSystem
 
@@ -390,8 +395,8 @@ if {!$runEQ} {
 	integrator {*}$eqIntegrator
 
 	# solution algorithm (+ convergence test when the integrator is implicit)
-	if {$intName eq "MKRAlphaExplicitMultiSOE" || $intName eq "CudaMKRAlpha" \
-			|| $intName eq "AlphaOSGeneralized"} {
+	if {$intName eq "MKRAlphaExplicit" || $intName eq "MKRAlphaExplicitMultiSOE" \
+			|| $intName eq "CudaMKRAlpha" || $intName eq "AlphaOSGeneralized"} {
 		algorithm Linear
 	} elseif {$intName eq "TRBDF2" || $intName eq "Newmark"} {
 		test NormDispIncr 1.0e-8 25 0

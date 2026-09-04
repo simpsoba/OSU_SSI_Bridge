@@ -40,7 +40,13 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from compare_groups import dump_to_group, group_label, groups_by_dump, legend_labels_for_dumps
+from compare_groups import (
+    dump_to_group,
+    dump_to_row,
+    group_label,
+    groups_by_dump,
+    legend_labels_for_dumps,
+)
 from lab_paths import (
     CYLINDER_LENGTH_SCALE,
     MAT_EXTRACT_DIR,
@@ -274,6 +280,129 @@ def find_pier_top(eq_dir: Path) -> Path | None:
         if shard.name.endswith(".0"):
             return shard
     return max(shards, key=lambda p: p.stat().st_size)
+
+
+def find_pier_node(eq_dir: Path, node_tag: int) -> Path | None:
+    """
+    Pier-node recorder path (``pier_node_<tag>.out[.pid]``).
+
+    Args:    eq_dir, node_tag
+    Returns: path or None
+    """
+    serial = eq_dir / f"pier_node_{node_tag}.out"
+    if serial.is_file():
+        return serial
+    shards = sorted(eq_dir.glob(f"pier_node_{node_tag}.out.*"))
+    if not shards:
+        return None
+    for shard in shards:
+        if shard.name.endswith(".0"):
+            return shard
+    return max(shards, key=lambda p: p.stat().st_size)
+
+
+def pier_exp_node_tags(eq_dir: Path) -> tuple[int, int]:
+    """
+    OpenFresco twoNodeLink node pair (bottom, top) for relative UX.
+
+    lumpedPlasticity: inner zeroLength nodes 2--4; else cap TC 1 and deck BC 5.
+
+    Args:    eq_dir
+    Returns: (bottom_tag, top_tag)
+    """
+    meta = read_meta(eq_dir)
+    hinge = (meta.get("pierHinge") or "").strip().lower()
+    if hinge == "lumpedplasticity":
+        return 2, 4
+    return 1, 5
+
+
+def pier_ux_is_relative(eq_dir: Path) -> bool:
+    """
+    True when pier UX should be top minus bottom (twoNodeLink).
+
+    Args:    eq_dir
+    Returns: bool
+    """
+    row = dump_to_row().get(eq_dir.name, {})
+    exp = (row.get("expElementType") or "").strip().lower()
+    return exp == "twonodelink"
+
+
+def pier_ux_legend_label(eq_dir: Path) -> str:
+    """Legend tag for OpenSees pier line on actuator overlays."""
+    if pier_ux_is_relative(eq_dir):
+        return "pier rel. (numerical)"
+    return "pier top (numerical)"
+
+
+def load_pier_node_ux_mm(
+    eq_dir: Path,
+    node_tag: int,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """
+    Pier-node UX (mm, t0-relative) vs numerical time (s).
+
+    Args:    eq_dir, node_tag
+    Returns: (t_num_s, ux_mm) or None
+    """
+    path = find_pier_node(eq_dir, node_tag)
+    if path is None:
+        return None
+    data = loadtxt_partial(path)
+    if data.size == 0 or data.shape[1] < 2:
+        return None
+    t_s = data[:, 0]
+    ux_mm = (data[:, 1] - data[0, 1]) * M_TO_MM
+    if not np.all(np.isfinite(ux_mm)) or float(np.nanmax(np.abs(ux_mm))) > UX_ABS_MAX_MM:
+        return None
+    return t_s, ux_mm
+
+
+def load_pier_ux_mm(
+    eq_dir: Path,
+    *,
+    relative: bool | None = None,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """
+    OpenSees pier UX (mm) vs t_num (s).
+
+    generic: pier-top absolute UX (``pier_top_disp.out``).
+    twoNodeLink: relative UX = top inner node minus bottom inner node
+    (nodes 4--2 for lumpedPlasticity; 5--1 otherwise), each t0-relative.
+
+    Args:    eq_dir; relative  force absolute (False) or relative (True);
+             None = auto from TestMatrix ``expElementType``
+    Returns: (t_num_s, ux_mm) or None
+    """
+    if relative is None:
+        relative = pier_ux_is_relative(eq_dir)
+    if relative:
+        bot_tag, top_tag = pier_exp_node_tags(eq_dir)
+        top = load_pier_node_ux_mm(eq_dir, top_tag)
+        bot = load_pier_node_ux_mm(eq_dir, bot_tag)
+        if top is None or bot is None:
+            return None
+        t_top, u_top = top
+        t_bot, u_bot = bot
+        if t_top.shape != t_bot.shape or not np.allclose(t_top, t_bot, rtol=0, atol=1e-9):
+            u_bot = np.interp(t_top, t_bot, u_bot)
+        u_rel = u_top - u_bot
+        if not np.all(np.isfinite(u_rel)) or float(np.nanmax(np.abs(u_rel))) > UX_ABS_MAX_MM:
+            return None
+        return t_top, u_rel
+
+    pier = find_pier_top(eq_dir)
+    if pier is None:
+        return None
+    data = loadtxt_partial(pier)
+    if data.size == 0 or data.shape[1] < 2:
+        return None
+    t_s = data[:, 0]
+    ux_mm = (data[:, 1] - data[0, 1]) * M_TO_MM
+    if not np.all(np.isfinite(ux_mm)) or float(np.nanmax(np.abs(ux_mm))) > UX_ABS_MAX_MM:
+        return None
+    return t_s, ux_mm
 
 
 def read_meta(eq_dir: Path) -> dict[str, str]:
