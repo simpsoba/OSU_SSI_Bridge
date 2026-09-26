@@ -182,6 +182,9 @@ if {[info exists w_FF]} {
 if {[info exists xMeshHalf]} {
 	puts $outFd [format "    \"xMeshHalf\": %s," [sketchNum $xMeshHalf]]
 }
+if {[info exists h_water]} {
+	puts $outFd [format "    \"h_water\": %s," [sketchNum $h_water]]
+}
 puts $outFd [format "    \"foot\": %s" [sketchNum $foot]]
 puts $outFd "  \},"
 
