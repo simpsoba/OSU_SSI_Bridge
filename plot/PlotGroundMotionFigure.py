@@ -101,8 +101,9 @@ def plot_gm_figure(
 
     # --- (a) time histories ---
     ax_acc.plot(t, acc_g, color=LINE_COLOR, lw=LINE_LW_TH)
-    ax_acc.set_ylabel(r"$\ddot{u}_g(t)$ (g)")
-    ax_acc.set_xlim(float(t[0]), float(t[-1]))
+    # Unit g = gravity (math italic), not gram (\mathrm{g}).
+    ax_acc.set_ylabel(r"$\ddot{u}_g(t)$ ($g$)")
+    ax_acc.set_xlim(0.0, 300.0)
 
     ax_vel.plot(t, vel_cm_s, color=LINE_COLOR, lw=LINE_LW_TH)
     ax_vel.set_ylabel(r"$\dot{u}_g(t)$ (cm/s)")
@@ -110,6 +111,8 @@ def plot_gm_figure(
     ax_dsp.plot(t, disp_cm, color=LINE_COLOR, lw=LINE_LW_TH)
     ax_dsp.set_ylabel(r"$u_g(t)$ (cm)")
     ax_dsp.set_xlabel(r"Time, $t$ (s)")
+    ax_dsp.set_xlim(0.0, 300.0)
+    ax_dsp.set_xticks([0, 50, 100, 150, 200, 250, 300])
 
     for ax in (ax_acc, ax_vel):
         plt.setp(ax.get_xticklabels(), visible=False)
@@ -124,13 +127,15 @@ def plot_gm_figure(
         ax.set_ylim(-1.15 * ymax, 1.15 * ymax)
         ax.grid(True, which="major")
 
+    fig.align_ylabels([ax_acc, ax_vel, ax_dsp])
+
     # --- (b) Sa spectrum (linear, prepend PGA at T=0) ---
     mask = periods <= T_SPEC_MAX
     T_plot = np.concatenate([[0.0], periods[mask]])
     Sa_plot = np.concatenate([[pga_g], Sa_g[mask]])
     ax_sa.plot(T_plot, Sa_plot, color=LINE_COLOR, lw=LINE_LW_SA)
     ax_sa.set_xlabel(r"Period, $T_n$ (s)")
-    ax_sa.set_ylabel(r"$S_a$ (g)")
+    ax_sa.set_ylabel(r"$S_a$ ($g$)")
     ax_sa.set_xlim(0.0, T_SPEC_MAX)
     sa_ymax = 1.15 * float(np.nanmax(Sa_plot))
     ax_sa.set_ylim(0.0, sa_ymax)
@@ -147,7 +152,7 @@ def plot_gm_figure(
     ax_sa.text(
         0.08,
         0.04 * sa_ymax,
-        rf"$S_a(T_1) = {sa_t1:.3f}$\,g",
+        rf"$S_a(T_1) = {sa_t1:.3f}\,g$",
         ha="left",
         va="bottom",
         color="#555555",

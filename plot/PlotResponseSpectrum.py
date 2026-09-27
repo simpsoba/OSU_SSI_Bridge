@@ -335,7 +335,7 @@ def plot_spectrum(
     series = (
         (Sd, r"$S_d$ (m)"),
         (Sv, r"$S_v$ (m/s)"),
-        (Sa_g, r"$S_a$ (g)"),
+        (Sa_g, r"$S_a$ ($g$)"),
     )
 
     for ax, (y, ylabel) in zip(axes, series):
