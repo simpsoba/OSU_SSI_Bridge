@@ -9,6 +9,7 @@ PlotModelSketch.py and writes PNG + PDF next to elevation.png.
   (a) full soil domain, full-width strip, true scale
   (b) near field: deck, pier, cap, piles, SSI springs
   (c) zoom on the pile cap and pier base hinge
+  (d) inset on (c): pier top + OpenFresco UX
       legend under (c)
 
 Water: light fill + dashed free surface (physical flume, not meshed);
@@ -120,6 +121,10 @@ EQDOF = {"color": "#444444", "lw": 0.6, "ls": (0, (1.5, 1.2)), "drop": 1.7}  # d
 # HoldPierBase.tcl: pier-base UX+UY held at gravity; RZ free (pin). Soil base: UY stays fixed in EQ.
 PIN = {"color": "#222222", "lw": 0.9}
 UY_FIX = {"color": "#222222", "lw": 0.5, "h": 0.55}  # m, soil-base UY roller height
+# OpenFresco expElement (generic UX at pier-top inner node): force feedback
+# from the physical cylinder (mainly hydro); EQ resistance stays in the hinges.
+# Glyph = free node -- actuator -- fixed support (lab DOF).
+EXP = {"color": "#00838f", "len": 1.55, "h": 0.34, "lw": 1.2}
 
 SSI_SCALE = 0.7        # (-) overall glyph size
 SSI_LEN = 0.55 * SSI_SCALE     # m, drawn p-y coil length
@@ -149,6 +154,10 @@ GAP_COL = 0.50         # between (b) and (c), room for (c) y label
 # Panel (c) window around the cap and pier-base hinge (m)
 DETAIL_X = (-3.3, 3.3)
 DETAIL_Y = (-2.5, 1.4)
+# Panel (d) crop around pier-top inner node (OpenFresco) + soffit (m)
+# Node 4 ~ (0, 6.55); actuator runs -X (fixed left of pier).
+TOP_X = (-2.35, 0.9)
+TOP_Y = (5.95, 7.55)
 
 
 def use_paper_font() -> None:
@@ -257,19 +266,21 @@ def loop_path(L: float, off: float, g: float, amp: float, lead: float,
 
 
 def draw_loop_spring(a: plt.Axes, x: float, y: float, u: tuple, n: tuple,
-                     L: float, off: float, color: str) -> None:
+                     L: float, off: float, color: str,
+                     *, lw: float | None = None) -> None:
     """
     Draw one zero-length spring as a closed loop on its node.
 
     Args:    a, x, y  node (m), u  unit vector along the spring (coil direction),
              n  unit normal (side of the coil track and offset), L  coil length (m),
-             off  loop offset along n (m), color
+             off  loop offset along n (m), color, lw  line width (pt; default LOOP)
     Returns: none (updates a)
     """
     sn = loop_path(L, off, LOOP["g"], LOOP["amp"], LOOP["lead"], LOOP["n_zig"])
     xs = x + sn[:, 0] * u[0] + sn[:, 1] * n[0]
     ys = y + sn[:, 0] * u[1] + sn[:, 1] * n[1]
-    a.plot(xs, ys, color=color, lw=LOOP["lw"], zorder=5.5, solid_joinstyle="round")
+    a.plot(xs, ys, color=color, lw=LOOP["lw"] if lw is None else lw,
+           zorder=5.5, solid_joinstyle="round")
 
 
 def draw_ssi_attached(a: plt.Axes, data: dict) -> None:
@@ -305,25 +316,103 @@ def draw_ssi_attached(a: plt.Axes, data: dict) -> None:
         draw_loop_spring(a, xp, yp, (0.0, -1.0), (-out, 0.0), SSI_LEN_V, off, color)
 
 
-def draw_pin(a: plt.Axes, x: float, y: float, s: float) -> None:
+def draw_exp_element(a: plt.Axes, nodes: dict[int, tuple[float, float]],
+                     *, label: bool = False, scale: float = 1.0,
+                     lw: float | None = None) -> None:
+    """
+    OpenFresco experimental element: fixed -- actuator -- eyelet at pier.
+
+    Simplified hydraulic-actuator icon (cylinder + end caps + rod + clevis),
+    drawn to the LEFT of the pier so a positive resisting force drives the
+    pier to the right. Left mount is a fixed support instead of a second eye.
+
+    Matches Run.tcl generic attachment: lumpedPlasticity node 4 (inner top),
+    else node 5 (deck BC).
+
+    Args:    a, nodes  display node map (m)
+             label  place "OpenFresco" above the glyph (panel d)
+             scale  length multiplier; lw  line width override (pt)
+    Returns: none (updates a)
+    """
+    tag = 4 if 4 in nodes else (5 if 5 in nodes else None)
+    if tag is None:
+        return
+    x0, y = nodes[tag]
+    L = EXP["len"] * scale
+    h = EXP["h"] * scale
+    c = EXP["color"]
+    line_w = EXP["lw"] if lw is None else lw
+    # Layout (left -> right): fixed | cylinder+caps | rod | eyelet@pier
+    x_fix = x0 - L
+    r_eye = 0.38 * h
+    x_rod1 = x0 - r_eye                 # rod meets the eyelet
+    x_cyl1 = x0 - 0.32 * L              # cylinder end toward pier
+    x_cyl0 = x0 - 0.82 * L              # cylinder end toward fixed
+    cap = 0.06 * L                      # end-cap thickness along x
+    z = 5.5
+    kw = {"color": c, "lw": line_w, "zorder": z, "solid_capstyle": "butt"}
+    # cylinder body + slightly taller end caps (outline only)
+    yb, yt = y - 0.45 * h, y + 0.45 * h
+    yb_c, yt_c = y - 0.58 * h, y + 0.58 * h
+    a.plot([x_cyl0, x_cyl1, x_cyl1, x_cyl0, x_cyl0],
+           [yb, yb, yt, yt, yb], **kw)
+    for x_cap in (x_cyl0, x_cyl1 - cap):
+        a.plot([x_cap, x_cap + cap, x_cap + cap, x_cap, x_cap],
+               [yb_c, yb_c, yt_c, yt_c, yb_c], **kw)
+    # piston rod
+    a.plot([x_cyl1, x_rod1], [y, y], color=c, lw=1.4 * line_w, zorder=z,
+           solid_capstyle="butt")
+    # clevis / eyelet at the pier (free end)
+    a.add_patch(Circle(
+        (x0, y), r_eye, facecolor="none", edgecolor=c, lw=line_w, zorder=z + 1,
+    ))
+    a.add_patch(Circle(
+        (x0, y), 0.35 * r_eye, facecolor="none", edgecolor=c,
+        lw=0.7 * line_w, zorder=z + 1.1,
+    ))
+    # fixed support on the left (replaces the icon's other eyelet)
+    a.plot([x_fix, x_cyl0], [y, y], **kw)
+    a.plot([x_fix, x_fix], [y - 0.9 * h, y + 0.9 * h], lw=1.0,
+           color="#222222", zorder=z + 2)
+    for k in range(4):
+        yk = y - 0.75 * h + k * 0.5 * h
+        a.plot([x_fix, x_fix - 0.55 * h], [yk, yk + 0.32 * h], lw=0.5,
+               color="#222222", zorder=z + 2)
+    # Optional in-axes callout unused; plot() places a figure-level label for (d).
+
+
+
+def draw_pin(a: plt.Axes, x: float, y: float, s: float,
+             *, angle_deg: float = 0.0) -> None:
     """
     2D pin support (UX+UY fixed, RZ free) with tip at the node.
 
+    Local glyph opens downward (angle 0). angle_deg rotates CCW; -90 puts
+    the support to the left of the node (keeps the base ZLS spiral clear).
+
     Args:    a, x, y  tip (m), s  half-base width (m)
+             angle_deg  CCW rotation from the default (down) orientation
     Returns: none (updates a)
     """
     h = 1.15 * s
+    rad = np.radians(angle_deg)
+    ca, sa = np.cos(rad), np.sin(rad)
+
+    def xy(px: float, py: float) -> tuple[float, float]:
+        return (x + ca * px - sa * py, y + sa * px + ca * py)
+
     a.add_patch(Polygon(
-        [(x, y), (x - s, y - h), (x + s, y - h)],
+        [xy(0.0, 0.0), xy(-s, -h), xy(s, -h)],
         closed=True, facecolor="white", edgecolor=PIN["color"],
         lw=PIN["lw"], zorder=8,
     ))
-    y0 = y - h
-    a.plot([x - 1.35 * s, x + 1.35 * s], [y0, y0], color=PIN["color"],
+    g0, g1 = xy(-1.35 * s, -h), xy(1.35 * s, -h)
+    a.plot([g0[0], g1[0]], [g0[1], g1[1]], color=PIN["color"],
            lw=PIN["lw"], zorder=8)
     for k in range(5):
-        xk = x - 1.1 * s + k * 0.55 * s
-        a.plot([xk, xk - 0.25 * s], [y0, y0 - 0.35 * s], color=PIN["color"],
+        p0 = xy(-1.1 * s + k * 0.55 * s, -h)
+        p1 = xy(-1.1 * s + k * 0.55 * s - 0.25 * s, -h - 0.35 * s)
+        a.plot([p0[0], p1[0]], [p0[1], p1[1]], color=PIN["color"],
                lw=0.5, zorder=8)
 
 
@@ -479,6 +568,11 @@ def draw_model(
     pin_s: float = 0.0,
     force_label: bool = True,
     force_under: bool = False,
+    exp_element: bool = False,
+    exp_label: bool = False,
+    exp_scale: float = 1.0,
+    exp_lw: float | None = None,
+    equal_aspect: bool = True,
 ) -> None:
     """
     Draw soil, water, structure, hinges, and optional SSI coils / dashpots.
@@ -486,14 +580,16 @@ def draw_model(
     Args:    a, data, nodes  display node map (m)
              xlim  panel x range (m); water band spans it, capped at the mesh
              lw, ms  frame line width (pt), node marker size (pt)
-             quad_lw  soil mesh edge width (pt)
-             coils  draw p-y / t-z / q-z glyphs; dashpots  draw Lysmer
-             fill  member shading, one of FILL_MODES
-             soil_ms  soil node marker size (pt), 0 = no soil nodes
-             surcharge  draw the rho_w g h_w arrows (water fill stays)
-             pin_s  pier-base pin half-width (m), 0 = omit
-             force_label  $2c\dot{u}_g(t)$ at the NF dashpot arrow
-             force_under  put that text under the arrow (else to the right)
+             quad_lw  soil mesh line width (pt)
+             coils, dashpots  SSI springs / Lysmer glyphs
+             fill  member shading
+             soil_ms  soil-node marker size (pt; 0 = off)
+             surcharge  water-pressure arrows on y=0
+             pin_s  pier-base pin half-width (m; 0 = auto)
+             force_label, force_under  2cv Path-load callout
+             exp_element  OpenFresco UX spring at the pier top
+             exp_label, exp_scale, exp_lw  OpenFresco glyph options
+             equal_aspect  True -> equal x/y scale (default); False for inset (d)
     Returns: none (updates a)
     """
     if fill == "none":
@@ -633,6 +729,9 @@ def draw_model(
             x1, y1 = nodes[int(nj)]
             draw_rot_spiral(a, x0, y0, x1, y1, STYLE["spring"]["line"])
 
+    if exp_element:
+        draw_exp_element(a, nodes, label=exp_label, scale=exp_scale, lw=exp_lw)
+
     if coils:
         draw_ssi_attached(a, data)
 
@@ -640,9 +739,24 @@ def draw_model(
         draw_base_boundary(a, data, force_label=force_label,
                            force_under=force_under)
 
-    # HoldPierBase: pier-base / ZLS nodes held in UX+UY; RZ free -> pin
-    if pin_s > 0.0 and 1 in nodes:
-        draw_pin(a, nodes[1][0], nodes[1][1], pin_s)
+    # HoldPierBase: both ends of the base ZLS held in UX+UY (RZ free -> pin).
+    # Pier-top hinge (nodes 4--5) is not held. Upper pin is rotated -90 deg
+    # (support to the left) so the glyph does not cover the spiral.
+    if pin_s > 0.0:
+        for _e, ni, nj, _sx, _sy in springs:
+            yi = nodes.get(int(ni), (0.0, 1.0e9))[1]
+            yj = nodes.get(int(nj), (0.0, 1.0e9))[1]
+            if abs(yi) > 1.0 and abs(yj) > 1.0:
+                continue
+            tags = [t for t in (int(ni), int(nj)) if t in nodes]
+            if not tags:
+                continue
+            y_top = max(nodes[t][1] for t in tags)
+            for tag in tags:
+                # upper pin: support to the left (clear of the spiral)
+                ang = -90.0 if nodes[tag][1] >= y_top - 1.0e-9 else 0.0
+                draw_pin(a, nodes[tag][0], nodes[tag][1], pin_s,
+                         angle_deg=ang)
 
     if ms > 0.0:
         for tag, (x, y) in nodes.items():
@@ -655,25 +769,43 @@ def draw_model(
                     markeredgecolor="white", markeredgewidth=0.25,
                 )
 
-    a.set_aspect("equal", adjustable="box")
     a.set_xlim(*xlim)
+    if equal_aspect:
+        a.set_aspect("equal", adjustable="box")
+    else:
+        a.set_aspect("auto")
 
 
-def mark_window(a: plt.Axes, x: tuple, y: tuple, label: str) -> None:
+def mark_window(a: plt.Axes, x: tuple, y: tuple, label: str,
+                *, corner: str = "tr") -> None:
     """
     Dashed box showing where a zoom panel sits, with its panel letter.
 
     Args:    a, x (x0, x1), y (y0, y1) in m, label  e.g. "(b)"
+             corner  text anchor on the box: "tr" | "br" | "tl" | "bl"
     Returns: none (updates a)
     """
     a.add_patch(Rectangle(
         (x[0], y[0]), x[1] - x[0], y[1] - y[0], fill=False,
         edgecolor=BOX["color"], lw=BOX["lw"], ls=BOX["ls"], zorder=9,
     ))
-    a.text(
-        x[1], y[1], f" {label}", ha="left", va="top",
-        fontsize=FONT_SIZE, zorder=9,
-    )
+    # place the letter just outside the chosen corner
+    loc = {
+        "tr": (x[1], y[1], "left", "top"),
+        # outside the box, just past the bottom-right corner
+        "br": (x[1], y[0], "left", "top"),
+        "tl": (x[0], y[1], "right", "top"),
+        "bl": (x[0], y[0], "right", "bottom"),
+    }
+    tx, ty, ha, va = loc[corner]
+    if corner == "br":
+        a.text(tx + 0.04, ty - 0.02, f" {label}", ha=ha, va=va,
+               fontsize=FONT_SIZE, zorder=9)
+        return
+    dx = -0.08 if ha == "right" else 0.08
+    dy = 0.08 if va == "bottom" else -0.08
+    pad = f" {label}" if ha == "left" else f"{label} "
+    a.text(tx + dx, ty + dy, pad, ha=ha, va=va, fontsize=FONT_SIZE, zorder=9)
 
 
 # ------------------------------------------------------------
@@ -697,10 +829,10 @@ def legend_handles(data: dict, fill: str = FILL_DEFAULT) -> tuple[list, list]:
     lw_leg = 2.2 if fill == "none" else 1.1
 
     members = [
-        ("deck", "Deck (stiff elastic)"),
-        ("pier", "Pier (stiff elastic)"),
-        ("cap", "Pile cap (stiff elastic)"),
-        ("pile", "Piles (disp.-based)"),
+        ("deck", "Deck (stiff elastic frame)"),
+        ("pier", "Pier (stiff elastic frame)"),
+        ("cap", "Pile cap (stiff elastic frame)"),
+        ("pile", "Piles (disp.-based frame)"),
     ]
     for g, lab in members:
         if fill == "color":
@@ -732,11 +864,13 @@ def legend_handles(data: dict, fill: str = FILL_DEFAULT) -> tuple[list, list]:
     x_mesh = float(sz.get("xMeshHalf", 0.0) or 0.0)
     if L_half > 0.0 and x_mesh > L_half + 1.0e-6:
         hs.append(FFHatchProxy())
-        labels.append("Free-field (stiffer)")
+        labels.append("Free-field (stiffer SSPquad)")
 
     if data.get("springs"):
         hs.append(SpiralProxy(STYLE["spring"]["line"]))
         labels.append("Fiber section")
+        hs.append(ExpProxy(EXP["color"]))
+        labels.append("OpenFresco expElement")
 
     names = {"py": "p-y", "tz": "t-z", "qz": "q-z"}
     present = {parse_ssi_row(r)[4] for r in data.get("ssi_springs", [])}
@@ -756,7 +890,7 @@ def legend_handles(data: dict, fill: str = FILL_DEFAULT) -> tuple[list, list]:
         hs.append(PinProxy())
         labels.append("Pier-base pin")
         hs.append(RollerProxy())
-        labels.append("Soil base (UY)")
+        labels.append("Soil-base roller")
     return hs, labels
 
 
@@ -785,6 +919,10 @@ class SpringProxy:
 
 class SpiralProxy(SpringProxy):
     """Legend stand-in for a rotational fiber section (spiral)."""
+
+
+class ExpProxy(SpringProxy):
+    """Legend stand-in for OpenFresco (fixed -- actuator -- free pier)."""
 
 
 class DashpotProxy(SpringProxy):
@@ -931,6 +1069,39 @@ class HandlerSpring(HandlerBase):
                        lw=LOOP["lw"], solid_joinstyle="round", transform=trans)]
 
 
+class HandlerExp(HandlerBase):
+    """Draw fixed -- actuator outline -- eyelet (OpenFresco) in the handle box."""
+
+    def create_artists(self, legend, orig, xd, yd, w, h, fontsize, trans):
+        xf, x_eye = -xd + 0.06 * w, -xd + 0.92 * w
+        yc = -yd + 0.5 * h
+        r = 0.22 * h
+        x_cyl0, x_cyl1 = xf + 0.12 * w, x_eye - 0.28 * w
+        cap = 0.06 * w
+        c = orig.color
+        yb, yt = yc - 0.28 * h, yc + 0.28 * h
+        yb_c, yt_c = yc - 0.38 * h, yc + 0.38 * h
+        return [
+            Line2D([xf, x_cyl0], [yc, yc], color=c, lw=1.0, transform=trans),
+            Line2D([x_cyl0, x_cyl1, x_cyl1, x_cyl0, x_cyl0],
+                   [yb, yb, yt, yt, yb], color=c, lw=1.0, transform=trans),
+            Line2D([x_cyl0, x_cyl0 + cap, x_cyl0 + cap, x_cyl0, x_cyl0],
+                   [yb_c, yb_c, yt_c, yt_c, yb_c], color=c, lw=1.0,
+                   transform=trans),
+            Line2D([x_cyl1 - cap, x_cyl1, x_cyl1, x_cyl1 - cap, x_cyl1 - cap],
+                   [yb_c, yb_c, yt_c, yt_c, yb_c], color=c, lw=1.0,
+                   transform=trans),
+            Line2D([x_cyl1, x_eye - r], [yc, yc], color=c, lw=1.4,
+                   transform=trans),
+            Circle((x_eye, yc), r, facecolor="none", edgecolor=c, lw=1.0,
+                   transform=trans),
+            Circle((x_eye, yc), 0.35 * r, facecolor="none", edgecolor=c,
+                   lw=0.7, transform=trans),
+            Line2D([xf, xf], [yc - 0.4 * h, yc + 0.4 * h], color="#222222",
+                   lw=0.9, transform=trans),
+        ]
+
+
 class HandlerSpiral(HandlerBase):
     """Draw a two-turn spiral with short leads."""
 
@@ -990,6 +1161,7 @@ class HandlerWater(HandlerBase):
 
 LEGEND_HANDLERS = {
     SpringProxy: HandlerSpring(),
+    ExpProxy: HandlerExp(),
     SpiralProxy: HandlerSpiral(),
     DashpotProxy: HandlerDashpot(),
     WaterProxy: HandlerWater(),
@@ -1009,11 +1181,11 @@ LEGEND_HANDLERS = {
 
 def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
     """
-    Lay out panels (a)-(c) and the legend on a 6 x 6 in page.
+    Lay out panels (a)-(d) and the legend on a 6 x 6 in page.
 
     Args:    data  decoded sketch dictionary; out_stem  path without suffix
              fill  member shading, one of FILL_MODES
-    Returns: none (writes .png and .pdf)
+    Returns: none (writes .png, .pdf, .svg)
     """
     use_paper_font()
     sz = data["sizes"]
@@ -1030,7 +1202,7 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
     w_a = FIG_W - LEFT - RIGHT
     h_a = w_a * (ylim_a[1] - ylim_a[0]) / (2.0 * x_half_a)
 
-    # (b) near field, full remaining height; room for NF Lysmer + UY rollers
+    # (b) near field, full remaining height (same as pre-(d) layout)
     x_half_b = max(
         0.5 * float(sz["dw_deck"]) + 0.8,
         DASHPOT_LEN + 0.8,
@@ -1041,9 +1213,10 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
     h_b = FIG_H - top_b - GAP_XLABEL
     w_b = h_b * (2.0 * x_half_b) / (ylim_b[1] - ylim_b[0])
 
-    # (c) cap / pier-base zoom, right column; legend sits under it
+    # (c) full column minus a right strip so (d) can overhang into white
     left_c = LEFT + w_b + GAP_COL
-    w_c = FIG_W - left_c - RIGHT
+    right_room = 0.28  # in, white margin for (d) to sit partly outside (c)
+    w_c = FIG_W - left_c - right_room
     h_c = w_c * (DETAIL_Y[1] - DETAIL_Y[0]) / (DETAIL_X[1] - DETAIL_X[0])
 
     def rect(left: float, top: float, w: float, h: float) -> list[float]:
@@ -1055,6 +1228,19 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
     ax_b = fig.add_axes(rect(LEFT, top_b, w_b, h_b))
     ax_c = fig.add_axes(rect(left_c, top_b, w_c, h_c))
 
+    # (d) small visual inset straddling (c)'s top-right corner (equal aspect)
+    pos_c = ax_c.get_position()
+    dy_d = TOP_Y[1] - TOP_Y[0]
+    dx_d = TOP_X[1] - TOP_X[0]
+    w_d = 0.95 / FIG_W   # ~0.95 in wide
+    h_d = w_d * (dy_d / dx_d) * (FIG_W / FIG_H)
+    left_d = 1.0 - 0.015 - w_d
+    bot_d = pos_c.y1 - 0.82 * h_d
+    bot_d = min(bot_d, 1.0 - 0.015 - h_d)
+    ax_d = fig.add_axes([left_d, bot_d, w_d, h_d])
+    ax_d.set_zorder(10)
+    ax_d.patch.set_zorder(10)
+
     draw_model(ax_a, data, nodes, xlim=(-x_half_a, x_half_a),
                lw=0.5, ms=0.0, quad_lw=0.15, coils=False, dashpots=True,
                fill=fill)
@@ -1064,16 +1250,60 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
 
     draw_model(ax_b, data, nodes, xlim=(-x_half_b, x_half_b),
                lw=0.8, ms=1.6, quad_lw=0.25, coils=True, dashpots=True,
-               fill=fill, pin_s=0.28, force_label=True, force_under=True)
+               fill=fill, pin_s=0.28, force_label=True, force_under=True,
+               exp_element=True)
     ax_b.set_ylim(*ylim_b)
     mark_window(ax_b, DETAIL_X, DETAIL_Y, "(c)")
+    mark_window(ax_b, TOP_X, TOP_Y, "(d)", corner="br")
     ax_b.set_title("(b)", loc="left", pad=3)
 
     draw_model(ax_c, data, nodes, xlim=DETAIL_X,
                lw=0.8, ms=3.8, quad_lw=0.5, coils=True, dashpots=False,
-               fill=fill, soil_ms=2.4, surcharge=False, pin_s=0.18)
+               fill=fill, soil_ms=2.4, surcharge=False, pin_s=0.18,
+               exp_element=False)
     ax_c.set_ylim(*DETAIL_Y)
     ax_c.set_title("(c)", loc="left", pad=3)
+
+    draw_model(ax_d, data, nodes, xlim=TOP_X,
+               lw=1.2, ms=4.0, quad_lw=0.3, coils=False, dashpots=False,
+               fill=fill, soil_ms=0.0, surcharge=False, pin_s=0.0,
+               exp_element=True, exp_label=False, exp_scale=1.05, exp_lw=1.5,
+               equal_aspect=True)
+    ax_d.set_ylim(*TOP_Y)
+    ax_d.set_facecolor("white")
+    ax_d.set_xticks([])
+    ax_d.set_yticks([])
+    ax_d.set_xlabel("")
+    ax_d.set_ylabel("")
+    ax_d.set_title("(d)", loc="left", pad=0.5, fontsize=FONT_SIZE - 1)
+    for spine in ax_d.spines.values():
+        spine.set_color("#222222")
+        spine.set_linewidth(0.9)
+    # OpenFresco callout left of (d), in figure coords (survives equal-aspect crop)
+    tag = 4 if 4 in nodes else (5 if 5 in nodes else None)
+    if tag is not None:
+        fig.canvas.draw()  # lock equal-aspect axes position before transforming
+        pos_d = ax_d.get_position()
+        x0, y0 = nodes[tag]
+        L = EXP["len"] * 1.05
+        xc, yc = x0 - 0.57 * L, y0
+        tip = fig.transFigure.inverted().transform(
+            ax_d.transData.transform((xc, yc))
+        )
+        tx = pos_d.x0 - 0.035
+        ty = pos_d.y0 + 0.62 * pos_d.height
+        fig.text(
+            tx, ty, "OpenFresco", ha="right", va="center",
+            color=EXP["color"], fontsize=8, transform=fig.transFigure,
+            clip_on=False, zorder=20,
+        )
+        fig.add_artist(FancyArrowPatch(
+            (tx + 0.004, ty), tip,
+            transform=fig.transFigure,
+            arrowstyle="-|>", mutation_scale=8,
+            lw=0.75, color=EXP["color"],
+            shrinkA=2, shrinkB=2, clip_on=False, zorder=20,
+        ))
 
     for a in (ax_a, ax_b, ax_c):
         a.set_xlabel(r"$x$ (m)", labelpad=1)
@@ -1083,18 +1313,19 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
     ax_b.set_xticks([-5, 0, 5])
     ax_b.set_yticks(range(-20, 11, 5))
     ax_c.set_xticks(range(-3, 4, 1))
+    ax_c.set_yticks(range(-2, 2, 1))
 
     top_leg = top_b + h_c + GAP_XLABEL
     handles, labels = legend_handles(data, fill)
-    # Center under panel (c); short labels in 2 columns leave spare width there
+    # 2 columns: ~8 rows in ~1.5 in under (c); pack to the page bottom
     fig.legend(
         handles, labels,
         loc="upper center",
         bbox_to_anchor=((left_c + 0.5 * w_c) / FIG_W, 1.0 - top_leg / FIG_H),
         bbox_transform=fig.transFigure,
-        ncol=3, frameon=False, borderaxespad=0.0,
+        ncol=2, frameon=False, borderaxespad=0.0,
         handlelength=1.3, handleheight=0.85, handletextpad=0.35,
-        columnspacing=0.7, labelspacing=0.25,
+        columnspacing=1.0, labelspacing=0.22,
         handler_map=LEGEND_HANDLERS,
     )
 
