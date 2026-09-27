@@ -9,7 +9,7 @@ Shared output layout for local (non-lab) plot/*.py dumps under plot/out/.
     eq/compare/{pierEleType}/
     elevation/{Shin|ASDEA}/elevation.png
     pile_springs/{pult,tult,y50z50}.png
-    soil_profile/{overview,pdmy02}.png
+    soil_profile/{overview,pdmy02,soil_props_paper}.{png,pdf,…}
     fibers/fiber_*.png
 
 Lab campaign PNGs do *not* use this tree — see lab_paths.plots_root().

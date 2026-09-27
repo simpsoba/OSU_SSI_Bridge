@@ -15,6 +15,7 @@ Uses the cached spectrum CSV from PlotResponseSpectrum.py when present.
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -32,7 +33,7 @@ OUT_DIR = HERE / "out" / "spectrum"
 DEFAULT_VT2 = prs.DEFAULT_VT2
 G = prs.G
 
-FIG_W = 6.5  # in
+FIG_W = 6.0  # in (paper max)
 FIG_H = 2.8  # in
 FONT_SIZE = 9
 LINE_COLOR = "black"
@@ -66,6 +67,24 @@ def baseline_correct_disp(disp: np.ndarray, t: np.ndarray, degree: int = 2) -> n
     """
     coef = np.polyfit(t, disp, degree)
     return disp - np.polyval(coef, t)
+
+
+def nice_ceil(x: float, pad: float = 1.08) -> float:
+    """
+    Round upward to a clean axis limit (1–1.5–2–2.5–3–4–5–6–8–10)·10^n.
+
+    Args:    x  data peak (positive), pad  headroom before rounding
+    Returns: limit >= pad*x
+    """
+    if x <= 0.0 or not math.isfinite(x):
+        return 1.0
+    target = float(x) * pad
+    exp = math.floor(math.log10(target))
+    mant = target / (10.0**exp)
+    for step in (1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0):
+        if mant <= step + 1e-12:
+            return step * (10.0**exp)
+    return 10.0 * (10.0**exp)
 
 
 def _png_from_pdf(pdf_path: Path, png_path: Path, dpi: int = 300) -> None:
@@ -117,14 +136,14 @@ def plot_gm_figure(
     for ax in (ax_acc, ax_vel):
         plt.setp(ax.get_xticklabels(), visible=False)
 
-    # Symmetric y-limits around zero (like the reference).
+    # Symmetric y-limits: nice 1–2–5 ceiling so ticks aren't glued to the data.
     for ax, y in (
         (ax_acc, acc_g),
         (ax_vel, vel_cm_s),
         (ax_dsp, disp_cm),
     ):
-        ymax = float(np.nanmax(np.abs(y)))
-        ax.set_ylim(-1.15 * ymax, 1.15 * ymax)
+        lim = nice_ceil(float(np.nanmax(np.abs(y))))
+        ax.set_ylim(-lim, lim)
         ax.grid(True, which="major")
 
     fig.align_ylabels([ax_acc, ax_vel, ax_dsp])
@@ -135,9 +154,9 @@ def plot_gm_figure(
     Sa_plot = np.concatenate([[pga_g], Sa_g[mask]])
     ax_sa.plot(T_plot, Sa_plot, color=LINE_COLOR, lw=LINE_LW_SA)
     ax_sa.set_xlabel(r"Period, $T_n$ (s)")
-    ax_sa.set_ylabel(r"$S_a$ ($g$)")
+    ax_sa.set_ylabel(r"Spectral acceleration, $S_a$ ($g$)")
     ax_sa.set_xlim(0.0, T_SPEC_MAX)
-    sa_ymax = 1.15 * float(np.nanmax(Sa_plot))
+    sa_ymax = nice_ceil(float(np.nanmax(Sa_plot)))
     ax_sa.set_ylim(0.0, sa_ymax)
     ax_sa.grid(True, which="major")
 
