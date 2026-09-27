@@ -97,8 +97,8 @@ SOIL_FILL = {
     "L3c": "#c49a3a",
     "L5": "#b3a591",
 }
-SOIL_ALPHA = 0.75
-SOIL_EDGE = "#6b5a44"  # mesh edges and soil nodes
+SOIL_ALPHA = 0.48  # light face so pier / springs / BCs stay primary
+SOIL_EDGE = "#8a7a64"  # softer mesh edges
 # Shin free-field columns: same materials, t_FF = 10000 t_soil (Profiles.md)
 FF_HATCH = {"pattern": "////", "edge": "#5a4a36"}
 
