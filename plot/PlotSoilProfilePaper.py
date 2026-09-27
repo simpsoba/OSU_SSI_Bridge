@@ -107,26 +107,41 @@ def unit_spans_from_soil(layers: list[dict]) -> list[tuple[str, float, float]]:
     return spans
 
 
-def mark_units(ax, spans: list[tuple[str, float, float]], *, label: bool) -> None:
+def mark_units(
+    ax,
+    spans: list[tuple[str, float, float]],
+    *,
+    label: bool,
+    soft_x: float | None = None,
+) -> None:
     """
     Layer contacts + Soft / Medium / Stiff labels (no fill).
 
     Args:    ax, spans, label
+             soft_x  if set, Soft sits at this data-x (just right of Gr)
     Returns: none
     """
     for nm, lo, hi in spans:
         ax.axhline(hi, color=CONTACT_C, lw=0.45, ls=(0, (2, 2)), zorder=1)
-        if label:
+        if not label:
+            continue
+        z_mid = 0.5 * (lo + hi)
+        text = UNIT_LABEL.get(nm, nm)
+        kw = dict(
+            ha="left",
+            va="center",
+            fontsize=FONT_SIZE,
+            color="#666666",
+            zorder=2,
+        )
+        # Soft: data-x just past the shallow Gr series (white space, not piles).
+        # Medium / Stiff stay on the left of the curve.
+        if nm == "L2" and soft_x is not None:
+            ax.text(soft_x, z_mid, text, **kw)
+        else:
             ax.text(
-                0.03,
-                0.5 * (lo + hi),
-                UNIT_LABEL.get(nm, nm),
-                transform=ax.get_yaxis_transform(),
-                ha="left",
-                va="center",
-                fontsize=FONT_SIZE,
-                color="#666666",
-                zorder=2,
+                0.03, z_mid, text,
+                transform=ax.get_yaxis_transform(), **kw,
             )
 
 
@@ -331,7 +346,12 @@ def plot_soil_props_paper(
     # ---- (a) Gr / Br ----
     # Br = 50 Gr → Br[GPa] = Gr[MPa]/20; twin xlim locked so curves coincide.
     ax_a = fig.add_subplot(gs[0, 0])
-    mark_units(ax_a, spans, label=True)
+    # Soft label: a little past max Gr in L2 (gap between series and piles).
+    soft_Gr = max(
+        (float(L["Gr"]) * 1.0e-6 for L in layers if str(L["name"]) == "L2"),
+        default=0.0,
+    )
+    mark_units(ax_a, spans, label=True, soft_x=soft_Gr + 8.0)
     style_depth(ax_a, ylabel=True)
     ax_a.set_xlabel(xlabel_with_tag(r"Shear modulus,", r"$G_r$ (MPa)", r"(a)"))
     gr_xmax = set_xlim0(ax_a, float(np.nanmax(Gr_MPa)))
@@ -359,7 +379,6 @@ def plot_soil_props_paper(
     style_depth(ax_b, ylabel=False)
     ax_b.set_xlabel(xlabel_with_tag(r"Undrained strength,", r"$s_u$ (kPa)", r"(b)"))
     set_xlim0(ax_b, float(np.nanmax(su_kPa)))
-    draw_pile_group_faded(ax_b, springs)
 
     # ---- (c) p_ult and t_ult (kN/m) ----
     ax_c = fig.add_subplot(gs[0, 2])
@@ -375,7 +394,6 @@ def plot_soil_props_paper(
     style_depth(ax_c, ylabel=False)
     ax_c.set_xlabel(xlabel_with_tag(r"Unit capacity", r"(kN/m)", r"(c)"))
     set_xlim0(ax_c, float(np.nanmax(p_prime)))
-    draw_pile_group_faded(ax_c, springs)
     z_mid = float(np.median(depth))
     ax_c.annotate(
         r"$p_\mathrm{ult}$",
@@ -430,7 +448,6 @@ def plot_soil_props_paper(
     style_depth(ax_d, ylabel=False)
     ax_d.set_xlabel(xlabel_with_tag(r"Deformation", r"(mm)", r"(d)"))
     set_xlim0(ax_d, max(float(np.nanmax(y50_mm)), float(np.nanmax(z50_mm))))
-    draw_pile_group_faded(ax_d, springs)
     if np.any(is_shaft):
         y50_x = float(np.median(y50_mm[is_shaft]))
         z50_x = float(np.median(z50_mm[is_shaft]))
