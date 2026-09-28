@@ -358,7 +358,7 @@ def plot_spectrum(
     out_stem.parent.mkdir(parents=True, exist_ok=True)
     pdf_path = out_stem.with_suffix(".pdf")
     png_path = out_stem.with_suffix(".png")
-    fig.savefig(pdf_path, bbox_inches="tight", pad_inches=0.05)
+    fig.savefig(pdf_path)
     plt.close(fig)
     _png_from_pdf(pdf_path, png_path, dpi=300)
 

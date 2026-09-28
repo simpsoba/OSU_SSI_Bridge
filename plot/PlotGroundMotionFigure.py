@@ -33,8 +33,8 @@ OUT_DIR = HERE / "out" / "spectrum"
 DEFAULT_VT2 = prs.DEFAULT_VT2
 G = prs.G
 
-FIG_W = 6.0  # in (paper max)
-FIG_H = 2.8  # in
+FIG_W = 6.0  # in (= textwidth; save without tight bbox)
+FIG_H = 3.0  # in — room for stacked TH + panel tags inside the canvas
 FONT_SIZE = 9
 LINE_COLOR = "black"
 LINE_LW_TH = 0.45  # dense time history
@@ -129,7 +129,8 @@ def plot_gm_figure(
 
     ax_dsp.plot(t, disp_cm, color=LINE_COLOR, lw=LINE_LW_TH)
     ax_dsp.set_ylabel(r"$u_g(t)$ (cm)")
-    ax_dsp.set_xlabel(r"Time, $t$ (s)")
+    # Panel tag in the xlabel so constrained layout budgets the bottom margin.
+    ax_dsp.set_xlabel(r"Time, $t$ (s)" + "\n" + r"(a)")
     ax_dsp.set_xlim(0.0, 300.0)
     ax_dsp.set_xticks([0, 50, 100, 150, 200, 250, 300])
 
@@ -153,7 +154,7 @@ def plot_gm_figure(
     T_plot = np.concatenate([[0.0], periods[mask]])
     Sa_plot = np.concatenate([[pga_g], Sa_g[mask]])
     ax_sa.plot(T_plot, Sa_plot, color=LINE_COLOR, lw=LINE_LW_SA)
-    ax_sa.set_xlabel(r"Period, $T_n$ (s)")
+    ax_sa.set_xlabel(r"Period, $T_n$ (s)" + "\n" + r"(b)")
     ax_sa.set_ylabel(r"Spectral acceleration, $S_a$ ($g$)")
     ax_sa.set_xlim(0.0, T_SPEC_MAX)
     sa_ymax = nice_ceil(float(np.nanmax(Sa_plot)))
@@ -190,16 +191,16 @@ def plot_gm_figure(
         zorder=5,
     )
 
-    # Panel tags under each column.
-    fig.text(0.28, -0.02, r"(a)", ha="center", va="top", fontsize=FONT_SIZE)
-    fig.text(0.78, -0.02, r"(b)", ha="center", va="top", fontsize=FONT_SIZE)
+    # Keep a hair of margin on every side so usetex labels are not clipped
+    # at the page edge (exact figsize; no bbox_inches="tight").
+    fig.get_layout_engine().set(h_pad=0.04, w_pad=0.04, rect=(0.01, 0.02, 0.99, 0.98))
 
     out_stem.parent.mkdir(parents=True, exist_ok=True)
     pdf_path = out_stem.with_suffix(".pdf")
     png_path = out_stem.with_suffix(".png")
     svg_path = out_stem.with_suffix(".svg")
-    fig.savefig(pdf_path, bbox_inches="tight", pad_inches=0.08)
-    fig.savefig(svg_path, bbox_inches="tight", pad_inches=0.08)
+    fig.savefig(pdf_path)
+    fig.savefig(svg_path)
     plt.close(fig)
     _png_from_pdf(pdf_path, png_path, dpi=300)
 

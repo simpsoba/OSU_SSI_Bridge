@@ -479,9 +479,9 @@ def plot_soil_props_paper(
     pdf_path = out_stem.with_suffix(".pdf")
     png_path = out_stem.with_suffix(".png")
     svg_path = out_stem.with_suffix(".svg")
-    # pad kept small so final PDF width stays near FIG_W (= textwidth).
-    fig.savefig(pdf_path, bbox_inches="tight", pad_inches=0.02)
-    fig.savefig(svg_path, bbox_inches="tight", pad_inches=0.02)
+    # Exact figsize (= textwidth); do not use bbox_inches="tight".
+    fig.savefig(pdf_path)
+    fig.savefig(svg_path)
     plt.close(fig)
     prs._png_from_pdf(pdf_path, png_path, dpi=300)
     print(f"PlotSoilProfilePaper: wrote {pdf_path}")
