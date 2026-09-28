@@ -124,7 +124,13 @@ UY_FIX = {"color": "#222222", "lw": 0.5, "h": 0.55}  # m, soil-base UY roller he
 # OpenFresco expElement (generic UX at pier-top inner node): force feedback
 # from the physical cylinder (mainly hydro); EQ resistance stays in the hinges.
 # Glyph = free node -- actuator -- fixed support (lab DOF).
-EXP = {"color": "#00838f", "len": 1.55, "h": 0.34, "lw": 1.2}
+# Color matches the path319 UX arrow (stroke #ec2a10). Bidirectional arrow
+# sits left of the fixed support; panel (d) labels hydro loading beside it.
+DOF_ARROW = {
+    "fill_pos": "#f28f7f", "fill_neg": "#ffffff", "stroke": "#ec2a10",
+    "lw": 0.75, "L": 0.72, "gap": 0.12,
+}
+EXP = {"color": DOF_ARROW["stroke"], "len": 1.55, "h": 0.34, "lw": 1.2}
 
 SSI_SCALE = 0.7        # (-) overall glyph size
 SSI_LEN = 0.55 * SSI_SCALE     # m, drawn p-y coil length
@@ -156,7 +162,8 @@ DETAIL_X = (-3.3, 3.3)
 DETAIL_Y = (-2.5, 1.4)
 # Panel (d) crop around pier-top inner node (OpenFresco) + soffit (m)
 # Node 4 ~ (0, 6.55); actuator runs -X (fixed left of pier).
-TOP_X = (-2.35, 0.9)
+# Left pad leaves room for the path319 UX arrow left of the fixed support.
+TOP_X = (-2.90, 0.9)
 TOP_Y = (5.95, 7.55)
 
 
@@ -316,9 +323,52 @@ def draw_ssi_attached(a: plt.Axes, data: dict) -> None:
         draw_loop_spring(a, xp, yp, (0.0, -1.0), (-out, 0.0), SSI_LEN_V, off, color)
 
 
+def draw_dof_arrow(a: plt.Axes, xc: float, yc: float, L: float,
+                   *, z: float = 6.0) -> None:
+    """
+    Bidirectional UX DOF arrow (path319.svg): coral +x, white -x.
+
+    Geometry matches the Inkscape export next to the physical actuator
+    (shaft + head flare, stroke #ec2a10). Origin at the shaft junction;
+    +x to the right (toward the pier).
+
+    Args:    a, xc, yc  junction centre (m), L  tip-to-tip length (m)
+             z  draw order
+    Returns: none (updates a)
+    """
+    # path319 proportions: shaft 6.113, head 3.297, shaft half-h 1.614,
+    # flare above shaft 1.648; tip-to-tip ≈ 2*(6.113+3.297) = 18.82
+    s = L / 18.82
+    shaft, head = 6.11314 * s, 3.29699 * s
+    hs, flare = 1.614155 * s, 1.64848 * s  # half shaft height; head flare
+    # right (coral) then left (white); SVG y flipped to +y up
+    right = [
+        (0.0, hs), (shaft, hs), (shaft, hs + flare),
+        (shaft + head, 0.0),
+        (shaft, -hs - flare), (shaft, -hs), (0.0, -hs),
+    ]
+    left = [
+        (0.0, -hs), (-shaft, -hs), (-shaft, -hs - flare),
+        (-shaft - head, 0.0),
+        (-shaft, hs + flare), (-shaft, hs), (0.0, hs),
+    ]
+    kw = {
+        "closed": True, "edgecolor": DOF_ARROW["stroke"],
+        "lw": DOF_ARROW["lw"], "zorder": z, "joinstyle": "miter",
+    }
+    a.add_patch(Polygon(
+        [(xc + x, yc + y) for x, y in right],
+        facecolor=DOF_ARROW["fill_pos"], **kw,
+    ))
+    a.add_patch(Polygon(
+        [(xc + x, yc + y) for x, y in left],
+        facecolor=DOF_ARROW["fill_neg"], **kw,
+    ))
+
+
 def draw_exp_element(a: plt.Axes, nodes: dict[int, tuple[float, float]],
                      *, label: bool = False, scale: float = 1.0,
-                     lw: float | None = None) -> None:
+                     lw: float | None = None, dof_arrow: bool = False) -> None:
     """
     OpenFresco experimental element: fixed -- actuator -- eyelet at pier.
 
@@ -330,8 +380,9 @@ def draw_exp_element(a: plt.Axes, nodes: dict[int, tuple[float, float]],
     else node 5 (deck BC).
 
     Args:    a, nodes  display node map (m)
-             label  place "OpenFresco" above the glyph (panel d)
+             label  unused (plot() places the hydro-loading callout)
              scale  length multiplier; lw  line width override (pt)
+             dof_arrow  path319 bidirectional UX arrow left of the fixed support
     Returns: none (updates a)
     """
     tag = 4 if 4 in nodes else (5 if 5 in nodes else None)
@@ -378,7 +429,12 @@ def draw_exp_element(a: plt.Axes, nodes: dict[int, tuple[float, float]],
         yk = y - 0.75 * h + k * 0.5 * h
         a.plot([x_fix, x_fix - 0.55 * h], [yk, yk + 0.32 * h], lw=0.5,
                color="#222222", zorder=z + 2)
-    # Optional in-axes callout unused; plot() places a figure-level label for (d).
+    if dof_arrow:
+        # left of the fixed support, on the actuator centerline
+        L_arr = DOF_ARROW["L"] * scale
+        x_arr = x_fix - DOF_ARROW["gap"] * scale - 0.5 * L_arr
+        draw_dof_arrow(a, x_arr, y, L_arr, z=z + 3)
+    # Hydro-loading callout is figure-level in plot() (left of panel d).
 
 
 
@@ -483,6 +539,7 @@ def draw_dashpot(a: plt.Axes, x0: float, y: float, color: str,
 
 def draw_base_boundary(
     a: plt.Axes, data: dict, *, force_label: bool = True, force_under: bool = False,
+    force_at: str = "NF",
 ) -> None:
     """
     Shin base: dashed equalDOF bus under the tied base nodes plus the
@@ -490,8 +547,9 @@ def draw_base_boundary(
     (right), with Path load F = 2 c v(t) arrowed at the soil end.
 
     Args:    a, data
-             force_label  write $2c\dot{u}_g(t)$ next to the NF arrow
-             force_under  place that text under the arrow (else to the right)
+             force_label  write the earthquake Path-load callout
+             force_under  place that text under the glyph (else to the right)
+             force_at  which dashpot gets the callout: "NF" | "leftmost"
     Returns: none (updates a)
     """
     dash = data.get("lysmer_dashpots", [])
@@ -528,21 +586,31 @@ def draw_base_boundary(
 
     color = STYLE["lysmer"]["line"]
     y_d = yb - DASHPOT_DROP
+    eq_txt = r"Earthquake loading, $2c\,\dot{u}_g(t)$"
+    if force_at == "leftmost":
+        x_lab = min(float(d["x"]) for d in dash)
+    else:
+        x_lab = next(
+            (float(d["x"]) for d in dash if d.get("role") == "NF"),
+            float(dash[0]["x"]),
+        )
     labeled = False
     for d in dash:
         x = float(d["x"])
         a.plot([x, x], [yb, y_d], color=color, lw=1.0, zorder=7)
         draw_dashpot(a, x, y_d, color)
-        if force_label and (not labeled) and d.get("role") == "NF":
-            eq_txt = r"$2c\,\dot{u}_g(t)$"
+        if force_label and (not labeled) and abs(x - x_lab) < 1.0e-9:
             if force_under:
-                xm = x + EQ_FORCE["gap"] + 0.5 * EQ_FORCE["len"]
+                # center under dashpot + Path-load arrow, then nudge ~1 capital E
+                # right so the leading "E" sits inside the axes
+                xm = (x + 0.5 * (EQ_FORCE["gap"] + EQ_FORCE["len"] - DASHPOT_LEN)
+                      + 0.65)
                 a.text(xm, y_d - 0.55 * DASHPOT_H - 0.2, eq_txt, color=color,
-                       fontsize=FONT_SIZE, ha="center", va="top", zorder=8)
+                       fontsize=FONT_SIZE - 1, ha="center", va="top", zorder=8)
             else:
                 xa = x + EQ_FORCE["gap"] + EQ_FORCE["len"]
                 a.text(xa + 0.6, y_d, eq_txt, color=color,
-                       fontsize=FONT_SIZE, ha="left", va="center", zorder=8)
+                       fontsize=FONT_SIZE - 1, ha="left", va="center", zorder=8)
             labeled = True
 
 
@@ -568,10 +636,12 @@ def draw_model(
     pin_s: float = 0.0,
     force_label: bool = True,
     force_under: bool = False,
+    force_at: str = "NF",
     exp_element: bool = False,
     exp_label: bool = False,
     exp_scale: float = 1.0,
     exp_lw: float | None = None,
+    exp_dof_arrow: bool = False,
     equal_aspect: bool = True,
 ) -> None:
     """
@@ -586,9 +656,9 @@ def draw_model(
              soil_ms  soil-node marker size (pt; 0 = off)
              surcharge  water-pressure arrows on y=0
              pin_s  pier-base pin half-width (m; 0 = auto)
-             force_label, force_under  2cv Path-load callout
+             force_label, force_under, force_at  earthquake Path-load callout
              exp_element  OpenFresco UX spring at the pier top
-             exp_label, exp_scale, exp_lw  OpenFresco glyph options
+             exp_label, exp_scale, exp_lw, exp_dof_arrow  OpenFresco glyph options
              equal_aspect  True -> equal x/y scale (default); False for inset (d)
     Returns: none (updates a)
     """
@@ -730,14 +800,15 @@ def draw_model(
             draw_rot_spiral(a, x0, y0, x1, y1, STYLE["spring"]["line"])
 
     if exp_element:
-        draw_exp_element(a, nodes, label=exp_label, scale=exp_scale, lw=exp_lw)
+        draw_exp_element(a, nodes, label=exp_label, scale=exp_scale, lw=exp_lw,
+                         dof_arrow=exp_dof_arrow)
 
     if coils:
         draw_ssi_attached(a, data)
 
     if dashpots:
         draw_base_boundary(a, data, force_label=force_label,
-                           force_under=force_under)
+                           force_under=force_under, force_at=force_at)
 
     # HoldPierBase: both ends of the base ZLS held in UX+UY (RZ free -> pin).
     # Pier-top hinge (nodes 4--5) is not held. Upper pin is rotated -90 deg
@@ -839,7 +910,8 @@ def legend_handles(data: dict, fill: str = FILL_DEFAULT) -> tuple[list, list]:
             h = mpatches.Patch(facecolor=STYLE[g]["fill"], alpha=0.6,
                                edgecolor=STYLE[g]["line"], lw=0.5)
         else:
-            h = Line2D([0], [0], color=STYLE[g]["line"], lw=lw_leg)
+            # line + node dots at both ends (matches panel markers)
+            h = MemberProxy(STYLE[g]["line"], STYLE[g]["node"], lw_leg)
             if fill == "gray":
                 h = (mpatches.Patch(facecolor=GRAY["fill"], alpha=GRAY["alpha"],
                                     edgecolor="none"), h)
@@ -910,7 +982,20 @@ def soil_desc(name: str, profile: int | None) -> str:
     return layer_style(name, profile=profile)["label"].split(" ", 1)[-1]
 
 
+class MemberProxy:
+    """Legend stand-in for a frame member: short line with nodes at both ends."""
+
+    def __init__(self, line: str, node: str, lw: float):
+        self.line = line
+        self.node = node
+        self.lw = lw
+
+
 class SpringProxy:
+    """Legend stand-in for a translational spring (zigzag)."""
+
+    def __init__(self, color: str):
+        self.color = color
     """Legend stand-in for a translational spring (zigzag)."""
 
     def __init__(self, color: str):
@@ -1058,6 +1143,23 @@ class HandlerRoller(HandlerBase):
         ]
 
 
+class HandlerMember(HandlerBase):
+    """Draw a short member line with filled node circles at both ends."""
+
+    def create_artists(self, legend, orig, xd, yd, w, h, fontsize, trans):
+        yc = -yd + 0.5 * h
+        x0, x1 = -xd + 0.10 * w, -xd + 0.90 * w
+        r = 0.30 * h
+        return [
+            Line2D([x0, x1], [yc, yc], color=orig.line, lw=orig.lw,
+                   transform=trans, solid_capstyle="butt"),
+            Circle((x0, yc), r, facecolor=orig.node, edgecolor="white",
+                   linewidth=0.45, transform=trans),
+            Circle((x1, yc), r, facecolor=orig.node, edgecolor="white",
+                   linewidth=0.45, transform=trans),
+        ]
+
+
 class HandlerSpring(HandlerBase):
     """Draw the closed spring loop (same shape as the panels) in the handle box."""
 
@@ -1160,6 +1262,7 @@ class HandlerWater(HandlerBase):
 
 
 LEGEND_HANDLERS = {
+    MemberProxy: HandlerMember(),
     SpringProxy: HandlerSpring(),
     ExpProxy: HandlerExp(),
     SpiralProxy: HandlerSpiral(),
@@ -1203,9 +1306,10 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
     h_a = w_a * (ylim_a[1] - ylim_a[0]) / (2.0 * x_half_a)
 
     # (b) near field, full remaining height (same as pre-(d) layout)
+    # pad past the Lysmer glyph so the EQ callout stays inside the axes
     x_half_b = max(
         0.5 * float(sz["dw_deck"]) + 0.8,
-        DASHPOT_LEN + 0.8,
+        DASHPOT_LEN + 1.4,
         EQ_FORCE["gap"] + EQ_FORCE["len"] + 0.8,
     )
     ylim_b = (y_bot - DASHPOT_DROP - DASHPOT_H - 1.6, y_top + 0.8)
@@ -1228,14 +1332,15 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
     ax_b = fig.add_axes(rect(LEFT, top_b, w_b, h_b))
     ax_c = fig.add_axes(rect(left_c, top_b, w_c, h_c))
 
-    # (d) small visual inset straddling (c)'s top-right corner (equal aspect)
+    # (d) inset straddling (c)'s top-right
     pos_c = ax_c.get_position()
     dy_d = TOP_Y[1] - TOP_Y[0]
     dx_d = TOP_X[1] - TOP_X[0]
     w_d = 0.95 / FIG_W   # ~0.95 in wide
     h_d = w_d * (dy_d / dx_d) * (FIG_W / FIG_H)
     left_d = 1.0 - 0.015 - w_d
-    bot_d = pos_c.y1 - 0.82 * h_d
+    # one inset-height below a fully-raised seat, so (d) overlaps (c) again
+    bot_d = pos_c.y1 - 0.55 * h_d
     bot_d = min(bot_d, 1.0 - 0.015 - h_d)
     ax_d = fig.add_axes([left_d, bot_d, w_d, h_d])
     ax_d.set_zorder(10)
@@ -1243,7 +1348,7 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
 
     draw_model(ax_a, data, nodes, xlim=(-x_half_a, x_half_a),
                lw=0.5, ms=0.0, quad_lw=0.15, coils=False, dashpots=True,
-               fill=fill)
+               fill=fill, force_at="leftmost")
     ax_a.set_ylim(*ylim_a)
     mark_window(ax_a, (-x_half_b, x_half_b), ylim_b, "(b)")
     ax_a.set_title("(a)", loc="left", pad=3)
@@ -1268,7 +1373,7 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
                lw=1.2, ms=4.0, quad_lw=0.3, coils=False, dashpots=False,
                fill=fill, soil_ms=0.0, surcharge=False, pin_s=0.0,
                exp_element=True, exp_label=False, exp_scale=1.05, exp_lw=1.5,
-               equal_aspect=True)
+               exp_dof_arrow=True, equal_aspect=True)
     ax_d.set_ylim(*TOP_Y)
     ax_d.set_facecolor("white")
     ax_d.set_xticks([])
@@ -1279,31 +1384,16 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
     for spine in ax_d.spines.values():
         spine.set_color("#222222")
         spine.set_linewidth(0.9)
-    # OpenFresco callout left of (d), in figure coords (survives equal-aspect crop)
-    tag = 4 if 4 in nodes else (5 if 5 in nodes else None)
-    if tag is not None:
-        fig.canvas.draw()  # lock equal-aspect axes position before transforming
-        pos_d = ax_d.get_position()
-        x0, y0 = nodes[tag]
-        L = EXP["len"] * 1.05
-        xc, yc = x0 - 0.57 * L, y0
-        tip = fig.transFigure.inverted().transform(
-            ax_d.transData.transform((xc, yc))
-        )
-        tx = pos_d.x0 - 0.035
-        ty = pos_d.y0 + 0.62 * pos_d.height
-        fig.text(
-            tx, ty, "OpenFresco", ha="right", va="center",
-            color=EXP["color"], fontsize=8, transform=fig.transFigure,
-            clip_on=False, zorder=20,
-        )
-        fig.add_artist(FancyArrowPatch(
-            (tx + 0.004, ty), tip,
-            transform=fig.transFigure,
-            arrowstyle="-|>", mutation_scale=8,
-            lw=0.75, color=EXP["color"],
-            shrinkA=2, shrinkB=2, clip_on=False, zorder=20,
-        ))
+    # Hydro callout under (d), shifted left so the block sits over (c)
+    fig.canvas.draw()  # lock equal-aspect axes position before transforming
+    pos_d = ax_d.get_position()
+    fig.text(
+        pos_d.x0 + 0.18 * pos_d.width, pos_d.y0 - 0.004,
+        "Hydrodynamic loading\n(via OpenFresco)",
+        ha="center", va="top", color=EXP["color"], fontsize=7.5,
+        linespacing=1.15, transform=fig.transFigure,
+        clip_on=False, zorder=20,
+    )
 
     for a in (ax_a, ax_b, ax_c):
         a.set_xlabel(r"$x$ (m)", labelpad=1)
