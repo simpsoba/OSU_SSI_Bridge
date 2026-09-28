@@ -326,11 +326,11 @@ def draw_ssi_attached(a: plt.Axes, data: dict) -> None:
 def draw_dof_arrow(a: plt.Axes, xc: float, yc: float, L: float,
                    *, z: float = 6.0) -> None:
     """
-    Bidirectional UX DOF arrow (path319.svg): coral +x, white -x.
+    Bidirectional UX DOF arrow (path319.svg geometry, sense flipped).
 
-    Geometry matches the Inkscape export next to the physical actuator
-    (shaft + head flare, stroke #ec2a10). Origin at the shaft junction;
-    +x to the right (toward the pier).
+    Physical schematic: coral +x, white -x. The numerical OpenFresco
+    attachment sees the opposite UX sign, so coral is on -x (left) and
+    white on +x (toward the pier).
 
     Args:    a, xc, yc  junction centre (m), L  tip-to-tip length (m)
              z  draw order
@@ -341,7 +341,7 @@ def draw_dof_arrow(a: plt.Axes, xc: float, yc: float, L: float,
     s = L / 18.82
     shaft, head = 6.11314 * s, 3.29699 * s
     hs, flare = 1.614155 * s, 1.64848 * s  # half shaft height; head flare
-    # right (coral) then left (white); SVG y flipped to +y up
+    # right (+x, white) then left (-x, coral); SVG y flipped to +y up
     right = [
         (0.0, hs), (shaft, hs), (shaft, hs + flare),
         (shaft + head, 0.0),
@@ -358,11 +358,11 @@ def draw_dof_arrow(a: plt.Axes, xc: float, yc: float, L: float,
     }
     a.add_patch(Polygon(
         [(xc + x, yc + y) for x, y in right],
-        facecolor=DOF_ARROW["fill_pos"], **kw,
+        facecolor=DOF_ARROW["fill_neg"], **kw,
     ))
     a.add_patch(Polygon(
         [(xc + x, yc + y) for x, y in left],
-        facecolor=DOF_ARROW["fill_neg"], **kw,
+        facecolor=DOF_ARROW["fill_pos"], **kw,
     ))
 
 
