@@ -60,10 +60,9 @@ Read what the files say:
 
 Folder names may include `Storm_Wave` / `Big_Tsunami` (wave-catalog label from the
 matrix). **Friday 2026-08-21:** earthquake followed by wave (not storm-wave-only).
-**Wednesday 2026-08-19:** EQ together with deep-water waves. The OpenSees record is
-EQ motion (then free vib / continued time), with the flume wave timed relative to
-the EQ per the lab. Infer loading from the dump and lab notes, not from the folder
-nickname alone.
+**Wednesday 2026-08-19:** deep-water wave first, then EQ (`H0p5_T7p746`; GM onset
+~70 s proto on W01, ~150 s on W02/W05–W07). Infer loading from the dump and lab
+notes, not from the folder nickname alone.
 
 **Compare reference:** eventual true reference = offline OpenSees for each dump
 folder (`realTimeON 0`, no OpenFresco / Simulink). Until those exist, pairwise

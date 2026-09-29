@@ -7,7 +7,7 @@ pair table here** — use the CSV.
 
 | File | Role |
 |------|------|
-| **`plot/lab/TestMatrix_lab_runs.csv`** | One row per as-run. Campaign/model knobs first (incl. **`DOFs`** = OpenSees `systemSize` after gravity); trailing **`DateTime`**, **`DumpFolder`**, **`MatFile`**, **`LabTrial`**, **`Note`**. Leading **`Test`** = `W##` (Wed) / `F##` (Fri RTHS Trial) / `Fd##` (dry lunch) / `Fx##` (abort / no Trial). Git-tracked; working copy: `OSU_SSI_BRIDGE_DATA_LOCAL/TestMatrix_lab_runs.csv`. |
+| **`plot/lab/TestMatrix_lab_runs.csv`** | One row per as-run. Campaign/model knobs first (incl. **`DOFs`**, **`h_water`**, flume **`waveH_model_m` / `waveT_model_s`** when known); trailing **`DateTime`**, **`DumpFolder`**, **`MatFile`**, **`LabTrial`**, **`Note`**. Leading **`Test`** = `W##` / `F##` / `Fd##` / `Fx##`. Git-tracked; working copy: `OSU_SSI_BRIDGE_DATA_LOCAL/TestMatrix_lab_runs.csv`. |
 | **`plot/lab/1_Monopile_matrix.xlsx`** | Lab schedule workbook (**Run Log** = wall-clock and Trial IDs). |
 | **`plot/lab/mat_run_map.json`** | **Orphans only:** mats without a dump, pending uploads, duplicate mat aliases. Not paired runs. |
 | **`plot/lab/STATEOS_SIGNALS.md`** | Seki §2.1 / `typeConv3` field guide for `hist_os_state.png`. |
@@ -28,14 +28,22 @@ pair table here** — use the CSV.
 
 Wed (4 pm+ bridge Trials 1–7): **W01–W07**. Mats + OpenSees dumps live under
 `GustavoModel/data/08192026` (copied to LOCAL and Simpson archive). Filenames are
-all `H0p5_T7p746` (Run Log `H0p156` labels were outdated). Orphan probe:
-`0819_testGus.mat`.
+all `H0p5_T7p746` = model **\(H=0.5\) m**, **\(T=7.746\) s** (Run Log `H0p156`
+labels were outdated). Orphan probe: `0819_testGus.mat`.
 
 ## Loading
 
 **Friday (2026-08-21):** earthquake followed by wave (folder `Storm_Wave` is a
-matrix nickname only). **Wednesday (2026-08-19):** EQ together with deep-water
-waves. Infer loading from the dump and lab notes, not from the folder name alone.
+matrix nickname only). **Wednesday (2026-08-19):** **deep-water wave first, then
+EQ** (not concurrent). Dump stems encode the flume wave as **`H0p5_T7p746`**:
+model-scale wave height **\(H = 0.5\) m**, period **\(T = 7.746\) s** (CSV
+`waveH_model_m`, `waveT_model_s`). OpenSees pier UX stays near zero until GM
+onset. Dump `window_meta` (and pier UX vs Friday D5–95 xcorr) give
+**`gmStartTime` = 70 s prototype (W01), 150 s (W02–W07)** — the repo CSV had
+stayed at `0`. Before that, `ServerSetup_daqFrc` carries a ~7.75 s model period.
+Friday is the opposite (EQ from ~t=0 / `gmStartTime` 0, large daqForce after
+~200 s model). OpenSees `h_water` is still the ponding depth knob (2.4 m), not
+the free-surface wave height.
 
 ## How mat ↔ dump pairs were chosen
 
