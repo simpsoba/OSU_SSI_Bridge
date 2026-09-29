@@ -11,13 +11,15 @@ Significant duration (D5–95) from a PEER velocity VT2 via Arias intensity.
     t_5, t_95 = times when I_A / I_A∞ reaches 5% and 95%
     D5–95 = t_95 − t_5
 
-Units: returned times are in the record's own clock (s), matching OpenSees
-t_num when gmStartTime = 0 on a prototype-scale schedule.
+Units: returned times are in the record's own clock (s). On the OpenSees /
+prototype analysis clock that is ``t5 + gmStartTime`` … ``t95 + gmStartTime``
+(Path ``-startTime``). Use ``d595_proto_window(gm_start_s=…)`` for zoom panels.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -110,6 +112,86 @@ def arias_significant_duration(
         npts=len(velocity_mps),
         path=vt2,
     )
+
+
+def gm_start_time_s(
+    source: Path | Mapping[str, str] | None = None,
+) -> float:
+    """
+    OpenSees Path ``-startTime`` (prototype s) from dump meta.
+
+    Args:    source  dump folder, ``window_meta.txt[.0]``, or meta dict
+    Returns: gmStartTime ≥ 0, or 0.0 if unset / missing
+    """
+    if source is None:
+        return 0.0
+    if isinstance(source, Mapping):
+        raw = source.get("gmStartTime") or source.get("gmStart") or ""
+        try:
+            return max(0.0, float(str(raw).split()[0]))
+        except (TypeError, ValueError, IndexError):
+            return 0.0
+    path = Path(source)
+    if path.is_dir():
+        for name in ("window_meta.txt", "window_meta.txt.0"):
+            cand = path / name
+            if cand.is_file():
+                return gm_start_time_s(cand)
+        return 0.0
+    if not path.is_file():
+        return 0.0
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        key, _, rest = s.partition(" ")
+        if key in ("gmStartTime", "gmStart"):
+            try:
+                return max(0.0, float(rest.split()[0]))
+            except (ValueError, IndexError):
+                return 0.0
+    return 0.0
+
+
+def d595_proto_window(
+    gm_start_s: float = 0.0,
+    path: Path | None = None,
+) -> tuple[float, float] | None:
+    """
+    D5–95 on the OpenSees / prototype analysis clock.
+
+    Args:    gm_start_s  Path ``-startTime`` (s); path  optional VT2 override
+    Returns: (t5 + gmStart, t95 + gmStart), or None if the VT2 is missing
+    """
+    try:
+        dur = arias_significant_duration(path)
+    except (OSError, ValueError):
+        return None
+    t0 = max(0.0, float(gm_start_s))
+    return float(dur.t5_s) + t0, float(dur.t95_s) + t0
+
+
+def d595_lab_window(
+    gm_start_s: float = 0.0,
+    *,
+    time_scale_froude: float,
+    path: Path | None = None,
+) -> tuple[float, float] | None:
+    """
+    D5–95 on the Simulink lab / model clock (prototype ÷ √λ).
+
+    Args:    gm_start_s  Path ``-startTime`` on the prototype clock (s)
+             time_scale_froude  √λ (proto / model)
+             path  optional VT2 override
+    Returns: (t5_lab, t95_lab), or None
+    """
+    proto = d595_proto_window(gm_start_s, path=path)
+    if proto is None:
+        return None
+    scale = float(time_scale_froude)
+    if scale <= 0.0:
+        raise ValueError(f"time_scale_froude must be > 0 (got {scale})")
+    return proto[0] / scale, proto[1] / scale
 
 
 if __name__ == "__main__":

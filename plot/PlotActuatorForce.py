@@ -36,7 +36,7 @@ from PlotEQComparePairs import (
     load_type_conv3,
 )
 from PlotEQCompareRuns import apply_paper_style
-from gm_duration import arias_significant_duration
+from gm_duration import d595_proto_window, gm_start_time_s
 from lab_paths import (
     CYLINDER_LENGTH_SCALE,
     LOCAL_OPENSEES_DATA,
@@ -305,13 +305,9 @@ def load_daq_force_kn(dump_path: Path) -> tuple[np.ndarray, np.ndarray] | None:
     return t, f_kn
 
 
-def d595_window() -> tuple[float, float] | None:
-    """GM D5–95 in prototype seconds, or None if the GM file is missing."""
-    try:
-        dur = arias_significant_duration()
-        return float(dur.t5_s), float(dur.t95_s)
-    except (OSError, ValueError):
-        return None
+def d595_window(gm_start_s: float = 0.0) -> tuple[float, float] | None:
+    """GM D5–95 in prototype seconds (incl. gmStartTime), or None if VT2 missing."""
+    return d595_proto_window(gm_start_s=gm_start_s)
 
 
 def peak_abs_kn(f_kn: np.ndarray) -> float:
@@ -386,7 +382,8 @@ def write_plot(
     wave_hit = detect_wave_hit_proto_s(t_frc, f_kn)
     t_wave = None if wave_hit is None else wave_hit[0]
     t_wave_peak = None if wave_hit is None else wave_hit[1]
-    d595 = d595_window()
+    t0 = gm_start_time_s(root / dump)
+    d595 = d595_window(t0)
 
     fig_h = 4.2 * (0.65 + 0.35 * font_scale)
     fig_w = 15.6

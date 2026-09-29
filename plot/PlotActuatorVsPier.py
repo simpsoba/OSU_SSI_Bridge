@@ -40,7 +40,7 @@ from PlotEQComparePairs import (
     load_type_conv3,
 )
 from PlotEQCompareRuns import apply_paper_style
-from gm_duration import arias_significant_duration
+from gm_duration import d595_proto_window, gm_start_time_s
 from lab_paths import (
     CYLINDER_LENGTH_SCALE,
     LOCAL_OPENSEES_DATA,
@@ -154,11 +154,8 @@ def write_plot(
     pier_label = pier_ux_legend_label(dump_path)
     t_slow = slowdown_times_proto_s(mat)
 
-    try:
-        dur = arias_significant_duration()
-        d595 = (float(dur.t5_s), float(dur.t95_s))
-    except (OSError, ValueError):
-        d595 = None
+    t0 = gm_start_time_s(dump_path)
+    d595 = d595_proto_window(gm_start_s=t0)
 
     fig_h = 4.2 * (0.65 + 0.35 * font_scale)
     fig, axes_f, axes_z = subplots_full_zoom(1, fig_h=fig_h, sharey=True, wspace=0.04)

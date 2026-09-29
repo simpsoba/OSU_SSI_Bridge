@@ -45,7 +45,7 @@ from PlotActuatorForce import (
 from PlotEQ import loadtxt_partial, subplots_full_zoom
 from PlotEQComparePairs import COLOR_OTHER, LABEL_T_PROTO, add_dual_time_xaxis
 from PlotEQCompareRuns import apply_paper_style
-from gm_duration import arias_significant_duration
+from gm_duration import d595_proto_window, gm_start_time_s
 from lab_paths import (
     CYLINDER_LENGTH_SCALE,
     LOCAL_OPENSEES_DATA,
@@ -70,13 +70,9 @@ OUT_NAME = "hist_pier_base_PM.png"
 HINGE_FORCE_NAME = "pier_hinge_force.out"
 
 
-def d595_window() -> tuple[float, float] | None:
-    """GM D5–95 in prototype seconds, or None if the GM file is missing."""
-    try:
-        dur = arias_significant_duration()
-        return float(dur.t5_s), float(dur.t95_s)
-    except (OSError, ValueError):
-        return None
+def d595_window(gm_start_s: float = 0.0) -> tuple[float, float] | None:
+    """GM D5–95 in prototype seconds (incl. gmStartTime), or None if VT2 missing."""
+    return d595_proto_window(gm_start_s=gm_start_s)
 
 
 def resolve_hinge_force_path(dump_path: Path) -> Path | None:
@@ -193,7 +189,8 @@ def write_plot(
     t_wave = (
         detect_wave_onset_proto_s(frc[0], frc[1]) if frc is not None else None
     )
-    d595 = d595_window()
+    t0 = gm_start_time_s(root / dump)
+    d595 = d595_window(t0)
 
     fig_h = 6.6 * (0.65 + 0.35 * font_scale)
     fig, axes_f, axes_z = subplots_full_zoom(2, fig_h=fig_h, sharey="row", wspace=0.04)

@@ -46,9 +46,13 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 import numpy as np
 
+from paths import HERE
+from gm_duration import d595_lab_window as d595_lab_from_gm
+from gm_duration import gm_start_time_s
 from lab_paths import (
     CYLINDER_LENGTH_SCALE,
     DISP_M_TO_PROTO_MM,
+    LOCAL_OPENSEES_DATA,
     MAT_EXTRACT_DIR,
     TIME_SCALE_FROUDE,
     XLIM_FULL_MODEL_S,
@@ -56,10 +60,9 @@ from lab_paths import (
     all_mat_names_for_plot,
     build_mat_run_catalog,
     mat_os_plots_dir,
+    resolve_opensees_data,
     run_os_plots_dir,
 )
-from paths import HERE
-from gm_duration import arias_significant_duration
 
 
 # ------------------------------------------------------------
@@ -159,21 +162,36 @@ def dual_time_xaxis(ax) -> None:
     )
 
 
-def d595_lab_window() -> tuple[float, float] | None:
+def d595_lab_window(gm_start_proto_s: float = 0.0) -> tuple[float, float] | None:
     """
-    D5–95 on the Simulink lab clock (GM prototype ÷ √λ).
+    D5–95 on the Simulink lab clock ((t5 + gmStart) / √λ).
 
+    Args:    gm_start_proto_s  Path ``-startTime`` on the prototype clock (s)
     Returns: (t5_lab_s, t95_lab_s) or None
     """
-    try:
-        duration = arias_significant_duration()
-    except (OSError, ValueError) as exc:
-        print(f"PlotMatOS: D5-95 unavailable ({exc})")
-        return None
-    return (
-        float(duration.t5_s) / TIME_SCALE_FROUDE,
-        float(duration.t95_s) / TIME_SCALE_FROUDE,
+    window = d595_lab_from_gm(
+        gm_start_proto_s,
+        time_scale_froude=TIME_SCALE_FROUDE,
     )
+    if window is None:
+        print("PlotMatOS: D5-95 unavailable (VT2 missing or unreadable)")
+    return window
+
+
+def gm_start_for_mat(mat_name: str, mmap: dict) -> float:
+    """
+    Path ``-startTime`` for a mat: dump ``window_meta`` when available.
+
+    Args:    mat_name; mmap  build_mat_run_catalog()
+    Returns: gmStartTime (prototype s), or 0.0
+    """
+    stem = Path(mat_name).name
+    info = mmap.get("mats", {}).get(stem) or {}
+    dump_name = (info.get("run") or "").strip()
+    if not dump_name:
+        return 0.0
+    root = resolve_opensees_data() or LOCAL_OPENSEES_DATA
+    return gm_start_time_s(root / dump_name)
 
 
 def finish_lab_full_zoom(
@@ -632,7 +650,14 @@ def process_mat(mat_name: str, mmap: dict) -> None:
     extract = np.load(npz_path, allow_pickle=True)
     output_dir = out_dir_for_mat(mat_name, mmap)
     label = series_label(mat_name, mmap)
-    d595_lab = d595_lab_window()
+    t0 = gm_start_for_mat(mat_name, mmap)
+    d595_lab = d595_lab_window(t0)
+    if d595_lab is not None and t0 > 0.0:
+        print(
+            f"PlotMatOS: {Path(mat_name).stem}  D5-95 lab "
+            f"[{d595_lab[0]:.1f}, {d595_lab[1]:.1f}] s  "
+            f"(gmStartTime={t0:g} s proto)"
+        )
     plot_com(
         extract,
         output_dir / "hist_os_com.png",

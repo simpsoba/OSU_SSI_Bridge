@@ -43,7 +43,7 @@ from lab_paths import (
 )
 from paths import HERE, elevation_dir, eq_compare_dir, eq_dir, pile_springs_dir
 from PlotModelSketch import layer_style
-from gm_duration import arias_significant_duration
+from gm_duration import d595_proto_window, gm_start_time_s
 
 # ------------------------------------------------------------
 # EDIT
@@ -587,18 +587,22 @@ def mark_last_sample(
                    label=f"last sample t={float(t[-1]):.2f} s")
 
 
-def load_d595_proto() -> tuple[float, float] | None:
-    """GM D5–95 bounds on the prototype / OpenSees ``t_num`` clock (gmStart≈0).
+def load_d595_proto(meta: dict | None = None) -> tuple[float, float] | None:
+    """GM D5–95 on the prototype / OpenSees ``t_num`` clock (incl. gmStartTime).
 
+    Args:
+        meta: Window metadata with optional ``gmStartTime`` (Path ``-startTime``).
     Returns:
-        ``(t5_s, t95_s)`` or ``None`` if the VT2 is missing.
+        ``(t5_s + gmStart, t95_s + gmStart)`` or ``None`` if the VT2 is missing.
     """
-    try:
-        d = arias_significant_duration()
-    except (OSError, ValueError) as exc:
-        print(f"PlotEQ: D5-95 unavailable ({exc})")
+    from gm_duration import d595_proto_window, gm_start_time_s
+
+    t0 = gm_start_time_s(meta)
+    window = d595_proto_window(gm_start_s=t0)
+    if window is None:
+        print("PlotEQ: D5-95 unavailable (VT2 missing or unreadable)")
         return None
-    return float(d.t5_s), float(d.t95_s)
+    return window
 
 
 def finish_full_zoom_pair(
@@ -3932,9 +3936,15 @@ def main() -> int:
 
     t_eq = eq_end_time(meta, t) if t is not None else None
     t_cut = truncated_end(meta, t)
-    d595 = load_d595_proto()
+    d595 = load_d595_proto(meta)
     if d595 is not None:
-        print(f"PlotEQ: D5-95 zoom  [{d595[0]:.1f}, {d595[1]:.1f}] s  (prototype / t_num)")
+        from gm_duration import gm_start_time_s
+
+        t0 = gm_start_time_s(meta)
+        print(
+            f"PlotEQ: D5-95 zoom  [{d595[0]:.1f}, {d595[1]:.1f}] s  "
+            f"(prototype / t_num; gmStartTime={t0:g} s)"
+        )
     if t is not None and len(t) > 1:
         print(
             f"PlotEQ: n={len(t)}  t={float(t[0]):.3g}..{float(t[-1]):.3g} s"
