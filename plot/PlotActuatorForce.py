@@ -42,6 +42,7 @@ from lab_paths import (
     LOCAL_OPENSEES_DATA,
     TIME_SCALE_FROUDE,
     XLIM_FULL_PROTO_S,
+    full_xlim_proto_s,
     load_lab_runs_rows,
     resolve_opensees_data,
     test_os_plots_dir,
@@ -63,10 +64,12 @@ LW_FRC = 1.15
 OUT_NAME = "hist_frc_actuator.png"
 DAQ_FRC_NAME = "ServerSetup_daqFrc.out"
 DEFAULT_FONT_SCALE = 1.75
-# Lab wave arrives after free vib; search only for t_model >= this.
+# Lab wave arrives after free vib; search only for t_model >= this (Friday).
 WAVE_SEARCH_MODEL_S = 200.0
-# Third panel: model-scale duration centered on |F| peak.
+# Legacy Friday spike zoom half-width (model s) when waveT is unknown.
 WAVE_WINDOW_MODEL_S = 2.0
+# Hydro panel: N model-scale wave periods outside strong EQ shaking.
+HYDRO_N_PERIODS = 4.0
 # Rough cantilever yield: Mn ≈ (2/π) Ast fy r ; F_y,eq = Mn / H_pier ; plot ±0.1 F_y,eq.
 FY_EQ_FRAC = 0.10
 FONT_SCALE_KEYS = (
@@ -284,6 +287,119 @@ def detect_wave_hit_proto_s(
     return float(t_post[i_on]), float(t_post[i_pk])
 
 
+def wave_period_proto_s(test_id: str) -> float | None:
+    """
+    Flume wave period on the prototype clock from the CSV, if logged.
+
+    Args:    test_id  W## / F##
+    Returns: T_wave · √λ (s), or None
+    """
+    row = row_for_test(test_id)
+    if row is None:
+        return None
+    raw = (row.get("waveT_model_s") or "").strip()
+    if not raw:
+        return None
+    try:
+        t_model = float(raw)
+    except ValueError:
+        return None
+    if t_model <= 0.0:
+        return None
+    return t_model * TIME_SCALE_FROUDE
+
+
+def _wave_band_score(
+    t_proto: np.ndarray,
+    f_kn: np.ndarray,
+    t0: float,
+    t1: float,
+    t_wave_proto: float,
+) -> float:
+    """FFT power near 1/T_wave in [t0, t1); 0 if the window is too short."""
+    m = (t_proto >= t0) & (t_proto < t1)
+    n = int(np.count_nonzero(m))
+    if n < 200 or t_wave_proto <= 0.0:
+        return 0.0
+    y = np.asarray(f_kn[m], dtype=float)
+    y = y - float(np.nanmean(y))
+    dt = float(np.median(np.diff(t_proto[m])))
+    if not np.isfinite(dt) or dt <= 0.0:
+        return 0.0
+    from numpy.fft import rfft, rfftfreq
+
+    spectrum = np.abs(rfft(y))
+    freqs = rfftfreq(n, d=dt)
+    if spectrum.size < 2:
+        return 0.0
+    spectrum[0] = 0.0
+    f0 = 1.0 / t_wave_proto
+    band = (freqs >= 0.75 * f0) & (freqs <= 1.25 * f0)
+    if not np.any(band):
+        return 0.0
+    return float(np.max(spectrum[band]))
+
+
+def hydro_force_zoom_proto(
+    t_proto: np.ndarray,
+    f_kn: np.ndarray,
+    *,
+    t_wave_proto: float | None,
+    d595: tuple[float, float] | None,
+    t_wave_peak: float | None = None,
+    n_periods: float = HYDRO_N_PERIODS,
+) -> tuple[float, float] | None:
+    """
+    Prototype xlim for the hydro / wave panel.
+
+    Prefer ``n_periods`` · T_wave outside D5–95 (post-EQ free vib first, then
+    pre-EQ). If waveT is unknown, fall back to ±WAVE_WINDOW_MODEL_S about the
+    Friday-style |F| peak.
+
+    Args:    t_proto, f_kn; t_wave_proto  T·√λ; d595; t_wave_peak; n_periods
+    Returns: (t_lo, t_hi) or None
+    """
+    t_end = float(t_proto[-1]) if t_proto.size else 0.0
+    if t_wave_proto is not None and t_wave_proto > 0.0:
+        width = float(n_periods) * float(t_wave_proto)
+        if width <= 0.0 or t_end < width * 0.5:
+            return None
+        candidates: list[tuple[float, float]] = []
+        if d595 is not None:
+            t5, t95 = float(d595[0]), float(d595[1])
+            # Post strong shaking (free vib + wave).
+            if t_end >= t95 + 0.6 * width:
+                t_lo = min(t95, t_end - width)
+                t_hi = t_lo + width
+                if t_hi > t_end:
+                    t_hi = t_end
+                    t_lo = max(t95, t_hi - width)
+                candidates.append((t_lo, t_hi))
+            # Late tail of a long record.
+            if t_end > t95 + width:
+                candidates.append((t_end - width, t_end))
+            # Pre-EQ wave-only stretch.
+            if t5 > width + 5.0:
+                candidates.append((t5 - width, t5))
+        else:
+            candidates.append((max(0.0, t_end - width), t_end))
+            if t_end > width + 5.0:
+                candidates.append((0.0, width))
+        if not candidates:
+            return None
+        best = max(
+            candidates,
+            key=lambda w: _wave_band_score(t_proto, f_kn, w[0], w[1], t_wave_proto),
+        )
+        # Require some hydro content; otherwise still show best post/pre window.
+        return best
+    # Friday-style: short window about |F| peak after free vib.
+    if t_wave_peak is not None and np.isfinite(t_wave_peak):
+        half = 0.5 * WAVE_WINDOW_MODEL_S * TIME_SCALE_FROUDE
+        return float(t_wave_peak) - half, float(t_wave_peak) + half
+    return None
+
+
 def load_daq_force_kn(dump_path: Path) -> tuple[np.ndarray, np.ndarray] | None:
     """
     OpenFresco daqForce history from a dump folder.
@@ -358,7 +474,8 @@ def write_plot(
     """
     Write one actuator-force PNG for a Test ID.
 
-    Panels: full history | D5–95 | wave (±1 s model about |F| peak).
+    Panels: full history | D5–95 | hydro (N·T_wave outside strong EQ, or
+    Friday |F|-peak zoom when waveT is unknown).
 
     Args:    ylim_kn  shared (ymin, ymax) in kN prototype; None = auto from this run
     Returns: 0 ok, 1 skip/error
@@ -384,6 +501,15 @@ def write_plot(
     t_wave_peak = None if wave_hit is None else wave_hit[1]
     t0 = gm_start_time_s(root / dump)
     d595 = d595_window(t0)
+    t_wave_period = wave_period_proto_s(test_id)
+    hydro_xlim = hydro_force_zoom_proto(
+        t_frc,
+        f_kn,
+        t_wave_proto=t_wave_period,
+        d595=d595,
+        t_wave_peak=t_wave_peak,
+    )
+    full_xlim = full_xlim_proto_s(t_frc)
 
     fig_h = 4.2 * (0.65 + 0.35 * font_scale)
     fig_w = 15.6
@@ -417,18 +543,19 @@ def write_plot(
         ax.grid(True, ls=":", alpha=0.45)
         ax.axhline(0.0, color="#666666", lw=0.6, zorder=0)
 
-    ax_f.set_xlim(*XLIM_FULL_PROTO_S)
+    if full_xlim is not None:
+        ax_f.set_xlim(*full_xlim)
     if d595 is not None:
         ax_z.set_xlim(d595[0], d595[1])
-    half_proto = 0.5 * WAVE_WINDOW_MODEL_S * TIME_SCALE_FROUDE
-    if t_wave_peak is not None:
-        ax_w.set_xlim(t_wave_peak - half_proto, t_wave_peak + half_proto)
+    if hydro_xlim is not None:
+        ax_w.set_xlim(*hydro_xlim)
     else:
-        ax_w.set_xlim(*XLIM_FULL_PROTO_S)
+        if full_xlim is not None:
+            ax_w.set_xlim(*full_xlim)
         ax_w.text(
             0.5,
             0.5,
-            "no wave in record",
+            "no hydro window",
             transform=ax_w.transAxes,
             ha="center",
             va="center",
@@ -456,6 +583,14 @@ def write_plot(
                 lambda t_model: t_model * TIME_SCALE_FROUDE,
             ),
         )
+    if hydro_xlim is not None and t_wave_period is not None:
+        ax_w.set_title(
+            rf"hydro (${HYDRO_N_PERIODS:g}\,T_{{\mathrm{{w}}}}$)",
+            fontsize=10,
+            pad=4,
+        )
+    elif hydro_xlim is not None:
+        ax_w.set_title(r"wave $|F|$ peak", fontsize=10, pad=4)
 
     engine = fig.get_layout_engine()
     if engine is not None:
@@ -532,7 +667,15 @@ def write_plot(
         if t_wave is not None
         else "wave=none"
     )
-    print(f"PlotActuatorForce: wrote {out}  (lines={n_slow}, {wave_txt})")
+    hydro_txt = (
+        f"hydro=[{hydro_xlim[0]:.1f},{hydro_xlim[1]:.1f}]"
+        if hydro_xlim is not None
+        else "hydro=none"
+    )
+    print(
+        f"PlotActuatorForce: wrote {out}  "
+        f"(lines={n_slow}, {wave_txt}, {hydro_txt}, t_end={float(t_frc[-1]):.1f}s)"
+    )
     return 0
 
 

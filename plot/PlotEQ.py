@@ -38,6 +38,7 @@ from lab_paths import (
     TIME_SCALE_FROUDE,
     XLIM_FULL_PROTO_S,
     YLIM_DISP_PROTO_MM,
+    full_xlim_proto_s,
     is_lab_dump,
     run_eq_plots_dir,
 )
@@ -636,7 +637,7 @@ def finish_full_zoom_pair(
         mark_last_sample(ax, t, t_eq, t_cut)
         ax.grid(True, ls=":", alpha=0.45)
     if full_xlim is not None:
-        ax_f.set_xlim(*full_xlim)
+        ax_f.set_xlim(*full_xlim_proto_s(t, base=full_xlim))
     if full_ylim is not None:
         ax_f.set_ylim(*full_ylim)
     if d595 is not None:
@@ -1112,7 +1113,7 @@ def plot_stacked_depth_hist(
             ax.grid(True, ls=":", alpha=0.4)
         if axes_z is not None and d595 is not None:
             axes_z[i].set_xlim(d595[0], d595[1])
-        axes_f[i].set_xlim(*XLIM_FULL_PROTO_S)
+        axes_f[i].set_xlim(*full_xlim_proto_s(t))
         if i == n - 1:
             axes_f[i].set_xlabel(r"$t_\mathrm{num}$ (s)")
             if axes_z is not None:

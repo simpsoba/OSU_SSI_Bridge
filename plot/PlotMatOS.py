@@ -59,6 +59,7 @@ from lab_paths import (
     YLIM_DISP_PROTO_MM,
     all_mat_names_for_plot,
     build_mat_run_catalog,
+    full_xlim_model_s,
     mat_os_plots_dir,
     resolve_opensees_data,
     run_os_plots_dir,
@@ -210,7 +211,14 @@ def finish_lab_full_zoom(
         if dual_time:
             dual_time_xaxis(ax)
     if full_xlim is not None:
-        ax_f.set_xlim(*full_xlim)
+        # Expand past the default 0–300 s model window when the mat is longer.
+        t_ref = None
+        for artist in ax_f.get_lines():
+            xd = artist.get_xdata()
+            if getattr(xd, "size", 0):
+                t_ref = xd
+                break
+        ax_f.set_xlim(*full_xlim_model_s(t_ref, base=full_xlim))
     if full_ylim is not None:
         ax_f.set_ylim(*full_ylim)
     if d595_lab is not None:

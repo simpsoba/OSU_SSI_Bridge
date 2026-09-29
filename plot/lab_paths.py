@@ -91,7 +91,8 @@ M_TO_MM = 1.0e3  # recorder displacement (m) → plot (mm)
 # Simulink *OS displacement at model scale (m) → prototype plot (mm).
 DISP_M_TO_PROTO_MM = CYLINDER_LENGTH_SCALE * M_TO_MM
 
-# Full | D5–95 time histories: fixed full-panel window (model clock 0–300 s).
+# Full | D5–95 time histories: default full-panel window (model clock 0–300 s).
+# Longer records (Wed gmStartTime pad) expand via full_xlim_proto_s().
 XLIM_FULL_MODEL_S = (0.0, 300.0)
 XLIM_FULL_PROTO_S = (
     XLIM_FULL_MODEL_S[0] * TIME_SCALE_FROUDE,
@@ -99,6 +100,50 @@ XLIM_FULL_PROTO_S = (
 )
 # Symmetric prototype displacement for ux / actuator overlays (mm).
 YLIM_DISP_PROTO_MM = (-200.0, 200.0)
+
+
+def full_xlim_proto_s(
+    t_proto: object | None = None,
+    *,
+    base: tuple[float, float] = XLIM_FULL_PROTO_S,
+) -> tuple[float, float] | None:
+    """
+    Full-panel prototype time window: at least ``base``, longer if ``t`` runs past it.
+
+    Args:    t_proto  OpenSees / prototype time samples (or None); base  default xlim
+    Returns: (t0, t1), or None if base is None
+    """
+    if base is None:
+        return None
+    t0, t1 = float(base[0]), float(base[1])
+    if t_proto is None:
+        return t0, t1
+    try:
+        import numpy as np
+
+        arr = np.asarray(t_proto, dtype=float).ravel()
+        if arr.size == 0 or not np.isfinite(arr).any():
+            return t0, t1
+        t_last = float(np.nanmax(arr[np.isfinite(arr)]))
+        if t_last > t1:
+            t1 = t_last * 1.01
+    except (TypeError, ValueError):
+        pass
+    return t0, t1
+
+
+def full_xlim_model_s(
+    t_model: object | None = None,
+    *,
+    base: tuple[float, float] = XLIM_FULL_MODEL_S,
+) -> tuple[float, float] | None:
+    """
+    Full-panel model / lab time window (same expand rule as ``full_xlim_proto_s``).
+
+    Args:    t_model  lab-clock samples (s); base  default xlim
+    Returns: (t0, t1), or None if base is None
+    """
+    return full_xlim_proto_s(t_model, base=base)
 
 # Lab dump folder names: r+01_YYYYMMDD_HHMM_… / r-02_…
 _RUN_FOLDER_RE = re.compile(r"^r[+-]?\d+_", re.IGNORECASE)

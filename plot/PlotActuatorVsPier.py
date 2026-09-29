@@ -47,6 +47,7 @@ from lab_paths import (
     TIME_SCALE_FROUDE,
     XLIM_FULL_PROTO_S,
     YLIM_DISP_PROTO_MM,
+    full_xlim_proto_s,
     load_lab_runs_rows,
     resolve_opensees_data,
     test_os_plots_dir,
@@ -183,7 +184,7 @@ def write_plot(
         )
         ax.grid(True, ls=":", alpha=0.45)
 
-    ax_f.set_xlim(*XLIM_FULL_PROTO_S)
+    ax_f.set_xlim(*full_xlim_proto_s(t_act if t_act.size >= t_pier.size else t_pier))
     ax_f.set_ylim(*YLIM_DISP_PROTO_MM)
     if d595 is not None:
         ax_z.set_xlim(d595[0], d595[1])

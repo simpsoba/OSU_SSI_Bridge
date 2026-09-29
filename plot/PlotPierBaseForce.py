@@ -51,6 +51,7 @@ from lab_paths import (
     LOCAL_OPENSEES_DATA,
     TIME_SCALE_FROUDE,
     XLIM_FULL_PROTO_S,
+    full_xlim_proto_s,
     resolve_opensees_data,
     test_os_plots_dir,
 )
@@ -210,7 +211,7 @@ def write_plot(
             ax.plot(t, y, color=COLOR_SIG, lw=LW_SIG, label=label, zorder=5)
             ax.grid(True, ls=":", alpha=0.45)
             ax.axhline(0.0, color="#666666", lw=0.6, zorder=0)
-        ax_f.set_xlim(*XLIM_FULL_PROTO_S)
+        ax_f.set_xlim(*full_xlim_proto_s(t))
         if d595 is not None:
             ax_z.set_xlim(d595[0], d595[1])
         if ylim is not None:
