@@ -70,6 +70,9 @@ WAVE_SEARCH_MODEL_S = 200.0
 WAVE_WINDOW_MODEL_S = 2.0
 # Hydro panel: N model-scale wave periods outside strong EQ shaking.
 HYDRO_N_PERIODS = 4.0
+# Shared F axis for Fri+Wed: ±8 kN model → ±8·λ³ kN prototype.
+F_LIM_MODEL_KN = 8.0
+F_LIM_PROTO_KN = F_LIM_MODEL_KN * FORCE_SCALE_FROUDE
 # Rough cantilever yield: Mn ≈ (2/π) Ast fy r ; F_y,eq = Mn / H_pier ; plot ±0.1 F_y,eq.
 FY_EQ_FRAC = 0.10
 FONT_SCALE_KEYS = (
@@ -129,6 +132,67 @@ def mark_fy10_ref(ax, f_kn: float) -> None:
             ls=":",
             zorder=2,
         )
+
+
+def mark_force_limit(ax, lim_kn: float = F_LIM_PROTO_KN) -> None:
+    """± actuator capacity guide (prototype kN), under the history."""
+    for s in (+1.0, -1.0):
+        ax.axhline(
+            s * lim_kn,
+            color="#B71C1C",
+            alpha=0.75,
+            lw=1.3,
+            ls="--",
+            zorder=3,
+        )
+
+
+def mark_force_exceedances(
+    ax,
+    t_proto: np.ndarray,
+    f_kn: np.ndarray,
+    lim_kn: float = F_LIM_PROTO_KN,
+) -> int:
+    """
+    Triangles on ±lim where |F| exceeds the shared axis limit.
+
+    Args:    ax; t_proto, f_kn; lim_kn  prototype kN half-range
+    Returns: number of exceeded samples marked
+    """
+    if t_proto.size == 0 or f_kn.size != t_proto.size or lim_kn <= 0.0:
+        return 0
+    hi = np.asarray(f_kn, dtype=float) > lim_kn
+    lo = np.asarray(f_kn, dtype=float) < -lim_kn
+    n = 0
+    if np.any(hi):
+        ax.plot(
+            t_proto[hi],
+            np.full(int(np.count_nonzero(hi)), lim_kn),
+            linestyle="none",
+            marker="v",
+            markersize=5.5,
+            markerfacecolor="#C62828",
+            markeredgecolor="#7F0000",
+            markeredgewidth=0.4,
+            zorder=6,
+            label=rf"$|F|>{F_LIM_MODEL_KN:g}\,\mathrm{{kN}}$ model",
+        )
+        n += int(np.count_nonzero(hi))
+    if np.any(lo):
+        ax.plot(
+            t_proto[lo],
+            np.full(int(np.count_nonzero(lo)), -lim_kn),
+            linestyle="none",
+            marker="^",
+            markersize=5.5,
+            markerfacecolor="#C62828",
+            markeredgecolor="#7F0000",
+            markeredgewidth=0.4,
+            zorder=6,
+            label="_nolegend_" if np.any(hi) else rf"$|F|>{F_LIM_MODEL_KN:g}\,\mathrm{{kN}}$ model",
+        )
+        n += int(np.count_nonzero(lo))
+    return n
 
 
 def scale_paper_fonts(factor: float) -> None:
@@ -400,6 +464,77 @@ def hydro_force_zoom_proto(
     return None
 
 
+def detect_wave_start_proto_s(
+    t_proto: np.ndarray,
+    f_kn: np.ndarray,
+    t_wave_proto: float,
+    *,
+    n_periods: float = 3.0,
+    f_p95_min_kn: float = 0.35,
+    wave_ratio_min: float = 0.45,
+) -> float | None:
+    """
+    First time the actuator force shows flume-wave content (prototype s).
+
+    Sliding windows of ``n_periods`` · T_wave; require p95(|F|) and FFT power
+    near 1/T_wave. Used for Wednesday (wave before EQ); Friday still uses the
+    post–free-vib spike detector.
+
+    Args:    t_proto, f_kn; t_wave_proto  T·√λ (s)
+    Returns: onset prototype s, or None
+    """
+    if (
+        t_proto.size < 50
+        or f_kn.size != t_proto.size
+        or t_wave_proto <= 0.0
+    ):
+        return None
+    width = float(n_periods) * float(t_wave_proto)
+    t_end = float(t_proto[-1])
+    if t_end < width + 5.0:
+        return None
+    # Step ~0.25 period.
+    step = max(float(t_wave_proto) * 0.25, 0.5)
+    t0 = 0.0
+    while t0 + width <= t_end + 1e-9:
+        t1 = t0 + width
+        m = (t_proto >= t0) & (t_proto < t1)
+        if int(np.count_nonzero(m)) < 200:
+            t0 += step
+            continue
+        f_win = np.asarray(f_kn[m], dtype=float)
+        p95 = float(np.nanpercentile(np.abs(f_win), 95))
+        if p95 < f_p95_min_kn:
+            t0 += step
+            continue
+        score = _wave_band_score(t_proto, f_kn, t0, t1, t_wave_proto)
+        # Peak PSD anywhere in the window for a ratio.
+        y = f_win - float(np.nanmean(f_win))
+        dt = float(np.median(np.diff(t_proto[m])))
+        if not np.isfinite(dt) or dt <= 0.0:
+            t0 += step
+            continue
+        from numpy.fft import rfft, rfftfreq
+
+        spectrum = np.abs(rfft(y))
+        spectrum[0] = 0.0
+        peak = float(np.max(spectrum)) if spectrum.size else 0.0
+        ratio = (score / peak) if peak > 0.0 else 0.0
+        if ratio >= wave_ratio_min and score > 0.0:
+            # Refine: walk back while |F| still above quiet floor.
+            thr = max(0.5 * p95, 0.15)
+            m_all = t_proto < t1
+            tt = t_proto[m_all]
+            ff = np.abs(f_kn[m_all])
+            # First sample in this window above thr, else window start.
+            m_w = (tt >= t0) & (ff >= thr)
+            if np.any(m_w):
+                return float(tt[np.argmax(m_w)])
+            return float(t0)
+        t0 += step
+    return None
+
+
 def load_daq_force_kn(dump_path: Path) -> tuple[np.ndarray, np.ndarray] | None:
     """
     OpenFresco daqForce history from a dump folder.
@@ -496,12 +631,19 @@ def write_plot(
         return 1
     t_frc, f_kn = frc
     t_slow = slowdown_times_proto_s(mat)
-    wave_hit = detect_wave_hit_proto_s(t_frc, f_kn)
-    t_wave = None if wave_hit is None else wave_hit[0]
-    t_wave_peak = None if wave_hit is None else wave_hit[1]
     t0 = gm_start_time_s(root / dump)
     d595 = d595_window(t0)
     t_wave_period = wave_period_proto_s(test_id)
+    # Wed (known T_wave): spectral onset. Fri: post–free-vib |F| spike.
+    t_wave = None
+    t_wave_peak = None
+    if t_wave_period is not None:
+        t_wave = detect_wave_start_proto_s(t_frc, f_kn, t_wave_period)
+    wave_hit = detect_wave_hit_proto_s(t_frc, f_kn)
+    if wave_hit is not None:
+        t_wave_peak = wave_hit[1]
+        if t_wave is None:
+            t_wave = wave_hit[0]
     hydro_xlim = hydro_force_zoom_proto(
         t_frc,
         f_kn,
@@ -510,6 +652,8 @@ def write_plot(
         t_wave_peak=t_wave_peak,
     )
     full_xlim = full_xlim_proto_s(t_frc)
+    if ylim_kn is None:
+        ylim_kn = (-F_LIM_PROTO_KN, F_LIM_PROTO_KN)
 
     fig_h = 4.2 * (0.65 + 0.35 * font_scale)
     fig_w = 15.6
@@ -530,8 +674,10 @@ def write_plot(
     mark_wave(ax_z, t_wave)
     mark_wave(ax_w, t_wave)
     f_y10 = FY_EQ_FRAC * pier_fy_eq_kn()
+    n_ex = 0
     for ax in (ax_f, ax_z, ax_w):
         mark_fy10_ref(ax, f_y10)
+        mark_force_limit(ax, F_LIM_PROTO_KN)
         ax.plot(
             t_frc,
             f_kn,
@@ -540,6 +686,7 @@ def write_plot(
             label="actuator (daqForce)",
             zorder=5,
         )
+        n_ex = mark_force_exceedances(ax, t_frc, f_kn, F_LIM_PROTO_KN)
         ax.grid(True, ls=":", alpha=0.45)
         ax.axhline(0.0, color="#666666", lw=0.6, zorder=0)
 
@@ -565,9 +712,7 @@ def write_plot(
     if ylim_kn is not None:
         ax_f.set_ylim(*ylim_kn)
     else:
-        y_abs = peak_abs_kn(f_kn)
-        if y_abs > 0.0:
-            ax_f.set_ylim(-1.08 * y_abs, 1.08 * y_abs)
+        ax_f.set_ylim(-F_LIM_PROTO_KN, F_LIM_PROTO_KN)
 
     ax_f.set_xlabel(LABEL_T_PROTO)
     ax_z.set_xlabel(LABEL_T_PROTO)
@@ -618,6 +763,21 @@ def write_plot(
         )
     )
     labels.append(rf"$0.1\,F_{{y,\mathrm{{eq}}}}$ ($\pm${f_y10:.0f} kN)")
+    handles.append(
+        Line2D(
+            [0],
+            [0],
+            color="#B71C1C",
+            lw=1.3,
+            ls="--",
+            label=rf"$\pm{F_LIM_MODEL_KN:g}\,\mathrm{{kN}}$ model "
+            rf"$(\pm{F_LIM_PROTO_KN:.0f}\,\mathrm{{kN}}$ proto)",
+        )
+    )
+    labels.append(
+        rf"$\pm{F_LIM_MODEL_KN:g}\,\mathrm{{kN}}$ model "
+        rf"$(\pm{F_LIM_PROTO_KN:.0f}\,\mathrm{{kN}}$ proto)"
+    )
     if n_slow:
         handles.append(
             Line2D(
@@ -638,12 +798,10 @@ def write_plot(
                 color=COLOR_WAVE,
                 lw=LW_WAVE,
                 ls="--",
-                label=rf"wave ($t/\sqrt{{\lambda}}={t_wave / TIME_SCALE_FROUDE:.0f}$ s)",
+                label=rf"wave start ($t={t_wave:.0f}$ s proto)",
             )
         )
-        labels.append(
-            rf"wave ($t/\sqrt{{\lambda}}={t_wave / TIME_SCALE_FROUDE:.0f}$ s)"
-        )
+        labels.append(rf"wave start ($t={t_wave:.0f}$ s proto)")
     ax_f.legend(
         handles,
         labels,
@@ -674,15 +832,17 @@ def write_plot(
     )
     print(
         f"PlotActuatorForce: wrote {out}  "
-        f"(lines={n_slow}, {wave_txt}, {hydro_txt}, t_end={float(t_frc[-1]):.1f}s)"
+        f"(lines={n_slow}, exceed={n_ex}, {wave_txt}, {hydro_txt}, "
+        f"t_end={float(t_frc[-1]):.1f}s)"
     )
     return 0
 
 
-def parse_argv(argv: list[str]) -> tuple[list[str], float]:
-    """Split Test IDs from ``--font-scale`` / ``--mesh-ladder``."""
+def parse_argv(argv: list[str]) -> tuple[list[str], float, bool]:
+    """Split Test IDs from ``--font-scale`` / ``--mesh-ladder`` / ``--auto-ylim``."""
     tests: list[str] = []
     font_scale = DEFAULT_FONT_SCALE
+    auto_ylim = False
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -691,6 +851,8 @@ def parse_argv(argv: list[str]) -> tuple[list[str], float]:
             raise SystemExit(0)
         if a == "--mesh-ladder":
             tests.extend(MESH_LADDER_TESTS)
+        elif a == "--auto-ylim":
+            auto_ylim = True
         elif a == "--font-scale":
             i += 1
             if i >= len(argv):
@@ -703,18 +865,27 @@ def parse_argv(argv: list[str]) -> tuple[list[str], float]:
         else:
             tests.append(a)
         i += 1
-    return tests, font_scale
+    return tests, font_scale, auto_ylim
 
 
 def main() -> int:
-    tests, font_scale = parse_argv(sys.argv[1:])
+    tests, font_scale, auto_ylim = parse_argv(sys.argv[1:])
     if not tests:
         tests = list(MESH_LADDER_TESTS)
-    # Same F axis when several Test IDs are requested together.
-    ylim = shared_ylim_kn(tests) if len(tests) > 1 else None
-    if ylim is not None:
+    if auto_ylim:
+        ylim = shared_ylim_kn(tests) if len(tests) > 1 else None
+        if ylim is not None:
+            print(
+                f"PlotActuatorForce: auto shared ylim "
+                f"[{ylim[0]:.3g}, {ylim[1]:.3g}] kN proto"
+            )
+        else:
+            print("PlotActuatorForce: per-run auto ylim")
+    else:
+        ylim = (-F_LIM_PROTO_KN, F_LIM_PROTO_KN)
         print(
-            f"PlotActuatorForce: shared ylim [{ylim[0]:.3g}, {ylim[1]:.3g}] kN proto"
+            f"PlotActuatorForce: ylim [{ylim[0]:.3g}, {ylim[1]:.3g}] kN proto "
+            f"(±{F_LIM_MODEL_KN:g} kN model)"
         )
     rc = 0
     for tid in tests:

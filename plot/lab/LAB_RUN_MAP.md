@@ -7,7 +7,7 @@ pair table here** — use the CSV.
 
 | File | Role |
 |------|------|
-| **`plot/lab/TestMatrix_lab_runs.csv`** | One row per as-run. Campaign/model knobs first (incl. **`DOFs`**, **`h_water`**, flume **`waveH_model_m` / `waveT_model_s`** when known); trailing **`DateTime`**, **`DumpFolder`**, **`MatFile`**, **`LabTrial`**, **`Note`**. Leading **`Test`** = `W##` / `F##` / `Fd##` / `Fx##`. Git-tracked; working copy: `OSU_SSI_BRIDGE_DATA_LOCAL/TestMatrix_lab_runs.csv`. |
+| **`plot/lab/TestMatrix_lab_runs.csv`** | One row per as-run. Campaign/model knobs first (incl. **`DOFs`**, **`h_water`**, flume **`waveH_model_m` / `waveT_model_s`**, inferred **`waveStart_proto_s` / `waveStart_model_s`** when known); trailing **`DateTime`**, **`DumpFolder`**, **`MatFile`**, **`LabTrial`**, **`Note`**. Leading **`Test`** = `W##` / `F##` / `Fd##` / `Fx##`. Git-tracked; working copy: `OSU_SSI_BRIDGE_DATA_LOCAL/TestMatrix_lab_runs.csv`. |
 | **`plot/lab/1_Monopile_matrix.xlsx`** | Lab schedule workbook (**Run Log** = wall-clock and Trial IDs). |
 | **`plot/lab/mat_run_map.json`** | **Orphans only:** mats without a dump, pending uploads, duplicate mat aliases. Not paired runs. |
 | **`plot/lab/STATEOS_SIGNALS.md`** | Seki §2.1 / `typeConv3` field guide for `hist_os_state.png`. |
@@ -40,10 +40,13 @@ model-scale wave height **\(H = 0.5\) m**, period **\(T = 7.746\) s** (CSV
 `waveH_model_m`, `waveT_model_s`). OpenSees pier UX stays near zero until GM
 onset. Dump `window_meta` (and pier UX vs Friday D5–95 xcorr) give
 **`gmStartTime` = 70 s prototype (W01), 150 s (W02–W07)** — the repo CSV had
-stayed at `0`. Before that, `ServerSetup_daqFrc` carries a ~7.75 s model period.
-Friday is the opposite (EQ from ~t=0 / `gmStartTime` 0, large daqForce after
-~200 s model). OpenSees `h_water` is still the ponding depth knob (2.4 m), not
-the free-surface wave height.
+stayed at `0`. CSV `waveStart_proto_s` / `waveStart_model_s` are the first
+daqForce window with spectral power near \(1/(T\sqrt{\lambda})\) (~85–110 s
+prototype across W01–W07, always before GM). Before that, force is near zero
+(no wave-band content). Before GM, `ServerSetup_daqFrc` carries a ~7.75 s model
+period once the wave is on. Friday is the opposite (EQ from ~t=0 /
+`gmStartTime` 0, large daqForce after ~200 s model). OpenSees `h_water` is still
+the ponding depth knob (2.4 m), not the free-surface wave height.
 
 ## How mat ↔ dump pairs were chosen
 
