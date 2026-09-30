@@ -9,7 +9,7 @@ PlotModelSketch.py and writes PNG + PDF next to elevation.png.
   (a) full soil domain, full-width strip, true scale
   (b) near field: deck, pier, cap, piles, SSI springs
   (c) zoom on the pile cap and pier base hinge
-  (d) inset on (c): pier top + OpenFresco UX
+  (d) inset: pier top + λ_L^3 f_p (same force arrow on a, b)
       legend under (c)
 
 Water: light fill + dashed free surface (physical flume, not meshed);
@@ -122,15 +122,19 @@ EQDOF = {"color": "#444444", "lw": 0.6, "ls": (0, (1.5, 1.2)), "drop": 1.7}  # d
 PIN = {"color": "#222222", "lw": 0.9}
 UY_FIX = {"color": "#222222", "lw": 0.5, "h": 0.55}  # m, soil-base UY roller height
 # OpenFresco expElement (generic UX at pier-top inner node): force feedback
-# from the physical cylinder (mainly hydro); EQ resistance stays in the hinges.
-# Glyph = free node -- actuator -- fixed support (lab DOF).
-# Color matches the path319 UX arrow (stroke #ec2a10). Bidirectional arrow
-# sits left of the fixed support; panel (d) labels hydro loading beside it.
-DOF_ARROW = {
-    "fill_pos": "#f28f7f", "fill_neg": "#ffffff", "stroke": "#ec2a10",
-    "lw": 0.75, "L": 0.72, "gap": 0.12,
-}
-EXP = {"color": DOF_ARROW["stroke"], "len": 1.55, "h": 0.34, "lw": 1.2}
+# from the physical subassembly. Glyph = fixed -- actuator -- eyelet at pier.
+# Panel (d) annotates the prototype force λ_L^3 f_p applied at that node.
+EXP = {"color": "#ec2a10", "len": 1.55, "h": 0.34, "lw": 1.2}
+# Force callout (Froude): prototype force = λ_L^3 f_p, with f_p the resisting
+# force assembled on the physical DOFs (inertia, damping, hydro).
+# (a) one-line; (b) arrow only; (d) formula by arrow, name under it inside axes.
+FP_ARROW = {"len": 0.95, "gap": 0.06, "lw": 1.35, "head": 10.0,
+            "label_dx": 0.08, "label_dy": 0.22, "name_dx": 1.85}
+FP_TXT = r"Physical subassembly force, $\lambda_L^{3}\mathbf{f}_{p}$"
+FP_TXT_NAME = "Physical subassembly force"
+FP_TXT_MATH = r"$\lambda_L^{3}\mathbf{f}_{p}$"
+# force_fp_label modes: "full" | "two" | "none"
+
 
 SSI_SCALE = 0.7        # (-) overall glyph size
 SSI_LEN = 0.55 * SSI_SCALE     # m, drawn p-y coil length
@@ -160,11 +164,10 @@ GAP_COL = 0.50         # between (b) and (c), room for (c) y label
 # Panel (c) window around the cap and pier-base hinge (m)
 DETAIL_X = (-3.3, 3.3)
 DETAIL_Y = (-2.5, 1.4)
-# Panel (d) crop around pier-top inner node (OpenFresco) + soffit (m)
-# Node 4 ~ (0, 6.55); actuator runs -X (fixed left of pier).
-# Left pad leaves room for the path319 UX arrow left of the fixed support.
-TOP_X = (-2.90, 0.9)
-TOP_Y = (5.95, 7.55)
+# Panel (d) crop around pier-top inner node + soffit (m)
+# Node 4 ~ (0, 6.55); room left for name under the force arrow.
+TOP_X = (-5.00, 0.9)
+TOP_Y = (5.70, 7.55)
 
 
 def use_paper_font() -> None:
@@ -323,66 +326,24 @@ def draw_ssi_attached(a: plt.Axes, data: dict) -> None:
         draw_loop_spring(a, xp, yp, (0.0, -1.0), (-out, 0.0), SSI_LEN_V, off, color)
 
 
-def draw_dof_arrow(a: plt.Axes, xc: float, yc: float, L: float,
-                   *, z: float = 6.0) -> None:
-    """
-    Bidirectional UX DOF arrow (path319.svg geometry, sense flipped).
-
-    Physical schematic: coral +x, white -x. The numerical OpenFresco
-    attachment sees the opposite UX sign, so coral is on -x (left) and
-    white on +x (toward the pier).
-
-    Args:    a, xc, yc  junction centre (m), L  tip-to-tip length (m)
-             z  draw order
-    Returns: none (updates a)
-    """
-    # path319 proportions: shaft 6.113, head 3.297, shaft half-h 1.614,
-    # flare above shaft 1.648; tip-to-tip ≈ 2*(6.113+3.297) = 18.82
-    s = L / 18.82
-    shaft, head = 6.11314 * s, 3.29699 * s
-    hs, flare = 1.614155 * s, 1.64848 * s  # half shaft height; head flare
-    # right (+x, white) then left (-x, coral); SVG y flipped to +y up
-    right = [
-        (0.0, hs), (shaft, hs), (shaft, hs + flare),
-        (shaft + head, 0.0),
-        (shaft, -hs - flare), (shaft, -hs), (0.0, -hs),
-    ]
-    left = [
-        (0.0, -hs), (-shaft, -hs), (-shaft, -hs - flare),
-        (-shaft - head, 0.0),
-        (-shaft, hs + flare), (-shaft, hs), (0.0, hs),
-    ]
-    kw = {
-        "closed": True, "edgecolor": DOF_ARROW["stroke"],
-        "lw": DOF_ARROW["lw"], "zorder": z, "joinstyle": "miter",
-    }
-    a.add_patch(Polygon(
-        [(xc + x, yc + y) for x, y in right],
-        facecolor=DOF_ARROW["fill_neg"], **kw,
-    ))
-    a.add_patch(Polygon(
-        [(xc + x, yc + y) for x, y in left],
-        facecolor=DOF_ARROW["fill_pos"], **kw,
-    ))
-
-
 def draw_exp_element(a: plt.Axes, nodes: dict[int, tuple[float, float]],
                      *, label: bool = False, scale: float = 1.0,
-                     lw: float | None = None, dof_arrow: bool = False) -> None:
+                     lw: float | None = None, force_fp: bool = False,
+                     force_fp_label: str = "full") -> None:
     """
-    OpenFresco experimental element: fixed -- actuator -- eyelet at pier.
+    OpenFresco experimental element at the pier-top UX node.
 
-    Simplified hydraulic-actuator icon (cylinder + end caps + rod + clevis),
-    drawn to the LEFT of the pier so a positive resisting force drives the
-    pier to the right. Left mount is a fixed support instead of a second eye.
+    Default: fixed -- actuator -- eyelet (unused on the paper figure).
+    force_fp: skip the glyph; draw the prototype force into the shared UX.
 
     Matches Run.tcl generic attachment: lumpedPlasticity node 4 (inner top),
     else node 5 (deck BC).
 
     Args:    a, nodes  display node map (m)
-             label  unused (plot() places the hydro-loading callout)
+             label  unused
              scale  length multiplier; lw  line width override (pt)
-             dof_arrow  path319 bidirectional UX arrow left of the fixed support
+             force_fp  arrow only (no actuator)
+             force_fp_label  "full" | "two" | "none"
     Returns: none (updates a)
     """
     tag = 4 if 4 in nodes else (5 if 5 in nodes else None)
@@ -393,14 +354,47 @@ def draw_exp_element(a: plt.Axes, nodes: dict[int, tuple[float, float]],
     h = EXP["h"] * scale
     c = EXP["color"]
     line_w = EXP["lw"] if lw is None else lw
+    r_eye = 0.38 * h
+    z = 5.5
+
+    if force_fp:
+        # prototype force into the shared UX
+        L_a = FP_ARROW["len"] * scale
+        xa1 = x0 - FP_ARROW["gap"] * scale
+        xa0 = xa1 - L_a
+        a.add_patch(FancyArrowPatch(
+            (xa0, y), (xa1, y), arrowstyle="-|>",
+            mutation_scale=FP_ARROW["head"], lw=FP_ARROW["lw"],
+            color=c, shrinkA=0.0, shrinkB=0.0, zorder=z + 3,
+        ))
+        xl = xa0 - FP_ARROW["label_dx"] * scale
+        if force_fp_label == "full":
+            a.text(
+                xl, y, FP_TXT,
+                color=c, fontsize=FONT_SIZE - 1, ha="right", va="center",
+                zorder=z + 4, clip_on=False,
+            )
+        elif force_fp_label == "two":
+            # formula left of shaft; name under arrow, shifted left ~"Physical"
+            a.text(
+                xl, y, FP_TXT_MATH,
+                color=c, fontsize=FONT_SIZE - 1, ha="right", va="center",
+                zorder=z + 4, clip_on=False,
+            )
+            a.text(
+                0.5 * (xa0 + xa1) - FP_ARROW["name_dx"] * scale,
+                y - FP_ARROW["label_dy"] * scale, FP_TXT_NAME,
+                color=c, fontsize=FONT_SIZE - 1, ha="center", va="top",
+                zorder=z + 4, clip_on=False,
+            )
+        return
+
     # Layout (left -> right): fixed | cylinder+caps | rod | eyelet@pier
     x_fix = x0 - L
-    r_eye = 0.38 * h
     x_rod1 = x0 - r_eye                 # rod meets the eyelet
     x_cyl1 = x0 - 0.32 * L              # cylinder end toward pier
     x_cyl0 = x0 - 0.82 * L              # cylinder end toward fixed
     cap = 0.06 * L                      # end-cap thickness along x
-    z = 5.5
     kw = {"color": c, "lw": line_w, "zorder": z, "solid_capstyle": "butt"}
     # cylinder body + slightly taller end caps (outline only)
     yb, yt = y - 0.45 * h, y + 0.45 * h
@@ -429,12 +423,6 @@ def draw_exp_element(a: plt.Axes, nodes: dict[int, tuple[float, float]],
         yk = y - 0.75 * h + k * 0.5 * h
         a.plot([x_fix, x_fix - 0.55 * h], [yk, yk + 0.32 * h], lw=0.5,
                color="#222222", zorder=z + 2)
-    if dof_arrow:
-        # left of the fixed support, on the actuator centerline
-        L_arr = DOF_ARROW["L"] * scale
-        x_arr = x_fix - DOF_ARROW["gap"] * scale - 0.5 * L_arr
-        draw_dof_arrow(a, x_arr, y, L_arr, z=z + 3)
-    # Hydro-loading callout is figure-level in plot() (left of panel d).
 
 
 
@@ -641,7 +629,8 @@ def draw_model(
     exp_label: bool = False,
     exp_scale: float = 1.0,
     exp_lw: float | None = None,
-    exp_dof_arrow: bool = False,
+    exp_force_fp: bool = False,
+    exp_force_fp_label: str = "full",
     equal_aspect: bool = True,
 ) -> None:
     """
@@ -658,7 +647,8 @@ def draw_model(
              pin_s  pier-base pin half-width (m; 0 = auto)
              force_label, force_under, force_at  earthquake Path-load callout
              exp_element  OpenFresco UX spring at the pier top
-             exp_label, exp_scale, exp_lw, exp_dof_arrow  OpenFresco glyph options
+             exp_label, exp_scale, exp_lw, exp_force_fp, exp_force_fp_label
+                 OpenFresco force-arrow options ("full"|"two"|"none")
              equal_aspect  True -> equal x/y scale (default); False for inset (d)
     Returns: none (updates a)
     """
@@ -801,7 +791,7 @@ def draw_model(
 
     if exp_element:
         draw_exp_element(a, nodes, label=exp_label, scale=exp_scale, lw=exp_lw,
-                         dof_arrow=exp_dof_arrow)
+                         force_fp=exp_force_fp, force_fp_label=exp_force_fp_label)
 
     if coils:
         draw_ssi_attached(a, data)
@@ -941,8 +931,6 @@ def legend_handles(data: dict, fill: str = FILL_DEFAULT) -> tuple[list, list]:
     if data.get("springs"):
         hs.append(SpiralProxy(STYLE["spring"]["line"]))
         labels.append("Fiber section")
-        hs.append(ExpProxy(EXP["color"]))
-        labels.append("OpenFresco expElement")
 
     names = {"py": "p-y", "tz": "t-z", "qz": "q-z"}
     present = {parse_ssi_row(r)[4] for r in data.get("ssi_springs", [])}
@@ -1332,11 +1320,11 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
     ax_b = fig.add_axes(rect(LEFT, top_b, w_b, h_b))
     ax_c = fig.add_axes(rect(left_c, top_b, w_c, h_c))
 
-    # (d) inset straddling (c)'s top-right
+    # (d) inset straddling (c)'s top-right; wide enough for name under the arrow
     pos_c = ax_c.get_position()
     dy_d = TOP_Y[1] - TOP_Y[0]
     dx_d = TOP_X[1] - TOP_X[0]
-    w_d = 0.95 / FIG_W   # ~0.95 in wide
+    w_d = 1.70 / FIG_W   # ~1.70 in wide (name sits left of the arrow)
     h_d = w_d * (dy_d / dx_d) * (FIG_W / FIG_H)
     left_d = 1.0 - 0.015 - w_d
     # one inset-height below a fully-raised seat, so (d) overlaps (c) again
@@ -1348,7 +1336,9 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
 
     draw_model(ax_a, data, nodes, xlim=(-x_half_a, x_half_a),
                lw=0.5, ms=0.0, quad_lw=0.15, coils=False, dashpots=True,
-               fill=fill, force_at="leftmost")
+               fill=fill, force_at="leftmost",
+               exp_element=True, exp_force_fp=True, exp_scale=10.0,
+               exp_force_fp_label="full")
     ax_a.set_ylim(*ylim_a)
     mark_window(ax_a, (-x_half_b, x_half_b), ylim_b, "(b)")
     ax_a.set_title("(a)", loc="left", pad=3)
@@ -1356,7 +1346,8 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
     draw_model(ax_b, data, nodes, xlim=(-x_half_b, x_half_b),
                lw=0.8, ms=1.6, quad_lw=0.25, coils=True, dashpots=True,
                fill=fill, pin_s=0.28, force_label=True, force_under=True,
-               exp_element=True)
+               exp_element=True, exp_force_fp=True, exp_scale=2.5,
+               exp_force_fp_label="none")
     ax_b.set_ylim(*ylim_b)
     mark_window(ax_b, DETAIL_X, DETAIL_Y, "(c)")
     mark_window(ax_b, TOP_X, TOP_Y, "(d)", corner="br")
@@ -1373,7 +1364,7 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
                lw=1.2, ms=4.0, quad_lw=0.3, coils=False, dashpots=False,
                fill=fill, soil_ms=0.0, surcharge=False, pin_s=0.0,
                exp_element=True, exp_label=False, exp_scale=1.05, exp_lw=1.5,
-               exp_dof_arrow=True, equal_aspect=True)
+               exp_force_fp=True, exp_force_fp_label="two", equal_aspect=True)
     ax_d.set_ylim(*TOP_Y)
     ax_d.set_facecolor("white")
     ax_d.set_xticks([])
@@ -1384,16 +1375,6 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
     for spine in ax_d.spines.values():
         spine.set_color("#222222")
         spine.set_linewidth(0.9)
-    # Hydro callout under (d), shifted left so the block sits over (c)
-    fig.canvas.draw()  # lock equal-aspect axes position before transforming
-    pos_d = ax_d.get_position()
-    fig.text(
-        pos_d.x0 + 0.18 * pos_d.width, pos_d.y0 - 0.004,
-        "Hydrodynamic loading\n(via OpenFresco)",
-        ha="center", va="top", color=EXP["color"], fontsize=7.5,
-        linespacing=1.15, transform=fig.transFigure,
-        clip_on=False, zorder=20,
-    )
 
     for a in (ax_a, ax_b, ax_c):
         a.set_xlabel(r"$x$ (m)", labelpad=1)
