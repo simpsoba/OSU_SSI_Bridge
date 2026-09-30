@@ -521,16 +521,24 @@ def detect_wave_start_proto_s(
         peak = float(np.max(spectrum)) if spectrum.size else 0.0
         ratio = (score / peak) if peak > 0.0 else 0.0
         if ratio >= wave_ratio_min and score > 0.0:
-            # Refine: walk back while |F| still above quiet floor.
-            thr = max(0.5 * p95, 0.15)
-            m_all = t_proto < t1
-            tt = t_proto[m_all]
-            ff = np.abs(f_kn[m_all])
-            # First sample in this window above thr, else window start.
-            m_w = (tt >= t0) & (ff >= thr)
-            if np.any(m_w):
-                return float(tt[np.argmax(m_w)])
-            return float(t0)
+            # Walk back from the detecting window like Friday's |F| spike:
+            # quiet floor from samples before t0, then last rise out of quiet.
+            m_pre = t_proto < t0
+            if np.any(m_pre):
+                f_base = float(np.nanpercentile(np.abs(f_kn[m_pre]), 95))
+            else:
+                f_base = 0.05
+            thr_quiet = max(3.0 * f_base, 0.15)
+            # Start from first sample in [t0, t1) above thr, walk earlier.
+            m_win = (t_proto >= t0) & (t_proto < t1)
+            idx = np.flatnonzero(m_win & (np.abs(f_kn) >= thr_quiet))
+            if idx.size == 0:
+                return float(t0)
+            j = int(idx[0])
+            while j > 0 and float(np.abs(f_kn[j])) >= thr_quiet:
+                j -= 1
+            i_on = j + 1 if j < idx[0] else int(idx[0])
+            return float(t_proto[i_on])
         t0 += step
     return None
 

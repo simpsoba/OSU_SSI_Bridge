@@ -216,6 +216,14 @@ puts $outFd "  \]"
 puts $outFd "\}"
 close $outFd
 
+# Mesh-keyed archive so PSD guides can load Fri/Wed without re-running eigen.
+if {[info exists soilMesh]} {
+	set eigMeshDir [file join $plotDir out eigen "mesh$soilMesh"]
+	file mkdir $eigMeshDir
+	file copy -force $eigenOutPath [file join $eigMeshDir eigen_modes.json]
+	puts "DumpEigenModes: mesh archive $eigMeshDir/eigen_modes.json"
+}
+
 # Convenience copy next to other plot JSON
 file copy -force $eigenOutPath [file join $plotDir eigen_modes.json]
 

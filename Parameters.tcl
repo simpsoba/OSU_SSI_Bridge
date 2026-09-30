@@ -331,7 +331,7 @@ set eqTmax "";                            # <-- EDIT  s (empty = full record)
 # Free vibration after the last GM sample (Path is 0 past the record).
 # Lysmer/ASDEA then only radiate. 0 -> stop when the earthquake record ends.
 set eqFreeVibT 60.0;                      # <-- EDIT  s
-set nModesEigen 10;                       # <-- EDIT  (-) modes after gravity (runEQ 0)
+set nModesEigen 30;                       # <-- EDIT  (-) modes after gravity (runEQ 0)
 # After gravity: pin pier-base UX/UY at the gravity displacement (-subtractInit).
 # 0 = leave free (gravity state only; base can translate with soil/springs in EQ).
 set holdPierON 1;                         # <-- EDIT  0 | 1

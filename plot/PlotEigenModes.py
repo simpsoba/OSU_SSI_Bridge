@@ -424,6 +424,31 @@ def plot_panel(
 # ------------------------------------------------------------
 
 
+def parse_mode_filter(argv: list[str]) -> set[int] | None:
+    """
+    Optional ``--modes 24,25,28-30`` → set of 1-based mode ids.
+
+    Args:    argv  tokens after the JSON / out-dir args
+    Returns: mode ids to plot, or None (= all)
+    """
+    if "--modes" not in argv:
+        return None
+    i = argv.index("--modes")
+    if i + 1 >= len(argv):
+        raise SystemExit("PlotEigenModes: --modes needs a list (e.g. 24,25,28-30)")
+    wanted: set[int] = set()
+    for part in argv[i + 1].split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            a, b = part.split("-", 1)
+            wanted.update(range(int(a), int(b) + 1))
+        else:
+            wanted.add(int(part))
+    return wanted
+
+
 def main() -> int:
     """
     Read mode data and write one PNG per available mode.
@@ -431,7 +456,28 @@ def main() -> int:
     Args:    command-line arguments in sys.argv
     Returns: process status code
     """
-    json_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_JSON
+    args = [a for a in sys.argv[1:] if a not in ("-h", "--help")]
+    if any(a in ("-h", "--help") for a in sys.argv[1:]):
+        print(
+            "Usage: PlotEigenModes.py [eigen_modes.json] [out_dir] "
+            "[--modes 24,25,28-30]"
+        )
+        return 0
+
+    mode_filter = parse_mode_filter(args)
+    # Drop --modes and its value from positional args.
+    pos: list[str] = []
+    skip_next = False
+    for a in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if a == "--modes":
+            skip_next = True
+            continue
+        pos.append(a)
+
+    json_path = Path(pos[0]) if pos else DEFAULT_JSON
     if not json_path.is_file():
         print(f"PlotEigenModes: missing {json_path}; run OpenSees run_gravity.tcl first", file=sys.stderr)
         return 1
@@ -445,8 +491,8 @@ def main() -> int:
     bnd_quads = data.get("bnd_quads", [])
     nModes = min(len(phis), len(meta), int(data.get("nModes", len(phis))))
 
-    if len(sys.argv) > 2:
-        out_arg = Path(sys.argv[2])
+    if len(pos) > 1:
+        out_arg = Path(pos[1])
         out_dir = out_arg if out_arg.suffix == "" or out_arg.is_dir() else out_arg.parent
     else:
         out_dir = default_out_dir(data)
@@ -464,10 +510,14 @@ def main() -> int:
         f"vertical → max|uy| = {SCALE_VERTICAL}·H"
     )
     print(f"  mesh: {len(quads)} soil quads, {len(bnd_quads)} ASDEA bnd quads")
+    if mode_filter is not None:
+        print(f"  mode filter: {sorted(mode_filter)}")
     written: list[Path] = []
     for i in range(nModes):
         m = meta[i]
         mode_id = int(m.get("mode", i + 1))
+        if mode_filter is not None and mode_id not in mode_filter:
+            continue
         T = m.get("T")
         tstr = f"T = {T:.4f} s" if T is not None else "T = —"
         sf, amp, H, kind, target = scale_for_mode(xy0, phis[i])
