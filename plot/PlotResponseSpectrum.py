@@ -49,7 +49,7 @@ ZETA = 0.05
 T_MIN = 0.02  # s
 T_MAX = 10.0  # s
 N_PERIOD = 200
-T1 = 2.3  # s — rayleighT1 / SSI system
+T1 = 2.09577  # s — gravity+holdPier eigen (mesh 0 and 19); not rayleighT1=2.3
 
 
 def _ensure_tex_path() -> None:
@@ -513,7 +513,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Sd max   {float(np.max(Sd)):.4f} m at T={float(periods[np.argmax(Sd)]):.3f} s")
     print(f"Sa max   {float(np.max(Sa_g)):.4f} g at T={float(periods[np.argmax(Sa_g)]):.3f} s")
     print("---")
-    print(f"T_1  (rayleighT1)  {T1:.3f} s")
+    print(f"T_1  (eigen)  {T1:.5f} s")
     print(f"  Sa={sa_t1_g:.3f} g  Sv={sv_t1:.3f} m/s  Sd={sd_t1:.3f} m")
     print(f"wrote    {out_stem.with_suffix('.png')}")
     print(f"wrote    {out_stem.with_suffix('.pdf')}")
