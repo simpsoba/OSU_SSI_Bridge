@@ -68,10 +68,19 @@ FONT_FILES = ("NewCMSans10-Regular.otf", "NewCMSans10-Oblique.otf")
 
 # Water is physical (flume); OpenSees only sees rho_w g h_w on the y=0 soil
 # nodes (analysis/WaterSurfaceLoad.tcl), drawn as arrows onto the mudline.
-# Pier owns orange; q-z moves to red so the two never match.
+# Stiff elastic frames share one color (solid); pier keeps a distinct orange.
+# Hex matches the static-equilibrium / deck navy and a warmer pier orange.
+STIFF_COLOR = "#0b3c5d"
+PIER_COLOR = "#cd6416"
 STYLE = {
     **STYLE_BASE,
-    "pier": {**STYLE_BASE["pier"], "line": "#f57c00", "node": "#e65100"},
+    "deck": {**STYLE_BASE["deck"], "line": STIFF_COLOR, "node": STIFF_COLOR,
+             "fill": "#90a4ae"},
+    "cap": {**STYLE_BASE["cap"], "line": STIFF_COLOR, "node": STIFF_COLOR,
+            "fill": "#90a4ae"},
+    # stiff intermediate beam between fiber hinges
+    "pier": {**STYLE_BASE["pier"], "line": PIER_COLOR, "node": PIER_COLOR,
+             "fill": "#e0a070"},
 }
 SSI_STYLE = {**SSI_STYLE_BASE, "qz": {**SSI_STYLE_BASE["qz"], "line": "#d32f2f"}}
 
@@ -781,7 +790,9 @@ def draw_model(
             continue
         segs.append([nodes[int(ni)], nodes[int(nj)]])
         colors.append(STYLE.get(grp, STYLE["pile"])["line"])
-    a.add_collection(LineCollection(segs, colors=colors, linewidths=lw, zorder=3))
+    if segs:
+        a.add_collection(LineCollection(segs, colors=colors, linewidths=lw,
+                                        zorder=3))
 
     for _e, ni, nj, _sx, _sy in springs:
         if int(ni) in nodes and int(nj) in nodes:
@@ -889,10 +900,10 @@ def legend_handles(data: dict, fill: str = FILL_DEFAULT) -> tuple[list, list]:
     hs, labels = [], []
     lw_leg = 2.2 if fill == "none" else 1.1
 
+    # Deck + pile cap share STIFF_COLOR → one legend row; pier keeps its color.
     members = [
-        ("deck", "Deck (stiff elastic frame)"),
+        ("deck", "Deck and pile cap (stiff elastic frame)"),
         ("pier", "Pier (stiff elastic frame)"),
-        ("cap", "Pile cap (stiff elastic frame)"),
         ("pile", "Piles (disp.-based frame)"),
     ]
     for g, lab in members:
@@ -901,7 +912,8 @@ def legend_handles(data: dict, fill: str = FILL_DEFAULT) -> tuple[list, list]:
                                edgecolor=STYLE[g]["line"], lw=0.5)
         else:
             # line + node dots at both ends (matches panel markers)
-            h = MemberProxy(STYLE[g]["line"], STYLE[g]["node"], lw_leg)
+            h = MemberProxy(STYLE[g]["line"], STYLE[g]["node"], lw_leg,
+                            ls=STYLE[g].get("ls", "-"))
             if fill == "gray":
                 h = (mpatches.Patch(facecolor=GRAY["fill"], alpha=GRAY["alpha"],
                                     edgecolor="none"), h)
@@ -930,7 +942,7 @@ def legend_handles(data: dict, fill: str = FILL_DEFAULT) -> tuple[list, list]:
 
     if data.get("springs"):
         hs.append(SpiralProxy(STYLE["spring"]["line"]))
-        labels.append("Fiber section")
+        labels.append("Fiber section (zero-length)")
 
     names = {"py": "p-y", "tz": "t-z", "qz": "q-z"}
     present = {parse_ssi_row(r)[4] for r in data.get("ssi_springs", [])}
@@ -973,10 +985,11 @@ def soil_desc(name: str, profile: int | None) -> str:
 class MemberProxy:
     """Legend stand-in for a frame member: short line with nodes at both ends."""
 
-    def __init__(self, line: str, node: str, lw: float):
+    def __init__(self, line: str, node: str, lw: float, ls: str | tuple = "-"):
         self.line = line
         self.node = node
         self.lw = lw
+        self.ls = ls
 
 
 class SpringProxy:
@@ -1140,6 +1153,7 @@ class HandlerMember(HandlerBase):
         r = 0.30 * h
         return [
             Line2D([x0, x1], [yc, yc], color=orig.line, lw=orig.lw,
+                   ls=getattr(orig, "ls", "-"),
                    transform=trans, solid_capstyle="butt"),
             Circle((x0, yc), r, facecolor=orig.node, edgecolor="white",
                    linewidth=0.45, transform=trans),
