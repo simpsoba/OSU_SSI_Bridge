@@ -130,7 +130,7 @@ def plot_gm_figure(
     ax_dsp.plot(t, disp_cm, color=LINE_COLOR, lw=LINE_LW_TH)
     ax_dsp.set_ylabel(r"$u_g(t)$ (cm)")
     # Panel tag in the xlabel so constrained layout budgets the bottom margin.
-    ax_dsp.set_xlabel(r"Time, $t$ (s)" + "\n" + r"(a)")
+    ax_dsp.set_xlabel(r"Time, $t$ (s)" + "\n" + r"\textbf{(a)}")
     ax_dsp.set_xlim(0.0, 300.0)
     ax_dsp.set_xticks([0, 50, 100, 150, 200, 250, 300])
 
@@ -154,7 +154,7 @@ def plot_gm_figure(
     T_plot = np.concatenate([[0.0], periods[mask]])
     Sa_plot = np.concatenate([[pga_g], Sa_g[mask]])
     ax_sa.plot(T_plot, Sa_plot, color=LINE_COLOR, lw=LINE_LW_SA)
-    ax_sa.set_xlabel(r"Period, $T_n$ (s)" + "\n" + r"(b)")
+    ax_sa.set_xlabel(r"Period, $T_n$ (s)" + "\n" + r"\textbf{(b)}")
     ax_sa.set_ylabel(r"Spectral acceleration, $S_a$ ($g$)")
     ax_sa.set_xlim(0.0, T_SPEC_MAX)
     sa_ymax = nice_ceil(float(np.nanmax(Sa_plot)))

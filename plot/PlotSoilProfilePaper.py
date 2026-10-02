@@ -247,7 +247,7 @@ def xlabel_with_tag(*lines: str) -> str:
     """
     Multi-line x-label via usetex shortstack (last line usually the panel tag).
 
-    Args:    lines  e.g. r"Shear modulus,", r"$G_r$ (MPa)", r"(a)"
+    Args:    lines  e.g. r"Shear modulus,", r"$G_r$ (MPa)", r"\textbf{(a)}"
     Returns: LaTeX string for ax.set_xlabel
     """
     return r"\shortstack{" + r"\\".join(lines) + "}"
@@ -353,7 +353,9 @@ def plot_soil_props_paper(
     )
     mark_units(ax_a, spans, label=True, soft_x=soft_Gr + 8.0)
     style_depth(ax_a, ylabel=True)
-    ax_a.set_xlabel(xlabel_with_tag(r"Shear modulus,", r"$G_r$ (MPa)", r"(a)"))
+    ax_a.set_xlabel(
+        xlabel_with_tag(r"Shear modulus,", r"$G_r$ (MPa)", r"\textbf{(a)}")
+    )
     gr_xmax = set_xlim0(ax_a, float(np.nanmax(Gr_MPa)))
     draw_pile_group_faded(ax_a, springs)
     ax_a.plot(Gr_MPa, zG, color=LINE_COLOR, lw=LINE_LW, solid_capstyle="butt", zorder=3)
@@ -377,7 +379,9 @@ def plot_soil_props_paper(
     mark_units(ax_b, spans, label=False)
     ax_b.plot(su_kPa, zS, color=LINE_COLOR, lw=LINE_LW, solid_capstyle="butt", zorder=3)
     style_depth(ax_b, ylabel=False)
-    ax_b.set_xlabel(xlabel_with_tag(r"Undrained strength,", r"$s_u$ (kPa)", r"(b)"))
+    ax_b.set_xlabel(
+        xlabel_with_tag(r"Undrained strength,", r"$s_u$ (kPa)", r"\textbf{(b)}")
+    )
     set_xlim0(ax_b, float(np.nanmax(su_kPa)))
 
     # ---- (c) p_ult and t_ult (kN/m) ----
@@ -392,7 +396,7 @@ def plot_soil_props_paper(
         marker="^", ms=MARKER_MS + 0.4, zorder=3,
     )
     style_depth(ax_c, ylabel=False)
-    ax_c.set_xlabel(xlabel_with_tag(r"Unit capacity", r"(kN/m)", r"(c)"))
+    ax_c.set_xlabel(xlabel_with_tag(r"Unit capacity", r"(kN/m)", r"\textbf{(c)}"))
     set_xlim0(ax_c, float(np.nanmax(p_prime)))
     z_mid = float(np.median(depth))
     ax_c.annotate(
@@ -446,7 +450,7 @@ def plot_soil_props_paper(
             zorder=5,
         )
     style_depth(ax_d, ylabel=False)
-    ax_d.set_xlabel(xlabel_with_tag(r"Deformation", r"(mm)", r"(d)"))
+    ax_d.set_xlabel(xlabel_with_tag(r"Deformation", r"(mm)", r"\textbf{(d)}"))
     set_xlim0(ax_d, max(float(np.nanmax(y50_mm)), float(np.nanmax(z50_mm))))
     if np.any(is_shaft):
         y50_x = float(np.median(y50_mm[is_shaft]))

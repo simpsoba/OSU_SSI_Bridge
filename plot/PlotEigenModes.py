@@ -4,6 +4,8 @@ Goals
 -----
 Plot eigenmode shapes exported by DumpEigenModes.tcl.
 Use one displacement scale on both components and both figure panels.
+Frame elements use cubic Hermite from nodal ux, uy, rz (opsvis-style);
+soil quads and zeroLength springs stay nodal chords.
 
 After:
   OpenSees run_gravity.tcl
@@ -38,9 +40,12 @@ DEFAULT_JSON = HERE / "eigen_modes.json"
 # Vertical-ish modes: max |uy| → SCALE_VERTICAL · H  (gentler; heave looks louder)
 SCALE_LATERAL = 0.08
 SCALE_VERTICAL = 0.03
-STRUCT_GROUPS = ("pier", "deck", "cap", "pile", "spring", "other")
+STRUCT_GROUPS = ("pier", "deck", "cap", "pile", "spring", "ssi_spring", "other")
+# Cubic Hermite (opsvis-style) for frames; zeroLength springs stay chords.
+HERMITE_GROUPS = frozenset({"pier", "deck", "cap", "pile", "other"})
+NEP_HERMITE = 17  # evaluation points per beam (incl. ends)
 # Near-field zoom (left panel): pier / deck / piles — same idea as PlotModelSketch
-ZOOM_GROUPS = frozenset({"pier", "deck", "cap", "pile", "spring"})
+ZOOM_GROUPS = frozenset({"pier", "deck", "cap", "pile", "spring", "ssi_spring"})
 ZOOM_X_PAD = 3.2  # m beyond max |x| of structure (matches elevation sketch)
 STRUCT_COLOR = {
     "pier": "#c45c12",
@@ -49,7 +54,7 @@ STRUCT_COLOR = {
     "pile": "#8B5A2B",
     "spring": "#6a1b9a",
     "other": "#616161",
-    "ssi_spring": "#90a4ae",
+    "ssi_spring": "#1565c0",
 }
 
 
@@ -105,9 +110,11 @@ def node_xy(data: dict) -> dict[int, tuple[float, float]]:
     return {int(t): (float(x), float(y)) for t, x, y in data["nodes"]}
 
 
-def phi_maps(data: dict) -> list[dict[int, tuple[float, float]]]:
+def phi_maps(data: dict) -> list[dict[int, tuple[float, float, float]]]:
     """
-    Convert each mode table to tag → (ux, uy).
+    Convert each mode table to tag → (ux, uy, rz).
+
+    Older JSON without rz is accepted (rz = 0).
 
     Args:    data
     Returns: one displacement mapping per mode
@@ -116,8 +123,10 @@ def phi_maps(data: dict) -> list[dict[int, tuple[float, float]]]:
     for mode_phi in data["phi"]:
         m = {}
         for row in mode_phi:
-            tag, ux, uy = int(row[0]), float(row[1]), float(row[2])
-            m[tag] = (ux, uy)
+            tag = int(row[0])
+            ux, uy = float(row[1]), float(row[2])
+            rz = float(row[3]) if len(row) > 3 else 0.0
+            m[tag] = (ux, uy, rz)
         out.append(m)
     return out
 
@@ -140,7 +149,7 @@ def domain_height(xy: dict[int, tuple[float, float]]) -> float:
 
 
 def phi_component_amps(
-    phi: dict[int, tuple[float, float]],
+    phi: dict[int, tuple[float, float, float]],
     tags: set[int] | None = None,
 ) -> tuple[float, float, float]:
     """
@@ -154,7 +163,7 @@ def phi_component_amps(
         vals = phi.values()
     else:
         vals = (phi[t] for t in tags if t in phi)
-    for ux, uy in vals:
+    for ux, uy, _rz in vals:
         au, av = abs(ux), abs(uy)
         max_ux = max(max_ux, au)
         max_uy = max(max_uy, av)
@@ -162,21 +171,93 @@ def phi_component_amps(
     return max_ux, max_uy, max_r
 
 
+def hermite_beam_xy(
+    xi: float,
+    yi: float,
+    xj: float,
+    yj: float,
+    uxi: float,
+    uyi: float,
+    rzi: float,
+    uxj: float,
+    uyj: float,
+    rzj: float,
+    sf: float,
+    nep: int = NEP_HERMITE,
+) -> np.ndarray:
+    """
+    Cubic Hermite beam centreline (opsvis beam_defo_interp_2d).
+
+    Args:    end coords (m); end ux,uy,rz; scale; nep points
+    Returns: (nep, 2) array of deformed global (x, y)
+    """
+    dx = xj - xi
+    dy = yj - yi
+    L = float(np.hypot(dx, dy))
+    if L < 1.0e-18:
+        return np.array([[xi + sf * uxi, yi + sf * uyi],
+                         [xj + sf * uxj, yj + sf * uyj]])
+    c = dx / L
+    s = dy / L
+    # Global → local (opsvis rot_transf_2d): u_l = G @ [uxi,uyi,rzi,uxj,uyj,rzj]
+    u_ax_i = c * uxi + s * uyi
+    u_tr_i = -s * uxi + c * uyi
+    u_ax_j = c * uxj + s * uyj
+    u_tr_j = -s * uxj + c * uyj
+    xl = np.linspace(0.0, L, nep)
+    # Axial: linear; transverse: cubic Hermite on (v, θ)
+    Na_i = 1.0 - xl / L
+    Na_j = xl / L
+    Nt1 = 1.0 - 3.0 * (xl / L) ** 2 + 2.0 * (xl / L) ** 3
+    Nt2 = xl - 2.0 * xl**2 / L + xl**3 / L**2
+    Nt3 = 3.0 * (xl / L) ** 2 - 2.0 * (xl / L) ** 3
+    Nt4 = -(xl**2) / L + xl**3 / L**2
+    u_a = Na_i * u_ax_i + Na_j * u_ax_j
+    u_t = Nt1 * u_tr_i + Nt2 * rzi + Nt3 * u_tr_j + Nt4 * rzj
+    # Local (u_a, u_t) → global
+    ugx = c * u_a - s * u_t
+    ugy = s * u_a + c * u_t
+    x0 = np.linspace(xi, xj, nep)
+    y0 = np.linspace(yi, yj, nep)
+    return np.column_stack((x0 + sf * ugx, y0 + sf * ugy))
+
+
 def scale_for_mode(
     xy: dict[int, tuple[float, float]],
-    phi: dict[int, tuple[float, float]],
+    phi: dict[int, tuple[float, float, float]],
+    eles: list | None = None,
 ) -> tuple[float, float, float, str, float]:
     """
     Choose one scale factor for ux and uy on both panels.
 
-    Classify by max|ux| vs max|uy| over the full mesh.
+    Classify by max|ux| vs max|uy| over the full mesh (nodes + Hermite
+    samples on frames when eles is given).
     Lateral → sf so max|ux| = SCALE_LATERAL·H; vertical → max|uy| = SCALE_VERTICAL·H.
 
-    Args:    xy, phi
+    Args:    xy, phi, eles  optional element list for Hermite amplitudes
     Returns: (scale_factor, controlling_amplitude, H, kind, target_fraction)
     """
     H = domain_height(xy)
     max_ux, max_uy, _ = phi_component_amps(phi, None)
+    if eles:
+        for _e, ni, nj, grp in eles:
+            if grp not in HERMITE_GROUPS:
+                continue
+            if ni not in xy or nj not in xy or ni not in phi or nj not in phi:
+                continue
+            xi, yi = xy[ni]
+            xj, yj = xy[nj]
+            uxi, uyi, rzi = phi[ni]
+            uxj, uyj, rzj = phi[nj]
+            pts = hermite_beam_xy(
+                xi, yi, xj, yj, uxi, uyi, rzi, uxj, uyj, rzj, 1.0, NEP_HERMITE
+            )
+            x0 = np.linspace(xi, xj, NEP_HERMITE)
+            y0 = np.linspace(yi, yj, NEP_HERMITE)
+            dux = pts[:, 0] - x0
+            duy = pts[:, 1] - y0
+            max_ux = max(max_ux, float(np.max(np.abs(dux))))
+            max_uy = max(max_uy, float(np.max(np.abs(duy))))
     kind = "lateral" if max_ux >= max_uy else "vertical"
     target = SCALE_LATERAL if kind == "lateral" else SCALE_VERTICAL
     amp = max_ux if kind == "lateral" else max_uy
@@ -187,7 +268,7 @@ def scale_for_mode(
 
 def deformed(
     xy: dict[int, tuple[float, float]],
-    phi: dict[int, tuple[float, float]],
+    phi: dict[int, tuple[float, float, float]],
     sf: float,
 ) -> dict[int, tuple[float, float]]:
     """
@@ -198,7 +279,7 @@ def deformed(
     """
     out = {}
     for t, (x, y) in xy.items():
-        ux, uy = phi.get(t, (0.0, 0.0))
+        ux, uy, _rz = phi.get(t, (0.0, 0.0, 0.0))
         out[t] = (x + sf * ux, y + sf * uy)
     return out
 
@@ -221,6 +302,73 @@ def line_segs(
         if ni not in xy or nj not in xy:
             continue
         segs.append(np.array([xy[ni], xy[nj]]))
+    return segs
+
+
+def struct_node_xy(
+    eles: list,
+    xy: dict[int, tuple[float, float]],
+    groups: set[str],
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Unique node coordinates for elements in the given groups.
+
+    Args:    eles, xy, groups
+    Returns: (x, y) arrays for scatter
+    """
+    tags: set[int] = set()
+    for _e, ni, nj, grp in eles:
+        if grp not in groups:
+            continue
+        tags.add(int(ni))
+        tags.add(int(nj))
+    xs = [xy[t][0] for t in tags if t in xy]
+    ys = [xy[t][1] for t in tags if t in xy]
+    return np.asarray(xs), np.asarray(ys)
+
+
+def frame_segs(
+    eles: list,
+    xy0: dict[int, tuple[float, float]],
+    phi: dict[int, tuple[float, float, float]],
+    sf: float,
+    groups: set[str],
+    *,
+    nep: int = NEP_HERMITE,
+) -> list[np.ndarray]:
+    """
+    Deformed frame polylines: Hermite for beams, chord for springs.
+
+    Args:    eles, xy0 (undeformed), phi, sf, groups, nep
+    Returns: polylines for LineCollection
+    """
+    segs = []
+    for _e, ni, nj, grp in eles:
+        if grp not in groups:
+            continue
+        if ni not in xy0 or nj not in xy0:
+            continue
+        xi, yi = xy0[ni]
+        xj, yj = xy0[nj]
+        if grp in HERMITE_GROUPS:
+            uxi, uyi, rzi = phi.get(ni, (0.0, 0.0, 0.0))
+            uxj, uyj, rzj = phi.get(nj, (0.0, 0.0, 0.0))
+            segs.append(
+                hermite_beam_xy(
+                    xi, yi, xj, yj, uxi, uyi, rzi, uxj, uyj, rzj, sf, nep
+                )
+            )
+        else:
+            uxi, uyi, _ = phi.get(ni, (0.0, 0.0, 0.0))
+            uxj, uyj, _ = phi.get(nj, (0.0, 0.0, 0.0))
+            segs.append(
+                np.array(
+                    [
+                        [xi + sf * uxi, yi + sf * uyi],
+                        [xj + sf * uxj, yj + sf * uyj],
+                    ]
+                )
+            )
     return segs
 
 
@@ -304,15 +452,21 @@ def plot_panel(
     title: str,
     bnd_quads: list | None = None,
     *,
+    phi: dict[int, tuple[float, float, float]] | None = None,
+    sf: float = 1.0,
     xlim: tuple[float, float] | None = None,
     ylim: tuple[float, float] | None = None,
     show_bnd: bool = True,
+    show_nodes: bool = False,
 ) -> None:
     """
     Draw undeformed and deformed soil and structure on one panel.
 
-    Args:    ax, xy0, xy1, eles, quads, title, bnd_quads, xlim, ylim,
-             show_bnd
+    Frames use cubic Hermite from nodal ux,uy,rz when phi is given;
+    soil quads and springs stay nodal chords.
+
+    Args:    ax, xy0, xy1, eles, quads, title, bnd_quads, phi, sf,
+             xlim, ylim, show_bnd, show_nodes
     Returns: none (updates ax)
     """
     if bnd_quads is None:
@@ -370,7 +524,7 @@ def plot_panel(
                 )
             )
 
-    # Undeformed structure
+    # Undeformed structure (chords)
     for grp in STRUCT_GROUPS:
         segs = line_segs(eles, xy0, {grp})
         if segs:
@@ -383,9 +537,12 @@ def plot_panel(
                     zorder=3,
                 )
             )
-    # Deformed structure
+    # Deformed structure: Hermite frames; chord fallback if no phi
     for grp in STRUCT_GROUPS:
-        segs = line_segs(eles, xy1, {grp})
+        if phi is not None:
+            segs = frame_segs(eles, xy0, phi, sf, {grp})
+        else:
+            segs = line_segs(eles, xy1, {grp})
         if segs:
             ax.add_collection(
                 LineCollection(
@@ -394,6 +551,20 @@ def plot_panel(
                     linewidths=1.6,
                     zorder=4,
                 )
+            )
+
+    # Structure nodes (zoom panel): ends of Hermite beams / joints
+    if show_nodes:
+        nx, ny = struct_node_xy(eles, xy1, ZOOM_GROUPS)
+        if len(nx):
+            ax.scatter(
+                nx,
+                ny,
+                s=14,
+                c="#263238",
+                alpha=0.55,
+                linewidths=0,
+                zorder=5,
             )
 
     ax.set_aspect("equal", adjustable="box")
@@ -507,7 +678,8 @@ def main() -> int:
         "PlotEigenModes: displacement scale  "
         f"u_plot = sf · φ  (same sf on ux, uy and on both panels);  "
         f"lateral → max|ux| = {SCALE_LATERAL}·H;  "
-        f"vertical → max|uy| = {SCALE_VERTICAL}·H"
+        f"vertical → max|uy| = {SCALE_VERTICAL}·H;  "
+        f"frames = cubic Hermite (nep={NEP_HERMITE})"
     )
     print(f"  mesh: {len(quads)} soil quads, {len(bnd_quads)} ASDEA bnd quads")
     if mode_filter is not None:
@@ -520,7 +692,7 @@ def main() -> int:
             continue
         T = m.get("T")
         tstr = f"T = {T:.4f} s" if T is not None else "T = —"
-        sf, amp, H, kind, target = scale_for_mode(xy0, phis[i])
+        sf, amp, H, kind, target = scale_for_mode(xy0, phis[i], eles)
         xy1 = deformed(xy0, phis[i], sf)
         ylim = domain_ylim(xy0, xy1)
         xz = structure_xlim(xy0, eles)
@@ -540,9 +712,12 @@ def main() -> int:
             quads,
             "pier / deck / piles",
             bnd_quads=bnd_quads,
+            phi=phis[i],
+            sf=sf,
             xlim=xz,
             ylim=ylim,
             show_bnd=False,
+            show_nodes=True,
         )
         plot_panel(
             ax_f,
@@ -552,8 +727,11 @@ def main() -> int:
             quads,
             "full soil domain",
             bnd_quads=bnd_quads,
+            phi=phis[i],
+            sf=sf,
             ylim=ylim,
             show_bnd=True,
+            show_nodes=False,
         )
         fig.suptitle(
             f"Eigenmode {mode_id} — {tstr}   {kind}  "

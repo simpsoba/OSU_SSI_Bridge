@@ -186,7 +186,8 @@ foreach q $bndQuads {
 }
 puts $outFd "  \],"
 
-# Mode shapes: phi[mode-1] = [[tag, ux, uy], ...]
+# Mode shapes: phi[mode-1] = [[tag, ux, uy, rz], ...]
+# rz = 0 for ndf=2 soil / spring nodes (Hermite beams need rz on frames).
 puts $outFd "  \"phi\": \["
 set iMode 0
 foreach lam $eigenLambdas {
@@ -198,15 +199,19 @@ foreach lam $eigenLambdas {
 		# nodeEigenvector $tag $mode $dof -- 1-based mode and dof
 		set ux 0.0
 		set uy 0.0
+		set rz 0.0
 		if {[catch {set ux [nodeEigenvector $n $iMode 1]}]} {
 			set ux 0.0
 		}
 		if {[catch {set uy [nodeEigenvector $n $iMode 2]}]} {
 			set uy 0.0
 		}
+		if {[catch {set rz [nodeEigenvector $n $iMode 3]}]} {
+			set rz 0.0
+		}
 		set jsonComma [expr {($idx < $nNode) ? "," : ""}]
-		puts $outFd [format "      \[%d, %s, %s\]%s" \
-			$n [eigNum $ux] [eigNum $uy] $jsonComma]
+		puts $outFd [format "      \[%d, %s, %s, %s\]%s" \
+			$n [eigNum $ux] [eigNum $uy] [eigNum $rz] $jsonComma]
 	}
 	set modeComma [expr {($iMode < $nModesEigen) ? "," : ""}]
 	puts $outFd "    \]$modeComma"

@@ -64,7 +64,11 @@ FIG_H = 6.0            # in
 FONT_SIZE = 9          # pt
 FONT_NAME = "NewComputerModernSans10"
 FONT_DIR = Path.home() / "AppData" / "Local" / "Microsoft" / "Windows" / "Fonts"
-FONT_FILES = ("NewCMSans10-Regular.otf", "NewCMSans10-Oblique.otf")
+FONT_FILES = (
+    "NewCMSans10-Regular.otf",
+    "NewCMSans10-Oblique.otf",
+    "NewCMSans10-Bold.otf",
+)
 
 # Water is physical (flume); OpenSees only sees rho_w g h_w on the y=0 soil
 # nodes (analysis/WaterSurfaceLoad.tcl), drawn as arrows onto the mudline.
@@ -138,9 +142,9 @@ EXP = {"color": "#ec2a10", "len": 1.55, "h": 0.34, "lw": 1.2}
 # force assembled on the physical DOFs (inertia, damping, hydro).
 # (a) one-line; (b) arrow only; (d) formula by arrow, name under it inside axes.
 FP_ARROW = {"len": 0.95, "gap": 0.06, "lw": 1.35, "head": 10.0,
-            "label_dx": 0.08, "label_dy": 0.22, "name_dx": 1.85}
+            "label_dx": 0.08, "label_dy": 0.28, "name_dx": 1.65}
 FP_TXT = r"Physical subassembly force, $\lambda_L^{3}\mathbf{f}_{p}$"
-FP_TXT_NAME = "Physical subassembly force"
+FP_TXT_NAME = "Physical subassembly\nforce"
 FP_TXT_MATH = r"$\lambda_L^{3}\mathbf{f}_{p}$"
 # force_fp_label modes: "full" | "two" | "none"
 
@@ -174,9 +178,9 @@ GAP_COL = 0.50         # between (b) and (c), room for (c) y label
 DETAIL_X = (-3.3, 3.3)
 DETAIL_Y = (-2.5, 1.4)
 # Panel (d) crop around pier-top inner node + soffit (m)
-# Node 4 ~ (0, 6.55); room left for name under the force arrow.
-TOP_X = (-5.00, 0.9)
-TOP_Y = (5.70, 7.55)
+# Node 4 ~ (0, 6.55); left/vertical pad for two-line force name under the arrow.
+TOP_X = (-4.85, 0.55)
+TOP_Y = (5.30, 7.75)
 
 
 def use_paper_font() -> None:
@@ -380,21 +384,21 @@ def draw_exp_element(a: plt.Axes, nodes: dict[int, tuple[float, float]],
         if force_fp_label == "full":
             a.text(
                 xl, y, FP_TXT,
-                color=c, fontsize=FONT_SIZE - 1, ha="right", va="center",
+                color=c, fontsize=FONT_SIZE, ha="right", va="center",
                 zorder=z + 4, clip_on=False,
             )
         elif force_fp_label == "two":
             # formula left of shaft; name under arrow, shifted left ~"Physical"
             a.text(
                 xl, y, FP_TXT_MATH,
-                color=c, fontsize=FONT_SIZE - 1, ha="right", va="center",
+                color=c, fontsize=FONT_SIZE, ha="right", va="center",
                 zorder=z + 4, clip_on=False,
             )
             a.text(
                 0.5 * (xa0 + xa1) - FP_ARROW["name_dx"] * scale,
                 y - FP_ARROW["label_dy"] * scale, FP_TXT_NAME,
-                color=c, fontsize=FONT_SIZE - 1, ha="center", va="top",
-                zorder=z + 4, clip_on=False,
+                color=c, fontsize=FONT_SIZE, ha="center", va="top",
+                linespacing=1.05, zorder=z + 4, clip_on=False,
             )
         return
 
@@ -603,11 +607,11 @@ def draw_base_boundary(
                 xm = (x + 0.5 * (EQ_FORCE["gap"] + EQ_FORCE["len"] - DASHPOT_LEN)
                       + 0.65)
                 a.text(xm, y_d - 0.55 * DASHPOT_H - 0.2, eq_txt, color=color,
-                       fontsize=FONT_SIZE - 1, ha="center", va="top", zorder=8)
+                       fontsize=FONT_SIZE, ha="center", va="top", zorder=8)
             else:
                 xa = x + EQ_FORCE["gap"] + EQ_FORCE["len"]
                 a.text(xa + 0.6, y_d, eq_txt, color=color,
-                       fontsize=FONT_SIZE - 1, ha="left", va="center", zorder=8)
+                       fontsize=FONT_SIZE, ha="left", va="center", zorder=8)
             labeled = True
 
 
@@ -871,13 +875,30 @@ def mark_window(a: plt.Axes, x: tuple, y: tuple, label: str,
     }
     tx, ty, ha, va = loc[corner]
     if corner == "br":
-        a.text(tx + 0.04, ty - 0.02, f" {label}", ha=ha, va=va,
-               fontsize=FONT_SIZE, zorder=9)
+        a.text(
+            tx + 0.04,
+            ty - 0.02,
+            f" {label}",
+            ha=ha,
+            va=va,
+            fontsize=FONT_SIZE,
+            fontweight="bold",
+            zorder=9,
+        )
         return
     dx = -0.08 if ha == "right" else 0.08
     dy = 0.08 if va == "bottom" else -0.08
     pad = f" {label}" if ha == "left" else f"{label} "
-    a.text(tx + dx, ty + dy, pad, ha=ha, va=va, fontsize=FONT_SIZE, zorder=9)
+    a.text(
+        tx + dx,
+        ty + dy,
+        pad,
+        ha=ha,
+        va=va,
+        fontsize=FONT_SIZE,
+        fontweight="bold",
+        zorder=9,
+    )
 
 
 # ------------------------------------------------------------
@@ -1308,12 +1329,12 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
     h_a = w_a * (ylim_a[1] - ylim_a[0]) / (2.0 * x_half_a)
 
     # (b) near field, full remaining height (same as pre-(d) layout)
-    # pad past the Lysmer glyph so the EQ callout stays inside the axes
+    # pad past the Lysmer glyph + EQ callout so the text stays inside the axes
     x_half_b = max(
         0.5 * float(sz["dw_deck"]) + 0.8,
         DASHPOT_LEN + 1.4,
         EQ_FORCE["gap"] + EQ_FORCE["len"] + 0.8,
-    )
+    ) + 1.15
     ylim_b = (y_bot - DASHPOT_DROP - DASHPOT_H - 1.6, y_top + 0.8)
     top_b = TOP + h_a + GAP_XLABEL + GAP_TITLE
     h_b = FIG_H - top_b - GAP_XLABEL
@@ -1334,11 +1355,11 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
     ax_b = fig.add_axes(rect(LEFT, top_b, w_b, h_b))
     ax_c = fig.add_axes(rect(left_c, top_b, w_c, h_c))
 
-    # (d) inset straddling (c)'s top-right; wide enough for name under the arrow
+    # (d) inset straddling (c)'s top-right; width for two-line name, height from crop
     pos_c = ax_c.get_position()
     dy_d = TOP_Y[1] - TOP_Y[0]
     dx_d = TOP_X[1] - TOP_X[0]
-    w_d = 1.70 / FIG_W   # ~1.70 in wide (name sits left of the arrow)
+    w_d = 1.52 / FIG_W   # ~1.52 in (two-line name)
     h_d = w_d * (dy_d / dx_d) * (FIG_W / FIG_H)
     left_d = 1.0 - 0.015 - w_d
     # one inset-height below a fully-raised seat, so (d) overlaps (c) again
@@ -1355,7 +1376,7 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
                exp_force_fp_label="full")
     ax_a.set_ylim(*ylim_a)
     mark_window(ax_a, (-x_half_b, x_half_b), ylim_b, "(b)")
-    ax_a.set_title("(a)", loc="left", pad=3)
+    ax_a.set_title("(a)", loc="left", pad=3, fontweight="bold")
 
     draw_model(ax_b, data, nodes, xlim=(-x_half_b, x_half_b),
                lw=0.8, ms=1.6, quad_lw=0.25, coils=True, dashpots=True,
@@ -1365,14 +1386,14 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
     ax_b.set_ylim(*ylim_b)
     mark_window(ax_b, DETAIL_X, DETAIL_Y, "(c)")
     mark_window(ax_b, TOP_X, TOP_Y, "(d)", corner="br")
-    ax_b.set_title("(b)", loc="left", pad=3)
+    ax_b.set_title("(b)", loc="left", pad=3, fontweight="bold")
 
     draw_model(ax_c, data, nodes, xlim=DETAIL_X,
                lw=0.8, ms=3.8, quad_lw=0.5, coils=True, dashpots=False,
                fill=fill, soil_ms=2.4, surcharge=False, pin_s=0.18,
                exp_element=False)
     ax_c.set_ylim(*DETAIL_Y)
-    ax_c.set_title("(c)", loc="left", pad=3)
+    ax_c.set_title("(c)", loc="left", pad=3, fontweight="bold")
 
     draw_model(ax_d, data, nodes, xlim=TOP_X,
                lw=1.2, ms=4.0, quad_lw=0.3, coils=False, dashpots=False,
@@ -1385,7 +1406,7 @@ def plot(data: dict, out_stem: Path, fill: str = FILL_DEFAULT) -> None:
     ax_d.set_yticks([])
     ax_d.set_xlabel("")
     ax_d.set_ylabel("")
-    ax_d.set_title("(d)", loc="left", pad=0.5, fontsize=FONT_SIZE - 1)
+    ax_d.set_title("(d)", loc="left", pad=0.5, fontweight="bold")
     for spine in ax_d.spines.values():
         spine.set_color("#222222")
         spine.set_linewidth(0.9)
