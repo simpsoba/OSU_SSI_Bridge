@@ -113,7 +113,7 @@ proc eqRecTime {} {
 }
 
 # recorder Node -file $fileName -time -dT $dT -node $nodeTags -dof $dofs $rsp
-# Args: name (file), tags (node list), dofs (list), rsp (disp | accel)
+# Args: name (file), tags (node list), dofs (list), rsp (disp | vel | accel)
 # Returns: none (writes nothing when tags is empty, e.g. no local nodes)
 proc eqRecNode {name tags dofs rsp} {
 	if {[llength $tags] < 1} { return }
@@ -589,15 +589,27 @@ for {set i0 0} {$i0 < $nQuadRec} {incr i0 $quadChunk} {
 
 # Pier: one file per node (UX UY RZ) so a rank that owns part of the pier still
 # writes labelled columns. pier_top_disp.out stays for the Shin/ASDEA overlay.
+# Full window also dumps vel + accel per pier node (same DOFs).
 set pierNodeFiles {}
+set pierNodeVelFiles {}
+set pierNodeAccFiles {}
 foreach n $eqPierNodes {
 	set name [format "pier_node_%d.out" $n]
 	eqRecNode $name $n {1 2 3} disp
 	lappend pierNodeFiles [file tail [eqRecPath $name]]
+	if {!$eqRecLean} {
+		set vname [format "pier_node_%d_vel.out" $n]
+		set aname [format "pier_node_%d_acc.out" $n]
+		eqRecNode $vname $n {1 2 3} vel
+		eqRecNode $aname $n {1 2 3} accel
+		lappend pierNodeVelFiles [file tail [eqRecPath $vname]]
+		lappend pierNodeAccFiles [file tail [eqRecPath $aname]]
+	}
 }
 if {[eqOwnsNode $nodeTag_pierTop_deckBC]} {
 	eqRecNode pier_top_disp.out $nodeTag_pierTop_deckBC {1 2 3} disp
 	if {!$eqRecLean} {
+		eqRecNode pier_top_vel.out $nodeTag_pierTop_deckBC {1 2 3} vel
 		eqRecNode pier_top_acc.out $nodeTag_pierTop_deckBC {1 2 3} accel
 	}
 }
@@ -658,6 +670,15 @@ puts $metaFd "soilBoundary $soilBoundary"
 puts $metaFd "soilEleType $soilEleType"
 puts $metaFd "pierHinge $pierEleType"
 puts $metaFd "pileEleType $pileEleType"
+if {[info exists holdPierON]} {
+	puts $metaFd "holdPierON $holdPierON"
+}
+if {[info exists eqIntegrator]} {
+	puts $metaFd "eqIntegrator $eqIntegrator"
+}
+if {[info exists Lp_pier]} {
+	puts $metaFd "Lp_pier $Lp_pier"
+}
 puts $metaFd "recordersON $recordersON"
 puts $metaFd "eqWindowX $eqWindowX"
 if {[info exists eqFFColumnFrac]} {
@@ -709,6 +730,14 @@ puts $metaFd "dispFiles $windowDispFiles"
 puts $metaFd "dispFormat time then (ux uy) per node, disp_nodes.txt order"
 puts $metaFd "pierNodeFiles $pierNodeFiles"
 puts $metaFd "pierNodeFormat time then (ux uy rz) for the node in the file name"
+if {[llength $pierNodeVelFiles] > 0} {
+	puts $metaFd "pierNodeVelFiles $pierNodeVelFiles"
+	puts $metaFd "pierNodeVelFormat time then (vx vy rzDot) for the node in the file name"
+}
+if {[llength $pierNodeAccFiles] > 0} {
+	puts $metaFd "pierNodeAccFiles $pierNodeAccFiles"
+	puts $metaFd "pierNodeAccFormat time then (ax ay rzDotDot) for the node in the file name"
+}
 if {$eqRecLean} {
 	puts $metaFd "leanStations $eqLeanStations"
 	puts $metaFd "leanStationFormat {iy y layer isTip iSeg} per SSI horizon"

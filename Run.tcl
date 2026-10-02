@@ -395,11 +395,18 @@ if {!$runEQ} {
 	integrator {*}$eqIntegrator
 
 	# solution algorithm (+ convergence test when the integrator is implicit)
+	# Optional overrides (Defaults match prior hard-coded values):
+	#   eqTestTol / eqTestIter / eqRecoverTol / eqRecoverIter
+	if {![info exists eqTestTol]}     { set eqTestTol 1.0e-8 }
+	if {![info exists eqTestIter]}    { set eqTestIter 25 }
+	if {![info exists eqRecoverTol]}  { set eqRecoverTol 1.0e-6 }
+	if {![info exists eqRecoverIter]} { set eqRecoverIter 25 }
 	if {$intName eq "MKRAlphaExplicit" || $intName eq "MKRAlphaExplicitMultiSOE" \
 			|| $intName eq "CudaMKRAlpha" || $intName eq "AlphaOSGeneralized"} {
 		algorithm Linear
 	} elseif {$intName eq "TRBDF2" || $intName eq "Newmark"} {
-		test NormDispIncr 1.0e-8 25 0
+		# test NormDispIncr $tol $maxIter $printFlag
+		test NormDispIncr $eqTestTol $eqTestIter 0
 		algorithm KrylovNewton
 	} else {
 		error "Run.tcl: unknown eqIntegrator '$eqIntegrator'"
@@ -457,9 +464,10 @@ if {!$runEQ} {
 			if {$ok != 0} {
 				incr nFail
 				puts [format "  recover at step %d  t~%.4g s" $i [getTime]]
-				# test $type $tol $maxIter $flag
-				test NormDispIncr 1.0e-6 25 0
-				puts [format "  recover NormDispIncr 1e-6 at step %d  t~%.4g s" $i [getTime]]
+				# test NormDispIncr $tol $maxIter $printFlag
+				test NormDispIncr $eqRecoverTol $eqRecoverIter 0
+				puts [format "  recover NormDispIncr %g at step %d  t~%.4g s" \
+					$eqRecoverTol $i [getTime]]
 				set ok [analyze 1 $dtAnalysis]
 				if {$ok != 0} {
 					set ok [analyze 1 $dtHalf]
@@ -475,10 +483,10 @@ if {!$runEQ} {
 						if {$ok != 0} { break }
 					}
 				}
-				# test $type $tol $maxIter $flag
-				test NormDispIncr 1.0e-8 25 0
+				# test NormDispIncr $tol $maxIter $printFlag
+				test NormDispIncr $eqTestTol $eqTestIter 0
 				if {$ok != 0} {
-					error [format "Run.tcl: analyze failed at step %d / %d (t~%.4g s) after NormDispIncr 1e-8/1e-6, dt/2, dt/4x4" \
+					error [format "Run.tcl: analyze failed at step %d / %d (t~%.4g s) after NormDispIncr recover/dt cut" \
 						$i $eqNstepsAll [getTime]]
 				}
 			}
