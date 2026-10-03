@@ -11,7 +11,7 @@ pair table here** — use the CSV.
 | **`plot/lab/1_Monopile_matrix.xlsx`** | Lab schedule workbook (**Run Log** = wall-clock and Trial IDs). |
 | **`plot/lab/mat_run_map.json`** | **Orphans only:** mats without a dump, pending uploads, duplicate mat aliases. Not paired runs. |
 | **`plot/lab/STATEOS_SIGNALS.md`** | Seki §2.1 / `typeConv3` field guide for `hist_os_state.png`. |
-| **`plot/lab/MKR_OPENFRESCO_TIMING.md`** | MKR-α + OpenFresco: actuator vs \(n\), \(n+\alpha_f\), \(n+1\); step mockup. |
+| **`plot/lab/MKR_OPENFRESCO_TIMING.md`** | MKR-α + OpenFresco: actuator vs \(n\), \(n+\alpha_f\), \(n+1\); step mockup; lab clock offset for tar vs com/mea (§4). |
 
 **Archive:** `G:\Shared drives\Simpson team\Test Data\2026-OSU-SSI-Bridge\`  
 (`2026-08-19/opensees_data/`, `2026-08-21/opensees_data/`)  
