@@ -259,7 +259,7 @@ Same files (`Run.tcl`, `RunParallel.tcl`):
 
 ### OpenFresco (`expElement`)
 
-Gated by `realTimeON`. Create the experimental element **before** `numberer` / `system` / `analysis Transient`. Recorders go after `EQRecorders.tcl`.
+Gated by `realTimeON`. Create the experimental element **before** `numberer` / `system` / `analysis Transient`. Recorders go after `EQRecorders.tcl`. Trial = UX disp, daq = force. With MKR-α the host residual is at \(U_{n+\alpha_f}\); lab timing mockup: `plot/lab/MKR_OPENFRESCO_TIMING.md` (also `STATEOS_SIGNALS.md` for `stateOS`).
 
 **Parallel:** pin the pier on rank 0, then create `expElement` on rank 0 after `partition`, then `barrier`:
 

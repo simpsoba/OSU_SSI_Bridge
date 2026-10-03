@@ -1,8 +1,9 @@
 # stateOS — OpenFresco signal generation (Seki §2.1)
 
 How to read `hist_os_state.png` from `plot/PlotMatOS.py`. Companion to
-Companion to `TestMatrix_lab_runs.csv` (as-run index) and `mat_run_map.json`
-(orphan mats only).
+`TestMatrix_lab_runs.csv` (as-run index) and `mat_run_map.json`
+(orphan mats only). Host/lab step timing with MKR-α:
+`plot/lab/MKR_OPENFRESCO_TIMING.md`.
 
 **Paper:** Seki et al. (2026), *Computational capacity in hydrodynamic RTHS*,
 §2.1 Signal generation task — Stateflow rate-transition on the **target**
