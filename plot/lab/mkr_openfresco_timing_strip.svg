@@ -1,14 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="545" viewBox="0 0 1100 545" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222">
-  <!-- Timings: x = 140 + 31*T_w for T_w in [0,30]; send 2/14/24, force ready 10/20/30; burst 4 = finish 3 (commit 13/23 = force ready + finish) + begin 1 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1248" height="545" viewBox="0 0 1248 545" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222">
+  <!-- Timings: x = 140 + 31*T_w for T_w in [0,30] inside translate(148,0), i.e. page x = 288 + 31*T_w; cold-start gutter left of a break; send 2/14/24, force ready 10/20/30; burst 4 = finish 3 (commit 13/23 = force ready + finish) + begin 1 -->
   <defs>
     <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#444"/>
     </marker>
   </defs>
-  <rect x="0" y="0" width="1100" height="545" fill="#ffffff"/>
+  <rect x="0" y="0" width="1248" height="545" fill="#ffffff"/>
 
   <!-- Title -->
-  <text x="20" y="22" font-size="14" font-weight="bold">MKR-α + OpenFresco handshake timing (Δt_sim = 10 Δt_con; Δt_int = √λ Δt_sim; α_f = 2/3)</text>
+  <text x="20" y="22" font-size="14" font-weight="bold">MKR-α + OpenFresco handshake timing (Δt_sim = 10 Δt_con; Δt_int = √λ Δt_sim; α_f = 1/(1+√ρ∞) ≈ 0.586, ρ∞ = 0.5)</text>
+  <g transform="translate(148,0)">
 
   <!-- Window band -->
   <g stroke="#666" stroke-width="1">
@@ -33,51 +34,51 @@
 
   <!-- Lane labels -->
   <g font-size="13" font-weight="bold">
-    <text x="20" y="91">Lab</text>
-    <text x="20" y="161">Host</text>
-    <text x="20" y="339">Domain t</text>
+    <text x="-128" y="91">Lab</text>
+    <text x="-128" y="161">Host</text>
+    <text x="-128" y="339">Domain t<tspan font-size="70%" dy="2">int</tspan><tspan dy="-2"></tspan></text>
   </g>
   <g font-size="10" fill="#555">
-    <text x="20" y="104">(command)</text>
-    <text x="20" y="174">(OpenSees)</text>
+    <text x="-128" y="104">(command)</text>
+    <text x="-128" y="174">(OpenSees)</text>
   </g>
 
   <!-- Lab lane: init [0,2) | interp [2,10) | extrap [10,14) | interp [14,20) | extrap [20,24) | interp [24,30) -->
   <g stroke="#555" stroke-width="0.8">
     <rect x="140" y="72" width="62" height="28" fill="#c8c8c8"/>
-    <rect x="202" y="72" width="248" height="28" fill="#9fb6cc"/>
-    <rect x="450" y="72" width="124" height="28" fill="#d6c08f"/>
-    <rect x="574" y="72" width="186" height="28" fill="#9fb6cc"/>
-    <rect x="760" y="72" width="124" height="28" fill="#d6c08f"/>
-    <rect x="884" y="72" width="186" height="28" fill="#9fb6cc"/>
+    <rect x="202" y="72" width="248" height="28" fill="#a1c4a3"/>
+    <rect x="450" y="72" width="124" height="28" fill="#96bae3"/>
+    <rect x="574" y="72" width="186" height="28" fill="#a1c4a3"/>
+    <rect x="760" y="72" width="124" height="28" fill="#96bae3"/>
+    <rect x="884" y="72" width="186" height="28" fill="#a1c4a3"/>
   </g>
   <g text-anchor="middle" font-size="12">
     <text x="171" y="90">init</text>
-    <text x="326" y="90">interpolate → U(0+α)</text>
-    <text x="512" y="90">extrapolate</text>
-    <text x="667" y="90">interpolate → U(1+α)</text>
-    <text x="822" y="90">extrapolate</text>
-    <text x="977" y="90">interpolate → U(2+α)</text>
+    <text x="326" y="90" fill="#1b1b1b">interpolate → U(0+α)</text>
+    <text x="512" y="90" fill="#1b1b1b">extrapolate</text>
+    <text x="667" y="90" fill="#1b1b1b">interpolate → U(1+α)</text>
+    <text x="822" y="90" fill="#1b1b1b">extrapolate</text>
+    <text x="977" y="90" fill="#1b1b1b">interpolate → U(2+α)</text>
   </g>
 
-  <!-- Host lane: first begin [0,2); bursts: finish [10,13) = read [10,10.4) solve [10.4,12) commit [12,13); begin [13,14) = compute, form, advance t, send -->
+  <!-- Host lane: first begin [0,2); bursts: finish [10,13) = read [10,10.4) solve [10.4,12.65) commit [12.65,13); begin [13,14) = compute, form, advance t, send -->
   <g stroke="#555" stroke-width="0.8">
-    <rect x="140" y="142" width="22" height="28" fill="#c4a27a"/><rect x="162" y="142" width="18" height="28" fill="#cdae88"/><rect x="180" y="142" width="16" height="28" fill="#e3d0b4"/>
-    <rect x="196" y="142" width="6" height="28" fill="#86aca6"/>
+    <rect x="140" y="142" width="41" height="28" fill="#c4a27a"/><rect x="181" y="142" width="8" height="28" fill="#cdae88"/><rect x="189" y="142" width="7" height="28" fill="#e3d0b4"/>
+    <rect x="196" y="142" width="6" height="28" fill="#a6a6a6"/>
     <rect x="202" y="142" width="248" height="28" fill="#e2e2e2"/>
     <!-- burst [10,14) -->
-    <rect x="450" y="142" width="12.4" height="28" fill="#a3bfa3"/>
-    <rect x="462.4" y="142" width="49.6" height="28" fill="#7f9db5"/>
-    <rect x="512" y="142" width="31" height="28" fill="#ad9bbd"/>
+    <rect x="450" y="142" width="12.4" height="28" fill="#ddd3ea"/>
+    <rect x="462.4" y="142" width="69.75" height="28" fill="#bba9d4"/>
+    <rect x="532.15" y="142" width="10.85" height="28" fill="#9d88bf"/>
     <rect x="543" y="142" width="10" height="28" fill="#c4a27a"/><rect x="553" y="142" width="8" height="28" fill="#cdae88"/><rect x="561" y="142" width="7" height="28" fill="#e3d0b4"/>
-    <rect x="568" y="142" width="6" height="28" fill="#86aca6"/>
+    <rect x="568" y="142" width="6" height="28" fill="#a6a6a6"/>
     <rect x="574" y="142" width="186" height="28" fill="#e2e2e2"/>
     <!-- burst [20,24) -->
-    <rect x="760" y="142" width="12.4" height="28" fill="#a3bfa3"/>
-    <rect x="772.4" y="142" width="49.6" height="28" fill="#7f9db5"/>
-    <rect x="822" y="142" width="31" height="28" fill="#ad9bbd"/>
+    <rect x="760" y="142" width="12.4" height="28" fill="#ddd3ea"/>
+    <rect x="772.4" y="142" width="69.75" height="28" fill="#bba9d4"/>
+    <rect x="842.15" y="142" width="10.85" height="28" fill="#9d88bf"/>
     <rect x="853" y="142" width="10" height="28" fill="#c4a27a"/><rect x="863" y="142" width="8" height="28" fill="#cdae88"/><rect x="871" y="142" width="7" height="28" fill="#e3d0b4"/>
-    <rect x="878" y="142" width="6" height="28" fill="#86aca6"/>
+    <rect x="878" y="142" width="6" height="28" fill="#a6a6a6"/>
     <rect x="884" y="142" width="186" height="28" fill="#e2e2e2"/>
   </g>
   <!-- seams at T_w = 13 / 23: finish step n | begin step n+1 -->
@@ -109,8 +110,35 @@
     <text x="888" y="125">send U(2+α)</text>
   </g>
 
+  <!-- Cold-start gutter (not to scale): x in [-8,116] here = [140,264] on page (4 Δt_con drawn); T_w = 0 at x = 140 (page 288) -->
+  <text x="54" y="38" font-size="10" fill="#444" text-anchor="middle">not to scale</text><text x="54" y="50" font-size="10" fill="#444" text-anchor="middle">≃ several Δt_sim</text>
+  <g stroke="#555" stroke-width="0.8">
+    <rect x="-8" y="72" width="124" height="28" fill="#c8c8c8"/>
+    <rect x="-8" y="142" width="124" height="28" fill="#5f6b7a"/>
+  </g>
+  <text x="54" y="90" text-anchor="middle">init</text>
+  <text x="54" y="160" text-anchor="middle" fill="#ffffff" font-size="10.5">assemble + factorize</text>
+  <!-- axis breaks: lab, host -->
+  <g stroke="#222" stroke-width="1.2">
+    <line x1="120" y1="104" x2="128" y2="68"/><line x1="128" y1="104" x2="136" y2="68"/>
+    <line x1="120" y1="174" x2="128" y2="138"/><line x1="128" y1="174" x2="136" y2="138"/>
+  </g>
+
   <!-- Domain t, Interface U and T_w axis: shifted down 96 px to make room for zooms under the host lane -->
   <g transform="translate(0,96)">
+  <!-- Cold-start gutter, lower lanes: domain t = 0, interface at rest, axis -->
+  <rect x="-8" y="196" width="124" height="84" fill="#f6f6f4" stroke="#bbb" stroke-width="0.8"/>
+  <path d="M-8,270 H116" fill="none" stroke="#3d5a73" stroke-width="2"/>
+  <rect x="-8" y="290" width="124" height="112" fill="#f6f6f4" stroke="#bbb" stroke-width="0.8"/>
+  <line x1="-8" y1="386" x2="116" y2="386" stroke="#c4c4c4" stroke-width="0.8"/>
+  <path d="M-8,386 H116" fill="none" stroke="#9e9e9e" stroke-width="2"/>
+  <line x1="-8" y1="416" x2="116" y2="416" stroke="#222" stroke-width="1"/>
+  <line x1="-8" y1="416" x2="-8" y2="423" stroke="#222" stroke-width="0.8"/>
+  <g stroke="#222" stroke-width="1.2">
+    <line x1="120" y1="284" x2="128" y2="192"/><line x1="128" y1="284" x2="136" y2="192"/>
+    <line x1="120" y1="406" x2="128" y2="286"/><line x1="128" y1="406" x2="136" y2="286"/>
+    <line x1="120" y1="424" x2="128" y2="408"/><line x1="128" y1="424" x2="136" y2="408"/>
+  </g>
   <!-- Domain time lane: risers at send (2/14/24) and commit (13/23); levels schematic -->
   <rect x="140" y="196" width="930" height="84" fill="#f6f6f4" stroke="#bbb" stroke-width="0.8"/>
   <path d="M140,270 H202 V258 H543 V246 H574 V234 H853 V222 H884 V210 H1070" fill="none" stroke="#3d5a73" stroke-width="2"/>
@@ -121,7 +149,7 @@
     <circle cx="1070" cy="210" r="4.5"/>
   </g>
   <g font-size="11" fill="#2b3f52">
-    <text x="136" y="273" text-anchor="end">0</text>
+    <text x="112" y="266" text-anchor="end">0</text>
     <text x="206" y="254">α_f</text>
     <text x="547" y="242">1</text>
     <text x="578" y="230">1+α_f</text>
@@ -133,58 +161,65 @@
        tar U(n+α) = 2 sin(πT/120) at force ready: 0.518, 1.000, 1.414; comSig per plot_mkr_disp_vs_tw.py actuator() -->
   <rect x="140" y="290" width="930" height="112" fill="#f6f6f4" stroke="#bbb" stroke-width="0.8"/>
   <line x1="140" y1="386" x2="1070" y2="386" stroke="#c4c4c4" stroke-width="0.8"/>
-  <text x="20" y="350" font-size="13" font-weight="bold">Interface U</text>
+  <text x="-128" y="350" font-size="13" font-weight="bold">Interface U</text>
   <!-- extrapolation if no new target (ghosts after send 14 / 24) -->
-  <g fill="none" stroke="#2a9d8f" stroke-width="1" stroke-dasharray="4,3" opacity="0.5">
+  <g fill="none" stroke="#1565c0" stroke-width="1" stroke-dasharray="4,3" opacity="0.45">
     <path d="M574.0,347.2 L605.0,343.9 L636.0,340.7 L667.0,337.5 L698.0,334.2 L729.0,331.0 L760.0,327.8"/>
     <path d="M884.0,334.0 L915.0,334.2 L946.0,334.7 L977.0,335.4 L1008.0,336.5 L1039.0,337.8 L1070.0,339.3"/>
   </g>
-  <!-- command (comSig) -->
-  <path d="M140.0,386.0 L202.0,386.0 L217.5,384.4 L233.0,382.8 L248.5,381.1 L264.0,379.5 L279.5,377.9 L295.0,376.3 L310.5,374.7 L326.0,373.1 L341.5,371.4 L357.0,369.8 L372.5,368.2 L388.0,366.6 L403.5,365.0 L419.0,363.4 L434.5,361.7 L450.0,360.1 L465.5,358.5 L481.0,356.9 L496.5,355.3 L512.0,353.6 L527.5,352.0 L543.0,350.4 L558.5,348.8 L574.0,347.2 L589.5,345.9 L605.0,344.6 L620.5,343.5 L636.0,342.4 L651.5,341.3 L667.0,340.4 L682.5,339.5 L698.0,338.6 L713.5,337.9 L729.0,337.2 L744.5,336.6 L760.0,336.0 L775.5,335.5 L791.0,335.1 L806.5,334.7 L822.0,334.5 L837.5,334.3 L853.0,334.1 L868.5,334.0 L884.0,334.0 L899.5,333.2 L915.0,332.2 L930.5,331.1 L946.0,329.9 L961.5,328.5 L977.0,327.0 L992.5,325.4 L1008.0,323.6 L1023.5,321.8 L1039.0,319.7 L1054.5,317.6 L1070.0,315.3" fill="none" stroke="#2a9d8f" stroke-width="2"/>
+  <!-- command (comSig), colored by lab phase: grey init, green interpolate, blue extrapolate -->
+  <g fill="none" stroke-width="2">
+    <path d="M140,386.0 L202,386.0" stroke="#9e9e9e"/>
+    <path d="M202,386.0 L217.5,384.4 L233,382.8 L248.5,381.1 L264,379.5 L279.5,377.9 L295,376.3 L310.5,374.7 L326,373.1 L341.5,371.4 L357,369.8 L372.5,368.2 L388,366.6 L403.5,365.0 L419,363.4 L434.5,361.7 L450,360.1" stroke="#2e7d32"/>
+    <path d="M450,360.1 L465.5,358.5 L481,356.9 L496.5,355.3 L512,353.6 L527.5,352.0 L543,350.4 L558.5,348.8 L574,347.2" stroke="#1565c0"/>
+    <path d="M574,347.2 L589.5,345.9 L605,344.6 L620.5,343.5 L636,342.4 L651.5,341.3 L667,340.4 L682.5,339.5 L698,338.6 L713.5,337.9 L729,337.2 L744.5,336.6 L760,336.0" stroke="#2e7d32"/>
+    <path d="M760,336.0 L775.5,335.5 L791,335.1 L806.5,334.7 L822,334.5 L837.5,334.3 L853,334.1 L868.5,334.0 L884,334.0" stroke="#1565c0"/>
+    <path d="M884,334.0 L899.5,333.2 L915,332.2 L930.5,331.1 L946,329.9 L961.5,328.5 L977,327.0 L992.5,325.4 L1008,323.6 L1023.5,321.8 L1039,319.7 L1054.5,317.6 L1070,315.3" stroke="#2e7d32"/>
+  </g>
   <!-- target (tar) U(n+α): steps at send 2 / 14 / 24 -->
-  <path d="M140,386 H202 V360.1 H574 V336 H884 V315.3 H1070" fill="none" stroke="#1f4e79" stroke-width="2"/>
-  <g fill="#ffffff" stroke="#1f4e79" stroke-width="1.6">
+  <path d="M140,386 H202 V360.1 H574 V336 H884 V315.3 H1070" fill="none" stroke="#212121" stroke-width="2"/>
+  <g fill="#ffffff" stroke="#212121" stroke-width="1.6">
     <circle cx="202" cy="360.1" r="4"/><circle cx="574" cy="336" r="4"/><circle cx="884" cy="315.3" r="4"/>
   </g>
-  <!-- command samples every Δt_con: grey = init, white = extrapolate, filled = interpolate (force ready at 10/20/30 lands on target) -->
+  <!-- command samples every Δt_con: grey = init, white/blue = extrapolate, green = interpolate (lab-lane colors) (force ready at 10/20/30 lands on target) -->
   <g stroke-width="1.3">
     <circle cx="140.0" cy="386.0" r="3" fill="#ffffff" stroke="#9e9e9e"/>
     <circle cx="171.0" cy="386.0" r="3" fill="#ffffff" stroke="#9e9e9e"/>
     <circle cx="202.0" cy="386.0" r="3" fill="#ffffff" stroke="#9e9e9e"/>
-    <circle cx="233.0" cy="382.8" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="264.0" cy="379.5" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="295.0" cy="376.3" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="326.0" cy="373.1" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="357.0" cy="369.8" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="388.0" cy="366.6" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="419.0" cy="363.4" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="450.0" cy="360.1" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="481.0" cy="356.9" r="3" fill="#ffffff" stroke="#2a9d8f"/>
-    <circle cx="512.0" cy="353.6" r="3" fill="#ffffff" stroke="#2a9d8f"/>
-    <circle cx="543.0" cy="350.4" r="3" fill="#ffffff" stroke="#2a9d8f"/>
-    <circle cx="574.0" cy="347.2" r="3" fill="#ffffff" stroke="#2a9d8f"/>
-    <circle cx="605.0" cy="344.6" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="636.0" cy="342.4" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="667.0" cy="340.4" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="698.0" cy="338.6" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="729.0" cy="337.2" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="760.0" cy="336.0" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="791.0" cy="335.1" r="3" fill="#ffffff" stroke="#2a9d8f"/>
-    <circle cx="822.0" cy="334.5" r="3" fill="#ffffff" stroke="#2a9d8f"/>
-    <circle cx="853.0" cy="334.1" r="3" fill="#ffffff" stroke="#2a9d8f"/>
-    <circle cx="884.0" cy="334.0" r="3" fill="#ffffff" stroke="#2a9d8f"/>
-    <circle cx="915.0" cy="332.2" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="946.0" cy="329.9" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="977.0" cy="327.0" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="1008.0" cy="323.6" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="1039.0" cy="319.7" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
-    <circle cx="1070.0" cy="315.3" r="3" fill="#2a9d8f" stroke="#2a9d8f"/>
+    <circle cx="233.0" cy="382.8" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="264.0" cy="379.5" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="295.0" cy="376.3" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="326.0" cy="373.1" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="357.0" cy="369.8" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="388.0" cy="366.6" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="419.0" cy="363.4" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="450.0" cy="360.1" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="481.0" cy="356.9" r="3" fill="#ffffff" stroke="#1565c0"/>
+    <circle cx="512.0" cy="353.6" r="3" fill="#ffffff" stroke="#1565c0"/>
+    <circle cx="543.0" cy="350.4" r="3" fill="#ffffff" stroke="#1565c0"/>
+    <circle cx="574.0" cy="347.2" r="3" fill="#ffffff" stroke="#1565c0"/>
+    <circle cx="605.0" cy="344.6" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="636.0" cy="342.4" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="667.0" cy="340.4" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="698.0" cy="338.6" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="729.0" cy="337.2" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="760.0" cy="336.0" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="791.0" cy="335.1" r="3" fill="#ffffff" stroke="#1565c0"/>
+    <circle cx="822.0" cy="334.5" r="3" fill="#ffffff" stroke="#1565c0"/>
+    <circle cx="853.0" cy="334.1" r="3" fill="#ffffff" stroke="#1565c0"/>
+    <circle cx="884.0" cy="334.0" r="3" fill="#ffffff" stroke="#1565c0"/>
+    <circle cx="915.0" cy="332.2" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="946.0" cy="329.9" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="977.0" cy="327.0" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="1008.0" cy="323.6" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="1039.0" cy="319.7" r="3" fill="#2e7d32" stroke="#2e7d32"/>
+    <circle cx="1070.0" cy="315.3" r="3" fill="#2e7d32" stroke="#2e7d32"/>
   </g>
   <g font-size="10.5">
-    <text x="210" y="354" fill="#1f4e79">target U(0+α)</text>
-    <text x="582" y="330" fill="#1f4e79">U(1+α)</text>
-    <text x="892" y="309" fill="#1f4e79">U(2+α)</text>
-    <text x="600" y="359" fill="#2a9d8f">command</text>
+    <text x="210" y="354" fill="#212121">target U(0+α)</text>
+    <text x="582" y="330" fill="#212121">U(1+α)</text>
+    <text x="892" y="309" fill="#212121">U(2+α)</text>
+    <text x="600" y="359" fill="#444">command</text>
   </g>
 
   <!-- Wall-time axis: minor tick every Δt_con; major at 10, 20, 30 -->
@@ -196,41 +231,41 @@
     <line x1="605" y1="416" x2="605" y2="419"/><line x1="636" y1="416" x2="636" y2="419"/><line x1="667" y1="416" x2="667" y2="419"/><line x1="698" y1="416" x2="698" y2="419"/><line x1="729" y1="416" x2="729" y2="419"/>
     <line x1="791" y1="416" x2="791" y2="419"/><line x1="822" y1="416" x2="822" y2="419"/><line x1="853" y1="416" x2="853" y2="419"/>
     <line x1="915" y1="416" x2="915" y2="419"/><line x1="946" y1="416" x2="946" y2="419"/><line x1="977" y1="416" x2="977" y2="419"/><line x1="1008" y1="416" x2="1008" y2="419"/><line x1="1039" y1="416" x2="1039" y2="419"/>
-    <line x1="140" y1="416" x2="140" y2="419"/><line x1="202" y1="416" x2="202" y2="419"/><line x1="450" y1="416" x2="450" y2="423"/><line x1="574" y1="416" x2="574" y2="419"/>
+    <line x1="140" y1="416" x2="140" y2="423"/><line x1="202" y1="416" x2="202" y2="419"/><line x1="450" y1="416" x2="450" y2="423"/><line x1="574" y1="416" x2="574" y2="419"/>
     <line x1="760" y1="416" x2="760" y2="423"/><line x1="884" y1="416" x2="884" y2="419"/><line x1="1070" y1="416" x2="1070" y2="423"/>
   </g>
   <g font-size="11" text-anchor="middle">
-    <text x="450" y="436">10</text>
-    <text x="760" y="436">20</text><text x="1070" y="436">30</text>
+    <text x="-8" y="436">0</text><text x="140" y="436"><tspan font-style="italic">k</tspan></text><text x="450" y="436"><tspan font-style="italic">k</tspan>+10</text>
+    <text x="760" y="436"><tspan font-style="italic">k</tspan>+20</text><text x="1070" y="436"><tspan font-style="italic">k</tspan>+30</text>
   </g>
-  <text x="20" y="436" font-size="12" font-weight="bold">T_w / Δt_con</text>
-  <text x="20" y="260" font-size="12" font-weight="bold">t / (√λ Δt_sim)</text>
+  <text x="-128" y="436" font-size="12" font-weight="bold">t / Δt_con</text>
+  <text x="-128" y="260" font-size="12" font-weight="bold">t<tspan font-size="70%" dy="2">int</tspan><tspan dy="-2"> / (√λ Δt_sim)</tspan></text>
 
   </g>
-  <!-- Zoom connectors: host lane (y=171) to zooms just below; A covers [0,2], B covers [10,14] -->
+  <!-- Zoom connectors: A covers first begin [0,2], B covers [10,14] -->
   <g stroke="#999" stroke-width="0.8" stroke-dasharray="2,3" fill="none">
     <line x1="140" y1="171" x2="140" y2="190"/>
-    <line x1="202" y1="171" x2="400" y2="190"/>
+    <line x1="202" y1="171" x2="441" y2="190"/>
     <line x1="450" y1="171" x2="540" y2="190"/>
     <line x1="574" y1="171" x2="1070" y2="190"/>
   </g>
   <!-- Zooms: shifted up 256 px to sit directly under the host lane -->
   <g transform="translate(0,-256)">
-  <!-- Zoom A: T_w [0,2] -->
+  <!-- Zoom A: first begin [0,2) -->
   <text x="140" y="460" font-size="12" font-weight="bold">A · first send</text>
-  <path d="M140,477 V474 H370 V477" fill="none" stroke="#555" stroke-width="0.8"/>
-  <text x="255" y="470" font-size="9.5" fill="#555" text-anchor="middle">begin step</text>
+  <path d="M140,477 V474 H406 V477" fill="none" stroke="#555" stroke-width="0.8"/>
+  <text x="273" y="470" font-size="9.5" fill="#555" text-anchor="middle">begin step</text>
   <g stroke="#555" stroke-width="0.8">
-    <rect x="140" y="482" width="70" height="30" fill="#c4a27a"/>
-    <rect x="210" y="482" width="70" height="30" fill="#cdae88"/>
-    <rect x="280" y="482" width="90" height="30" fill="#e3d0b4"/>
-    <rect x="370" y="482" width="30" height="30" fill="#86aca6"/>
+    <rect x="140" y="482" width="166" height="30" fill="#c4a27a"/>
+    <rect x="306" y="482" width="50" height="30" fill="#cdae88"/>
+    <rect x="356" y="482" width="50" height="30" fill="#e3d0b4"/>
+    <rect x="406" y="482" width="35" height="30" fill="#a6a6a6"/>
   </g>
   <g text-anchor="middle" font-size="9.5">
-    <text x="175" y="495">compute</text><text x="175" y="507">U₁ from Ü₀</text>
-    <text x="245" y="495">form</text><text x="245" y="507">U(0+α)</text>
-    <text x="325" y="495">advance t</text><text x="325" y="507">t → α_f</text>
-    <text x="385" y="501">send</text>
+    <text x="223" y="495">compute</text><text x="223" y="507">U₁ from Ü₀</text>
+    <text x="331" y="495" font-size="9">form</text><text x="331" y="507" font-size="9">U(0+α)</text>
+    <text x="381" y="495" font-size="9">advance</text><text x="381" y="507" font-size="9">t<tspan font-size="70%" dy="2">int</tspan><tspan dy="-2"> → α_f</tspan></text>
+    <text x="423.5" y="501">send</text>
   </g>
 
   <!-- Zoom B: T_w [10,14], 3 + 1 split; seam at 13 -->
@@ -240,24 +275,25 @@
   <path d="M880,477 V474 H1035 V477" fill="none" stroke="#555" stroke-width="0.8"/>
   <text x="957" y="470" font-size="9.5" fill="#555" text-anchor="middle">begin step</text>
   <g stroke="#555" stroke-width="0.8">
-    <rect x="540" y="482" width="40" height="30" fill="#a3bfa3"/>
-    <rect x="580" y="482" width="180" height="30" fill="#7f9db5"/>
-    <rect x="760" y="482" width="110" height="30" fill="#ad9bbd"/>
+    <rect x="540" y="482" width="44" height="30" fill="#ddd3ea"/>
+    <rect x="584" y="482" width="247.5" height="30" fill="#bba9d4"/>
+    <rect x="831.5" y="482" width="38.5" height="30" fill="#9d88bf"/>
     <rect x="880" y="482" width="55" height="30" fill="#c4a27a"/>
     <rect x="935" y="482" width="50" height="30" fill="#cdae88"/>
     <rect x="985" y="482" width="50" height="30" fill="#e3d0b4"/>
-    <rect x="1035" y="482" width="35" height="30" fill="#86aca6"/>
+    <rect x="1035" y="482" width="35" height="30" fill="#a6a6a6"/>
   </g>
   <line x1="875" y1="478" x2="875" y2="516" stroke="#222" stroke-width="1.5"/>
   <g text-anchor="middle" font-size="9.5">
-    <text x="560" y="495">read</text><text x="560" y="507">force</text>
-    <text x="670" y="501" font-size="11">solve Ü₁</text>
-    <text x="815" y="495">commit</text><text x="815" y="507">t → 1</text>
+    <text x="562" y="495">read</text><text x="562" y="507">force</text>
+    <text x="708" y="501" font-size="11">solve Ü₁</text>
+    <text x="851" y="495" font-size="8.5">commit</text><text x="851" y="507" font-size="8.5">t<tspan font-size="70%" dy="2">int</tspan><tspan dy="-2"> → 1</tspan></text>
     <text x="907.5" y="495" font-size="9">compute</text><text x="907.5" y="507" font-size="9">U₂ from Ü₁</text>
     <text x="960" y="495">form</text><text x="960" y="507">U(1+α)</text>
-    <text x="1010" y="495" font-size="9">advance t</text><text x="1010" y="507" font-size="9">t → 1+α_f</text>
+    <text x="1010" y="495" font-size="9">advance</text><text x="1010" y="507" font-size="8.5">t<tspan font-size="70%" dy="2">int</tspan><tspan dy="-2"> → 1+α_f</tspan></text>
     <text x="1052.5" y="501">send</text>
   </g>
 
+  </g>
   </g>
 </svg>

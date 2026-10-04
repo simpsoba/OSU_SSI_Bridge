@@ -15,6 +15,7 @@ zoom (typeConv3 + comSig phase markers) of the shaded band.
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -33,8 +34,9 @@ TEST_ID = "F05"
 N_WIN = 6
 N_COUNT = 10
 N_SAMP = N_WIN * N_COUNT
-# MKR ρ∞=0.5 → α_f = 2/3 (target at n+α)
-ALPHA_F = 2.0 / 3.0
+# CudaMKR / MKRAlphaExplicitMultiSOE ρ_∞^eq = 0.5 → α_f = 1/(1+√ρ) ≈ 0.5858
+RHO_INF_EQ = 0.5
+ALPHA_F = 1.0 / (1.0 + math.sqrt(RHO_INF_EQ))
 # top panel: ~4 cycles (T≈1.7 s model near this zoom)
 N_CYCLES_TOP = 4
 T_CYCLE_MODEL_S = 1.7

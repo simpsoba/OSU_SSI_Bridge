@@ -12,6 +12,7 @@ Bottom: tar U_{n+α} on t_k = offset + (k+α_f) Δt_sim vs comSig on lab Time.
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -26,7 +27,9 @@ OUT = Path(__file__).with_name("clock_offset_start")
 MAT_STEM = "0821_GusBridge_rowNeg4"
 TEST_ID = "F05"
 N_COUNT = 10
-ALPHA_F = 2.0 / 3.0
+# CudaMKR / MKRAlphaExplicitMultiSOE ρ_∞^eq = 0.5 → α_f = 1/(1+√ρ) ≈ 0.5858
+RHO_INF_EQ = 0.5
+ALPHA_F = 1.0 / (1.0 + math.sqrt(RHO_INF_EQ))
 
 COLOR_OS = "#1f4e79"
 COLOR_COM = "#2a9d8f"

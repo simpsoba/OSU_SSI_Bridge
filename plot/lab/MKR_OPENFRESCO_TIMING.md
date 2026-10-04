@@ -15,7 +15,14 @@ Wiring in `Run.tcl` / `RunParallel.tcl` (`realTimeON 1`):
 ## 1. What MKR asks for
 
 MKR forms equilibrium at the weighted station \(t_n + \alpha_f\Delta t\), not at
-\(t_{n+1}\). With \(\rho_\infty = 0.5\), \(\alpha_f = 2/3\).
+\(t_{n+1}\). For `MKRAlphaExplicitMultiSOE` / `CudaMKRAlpha` with
+\(\rho_\infty^{\mathrm{eq}}=0.5\),
+
+\[
+\alpha_f=\frac{1}{1+\sqrt{\rho_\infty^{\mathrm{eq}}}}=2-\sqrt{2}\approx 0.5858
+\]
+
+(not the KR-α map \(\alpha_f=1/(1+\rho)=2/3\)).
 
 Inside `newStep` (ExplicitAlpha / MKR family):
 
@@ -72,7 +79,7 @@ Assumptions (illustrative sub-ms stamps):
 |----------|--------|
 | \(\Delta t = \Delta t_\mathrm{int} = \Delta t_\mathrm{sim}\) | \(0.010\,\mathrm{s}\) |
 | \(\Delta t_\mathrm{con}\) | \(0.001\,\mathrm{s}\) → \(N = 10\) counts / window |
-| \(\alpha_f\) | \(2/3\) → \(\alpha_f\Delta t \approx 0.0067\,\mathrm{s}\) |
+| \(\alpha_f\) | \(2-\sqrt{2}\approx 0.5858\) → \(\alpha_f\Delta t \approx 0.0059\,\mathrm{s}\) (mock \(\Delta t=0.010\)) |
 | Host work after each force | ~\(4\,\mathrm{ms}\) / count ~4 (read / solve / commit / predict / form / send) — ~40% of window extrapolate, ~60% interpolate (healthy-run order; cf. `STATEOS_SIGNALS.md` ~37% extrap) |
 | First begin-step (before any force) | ~\(2\,\mathrm{ms}\) (predict \(U_1\) / form \(U_{0+\alpha}\) / send) — not instantaneous; no prior solve |
 | Healthy run | later targets land ~count 4; no slowdown |
@@ -95,17 +102,17 @@ tail after later commits (cold start / first `newStep`).
 |---:|---:|---|---|
 | 0.0000 | 0.0000 | window 0, count 1 | **begin step:** predict \(U_1\) from \(\ddot U_0\) |
 | 0.0008 | 0.0000 | count 1–2 | form \(U_{0+\alpha}\) (in progress) |
-| 0.0015 | **0.0067** | count 2 | set domain time to \(0+\alpha\) |
-| **0.0020** | 0.0067 | receives target | **send** \(U_{0+\alpha}\) |
-| 0.0021 | 0.0067 | extrap → interp | **block** on `atTarget` |
+| 0.0015 | **0.0059** | count 2 | set domain time to \(0+\alpha\) |
+| **0.0020** | 0.0059 | receives target | **send** \(U_{0+\alpha}\) |
+| 0.0021 | 0.0059 | extrap → interp | **block** on `atTarget` |
 
 ### Window 0 (host waiting)
 
 | \(T_w\) | count | Lab | Domain \(t\) | Host |
 |---:|---:|---|---:|---|
-| 0.0021–0.0060 | 3–7 | interp toward \(U_{0+\alpha}\) | 0.0067 | blocked |
-| 0.0070–0.0090 | 8–10 | interp → \(U_{0+\alpha}\) | 0.0067 | blocked |
-| **0.0100** | end | **`atTarget`** | 0.0067 | unblock |
+| 0.0021–0.0060 | 3–7 | interp toward \(U_{0+\alpha}\) | 0.0059 | blocked |
+| 0.0070–0.0090 | 8–10 | interp → \(U_{0+\alpha}\) | 0.0059 | blocked |
+| **0.0100** | end | **`atTarget`** | 0.0059 | unblock |
 
 Force for the residual is **not** mid-flight: `acquire()` waits for
 `atTarget`, then reads daq.
@@ -114,50 +121,50 @@ Force for the residual is **not** mid-flight: `acquire()` waits for
 
 | \(T_w\) | count | Lab | Domain \(t\) | Host |
 |---:|---:|---|---:|---|
-| 0.0100 | 1 | window 1 starts; extrapolate | 0.0067 | **read** \(F\) at \(U_{0+\alpha}\) |
-| 0.0108 | 1–2 | extrapolate | 0.0067 | **solve** \(\ddot U_1\) (in progress) |
-| 0.0114 | 2 | extrapolate | 0.0067 | **solve** \(\ddot U_1\) (done) |
+| 0.0100 | 1 | window 1 starts; extrapolate | 0.0059 | **read** \(F\) at \(U_{0+\alpha}\) |
+| 0.0108 | 1–2 | extrapolate | 0.0059 | **solve** \(\ddot U_1\) (in progress) |
+| 0.0114 | 2 | extrapolate | 0.0059 | **solve** \(\ddot U_1\) (done) |
 | 0.0117 | 2 | extrapolate | **0.0100** | **commit** \(n=1\) |
 | 0.0123 | 3 | extrapolate | 0.0100 | **predict** \(U_2\) from \(\ddot U_1\) |
 | 0.0129 | 3 | extrapolate | 0.0100 | **form** \(U_{1+\alpha}\) |
-| 0.0135 | 4 | extrapolate | **0.0167** | set domain time to \(1+\alpha\) |
-| **0.0140** | 4 | flag → **interpolate** | 0.0167 | **send** \(U_{1+\alpha}\) |
-| 0.0141 | 4 | interp toward \(U_{1+\alpha}\) | 0.0167 | **block** on `atTarget` |
+| 0.0135 | 4 | extrapolate | **0.0159** | set domain time to \(1+\alpha\) |
+| **0.0140** | 4 | flag → **interpolate** | 0.0159 | **send** \(U_{1+\alpha}\) |
+| 0.0141 | 4 | interp toward \(U_{1+\alpha}\) | 0.0159 | **block** on `atTarget` |
 
 ### Rest of window 1
 
 | \(T_w\) | count | Lab | Domain \(t\) | Host |
 |---:|---:|---|---:|---|
-| 0.0141–0.0190 | 4–10 | interp → \(U_{1+\alpha}\) | 0.0167 | blocked |
-| **0.0200** | end | **`atTarget`** | 0.0167 | unblock |
+| 0.0141–0.0190 | 4–10 | interp → \(U_{1+\alpha}\) | 0.0159 | blocked |
+| **0.0200** | end | **`atTarget`** | 0.0159 | unblock |
 
 ### After force 1 (same ~4 ms burst into window 2)
 
 | \(T_w\) | count | Lab | Domain \(t\) | Host |
 |---:|---:|---|---:|---|
-| 0.0200 | 1 | window 2; extrapolate | 0.0167 | **read** \(F\) at \(U_{1+\alpha}\) |
-| 0.0208 | 1–2 | extrapolate | 0.0167 | **solve** \(\ddot U_2\) (in progress) |
-| 0.0214 | 2 | extrapolate | 0.0167 | **solve** \(\ddot U_2\) (done) |
+| 0.0200 | 1 | window 2; extrapolate | 0.0159 | **read** \(F\) at \(U_{1+\alpha}\) |
+| 0.0208 | 1–2 | extrapolate | 0.0159 | **solve** \(\ddot U_2\) (in progress) |
+| 0.0214 | 2 | extrapolate | 0.0159 | **solve** \(\ddot U_2\) (done) |
 | 0.0217 | 2 | extrapolate | **0.0200** | **commit** \(n=2\) |
 | 0.0223 | 3 | extrapolate | 0.0200 | **predict** \(U_3\) |
 | 0.0229 | 3 | extrapolate | 0.0200 | **form** \(U_{2+\alpha}\) |
-| 0.0235 | 4 | extrapolate | **0.0267** | set domain time to \(2+\alpha\) |
-| **0.0240** | 4 | → **interpolate** | 0.0267 | **send** \(U_{2+\alpha}\) |
-| 0.0241 | 4 | interp toward \(U_{2+\alpha}\) | 0.0267 | **block** on `atTarget` |
+| 0.0235 | 4 | extrapolate | **0.0259** | set domain time to \(2+\alpha\) |
+| **0.0240** | 4 | → **interpolate** | 0.0259 | **send** \(U_{2+\alpha}\) |
+| 0.0241 | 4 | interp toward \(U_{2+\alpha}\) | 0.0259 | **block** on `atTarget` |
 
 ### Strip
 
 ![MKR-α + OpenFresco timing strip](mkr_openfresco_timing_strip.svg)
 
-*\(T_w\) in units of \(\Delta t_\mathrm{con}\) (\(\Delta t_\mathrm{sim}=10\,\Delta t_\mathrm{con}\), \(\alpha_f=2/3\)). Lab / host / domain \(t\) / tar–comSig lanes. Zoom A: first begin (~2) predicts \(U_1\), forms/sends \(U_{0+\alpha}\). Zoom B: after force-ready, finish (~3: read / solve / commit) then begin (~1: predict / form / send); ~40% of the window extrapolating.*
+*\(T_w\) in units of \(\Delta t_\mathrm{con}\) (\(\Delta t_\mathrm{sim}=10\,\Delta t_\mathrm{con}\), MKR \(\alpha_f\approx 0.5858\)). Lab / host / domain \(t\) / tar–comSig lanes. Zoom A: first begin (~2) predicts \(U_1\), forms/sends \(U_{0+\alpha}\). Zoom B: after force-ready, finish (~3: read / solve / commit) then begin (~1: predict / form / send); ~40% of the window extrapolating.*
 
 ### Domain \(t\) and displacements vs \(T_w\)
 
 Three-window **mockup** with the same clocks as the strip
 (\(\Delta t_\mathrm{sim}=10\,\Delta t_\mathrm{con}\), first begin \(\approx 2\),
 later burst = finish \(\approx 3\) + begin \(\approx 1\) / ~40% extrap,
-\(\alpha_f=2/3\), no slowdown). \(U_{n+\alpha}\) from a slow sine (peak at
-\(T_w=60\)). Script: `plot_mkr_disp_vs_tw.py`.
+MKR \(\alpha_f=1/(1+\sqrt{0.5})\approx 0.5858\), no slowdown). \(U_{n+\alpha}\)
+from a slow sine (peak at \(T_w=60\)). Script: `plot_mkr_disp_vs_tw.py`.
 
 ![Domain time and tar / comSig vs wall time](mkr_disp_vs_tw.png)
 
@@ -183,11 +190,11 @@ target lands.
 | Host station | Domain \(t\) | Wall when committed / forced | Actuator ≈ |
 |---|---:|---|---|
 | \(n=0\) | 0.0000 | \(T_w=0\) | \(U_0\) |
-| send \(U_{0+\alpha}\) | 0.0067 | \(T_w\approx 0.002\) (first begin) | leaving \(U_0\) toward \(U_{0+\alpha}\) |
-| \(0+\alpha\) (force) | 0.0067 | `atTarget` at \(T_w=0.010\) | \(U_{0+\alpha}\) |
+| send \(U_{0+\alpha}\) | 0.0059 | \(T_w\approx 0.002\) (first begin) | leaving \(U_0\) toward \(U_{0+\alpha}\) |
+| \(0+\alpha\) (force) | 0.0059 | `atTarget` at \(T_w=0.010\) | \(U_{0+\alpha}\) |
 | \(n=1\) (commit) | 0.0100 | \(T_w\approx 0.011\) | still \(U_{0+\alpha}\) (extrap starting) |
-| send \(U_{1+\alpha}\) | 0.0167 | \(T_w=0.014\) | leaving \(U_{0+\alpha}\) toward \(U_{1+\alpha}\) |
-| \(1+\alpha\) (force) | 0.0167 | \(T_w=0.020\) | \(U_{1+\alpha}\) |
+| send \(U_{1+\alpha}\) | 0.0159 | \(T_w=0.014\) | leaving \(U_{0+\alpha}\) toward \(U_{1+\alpha}\) |
+| \(1+\alpha\) (force) | 0.0159 | \(T_w=0.020\) | \(U_{1+\alpha}\) |
 | \(n=2\) (commit) | 0.0200 | \(T_w\approx 0.021\) | still \(U_{1+\alpha}\) |
 
 ### Real-time budget (this mockup)
@@ -267,9 +274,9 @@ So `comSig` should reach that tar level about
 (1-\alpha_f)\,\Delta t_{\mathrm{sim}}
 \]
 
-later (\(\approx 1.63\,\mathrm{ms}\) on F05 with \(\alpha_f=2/3\)). Checked on
-F05 no-slowdown windows: median com-arrival lag equals that value (to the
-sample grid). First-1 mm com−tar is the same order (~1 ms).
+later (\(\approx 2.02\,\mathrm{ms}\) on F05 with MKR \(\alpha_f\approx 0.5858\)).
+Checked on F05 no-slowdown windows with that \(\alpha_f\) on the OS send grid.
+First-1 mm com−tar is the same order.
 
 Do **not** use pier-top UX for this check: the pier recorder is committed
 \(U_{n+1}\) samples, not the \(\alpha\)-stations on SCRAMNet. Use `tarSig`.

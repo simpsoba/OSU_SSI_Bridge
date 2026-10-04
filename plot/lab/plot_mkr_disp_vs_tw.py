@@ -3,7 +3,8 @@
 Three-window MKR–OpenFresco mockup: domain t and interface disp vs T_w.
 
 Clocks from healthy lab proportions (F06 / STATEOS_SIGNALS):
-  Δt_con = 1, Δt_sim = Δt_int = 10, α_f = 2/3, no slowdown.
+  Δt_con = 1, Δt_sim = Δt_int = 10, no slowdown.
+  MKR ρ_∞^eq = 0.5 → α_f = 1/(1+√ρ) = 2-√2 ≈ 0.5858 (not KR's 2/3).
   Host burst after force ≈ 4 Δt_con (~40% extrap): finish ≈ 3, begin ≈ 1.
   First begin ≈ 2 (no prior finish). Plot window: T_w / Δt_con ∈ [0, 30].
 
@@ -16,6 +17,7 @@ Targets U_{n+α} from a slow sine (peak at T_w=60).
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -28,7 +30,9 @@ from lab_paths import CYLINDER_LENGTH_SCALE  # noqa: E402
 
 OUT = Path(__file__).with_name("mkr_disp_vs_tw")
 DT = 10.0
-AF = 2.0 / 3.0
+# CudaMKRAlpha / MKRAlphaExplicitMultiSOE $rhoInfEquivalent
+RHO_INF_EQ = 0.5
+AF = 1.0 / (1.0 + math.sqrt(RHO_INF_EQ))  # ≈ 0.5858 (= 2-√2 for ρ=1/2)
 FINISH = 3.0  # after atTarget: rd | sol | cmt (heavier)
 BEGIN = 1.0  # pred | form | send
 BURST = FINISH + BEGIN  # 4 → ~40% of window extrapolate
