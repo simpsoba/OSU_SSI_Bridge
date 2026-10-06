@@ -20,7 +20,7 @@ Pairwise Simulink compare plots within each physical-model group.
 Writes under OSU_SSI_BRIDGE_DATA_LOCAL/plots/compare/<Mesh>/<variant>/pairs/ :
 
   hist_ux_pair_F##.png            Simulink only (mandatory; meaSigOS + stateOS)
-  hist_ux_pair_F##_opensees.png   OpenSees only (optional; pier_top vs t_num)
+  hist_ux_pair_F##_opensees.png   OpenSees only (optional; pier vs lab-mapped t)
   reference.txt                       chosen ref + D5–95 slowdown counts
 
 Mesh folders: Baseline / Moderate / Large / X-Large (excluded → _excluded/).
@@ -37,7 +37,7 @@ Units
   Simulink Time: t_lab (s, model). Primary x = t_lab√λ (prototype).
   meaSigOS disp: model m → primary Δu (mm, prototype) via ·λ·1000.
   stateOS: same t_lab clock as meaSigOS.
-  OpenSees companion: t_num (s, prototype), pier Δux (mm).
+  OpenSees companion: pier Δux (mm) vs lab-mapped t (k + t_OS/√λ + f).
   D5–95 on GM / prototype clock: [t5, t95] from gm_duration (gmStart≈0).
   Lab D5–95 window for counts: t_lab ∈ [t5/√λ, t95/√λ].
 
@@ -70,16 +70,28 @@ from compare_groups import (
     legend_labels_for_dumps,
     test_file_slug,
 )
-from gm_duration import SignificantDuration, arias_significant_duration
+from gm_duration import (
+    SignificantDuration,
+    arias_significant_duration,
+    d595_proto_window,
+    gm_start_time_s,
+)
 from lab_paths import (
     CYLINDER_LENGTH_SCALE,
     MAT_EXTRACT_DIR,
     M_TO_MM,
     TIME_SCALE_FROUDE,
+    XLIM_FULL_MODEL_S,
     XLIM_FULL_PROTO_S,
     YLIM_DISP_PROTO_MM,
     compare_plots_dir,
     resolve_opensees_data,
+)
+from lab_time_map import (
+    LABEL_T_LAB,
+    add_dual_time_xaxis_lab,
+    map_os_to_lab,
+    os_window_to_lab,
 )
 from paths import HERE
 from PlotEQCompareRuns import (
@@ -565,17 +577,29 @@ def plot_pair_opensees(
     out: Path,
     duration: SignificantDuration,
     labels: dict[str, str],
+    run_mat: dict[str, str],
 ) -> None:
     """
-    Optional OpenSees-only companion: pier Δu full | D5–95 zoom.
+    Optional OpenSees-only companion: pier Δu full | D5–95 on lab-mapped t.
 
-    Args:    ref, other, out, duration, labels
+    Args:    ref, other, out, duration, labels, run_mat  dump→MatFile
     Returns: none (writes PNG when both piers exist)
     """
     pier_ref = load_pier_ux_mm(ref)
     pier_other = load_pier_ux_mm(other)
-    if pier_ref is None or pier_other is None:
-        print(f"PlotEQComparePairs: skip OpenSees pair {other.name} (no pier ux)")
+    mat_ref = (run_mat.get(ref.name) or "").strip()
+    mat_oth = (run_mat.get(other.name) or "").strip()
+    if pier_ref is None or pier_other is None or not mat_ref or not mat_oth:
+        print(f"PlotEQComparePairs: skip OpenSees pair {other.name} (no pier/mat)")
+        return
+
+    try:
+        t_ref, u_ref = pier_ref
+        t_oth, u_oth = pier_other
+        t_ref = map_os_to_lab(t_ref, mat_ref).t_lab
+        t_oth = map_os_to_lab(t_oth, mat_oth).t_lab
+    except RuntimeError as exc:
+        print(f"PlotEQComparePairs: skip OpenSees pair {other.name} ({exc})")
         return
 
     apply_pair_style()
@@ -589,9 +613,13 @@ def plot_pair_opensees(
     ls_ref, ls_other = _pair_line_styles(ref, other)
     label_ref = f"ref  {labels[ref.name]}"
     label_other = labels[other.name]
-    t_ref, u_ref = pier_ref
-    t_oth, u_oth = pier_other
-    t5, t95 = duration.t5_s, duration.t95_s
+    gm0 = gm_start_time_s(ref)
+    d595_os = d595_proto_window(gm0)
+    if d595_os is not None:
+        t5, t95 = os_window_to_lab(d595_os[0], d595_os[1], mat_ref)
+    else:
+        t5 = float(duration.t5_s) / TIME_SCALE_FROUDE
+        t95 = float(duration.t95_s) / TIME_SCALE_FROUDE
 
     for ax in (ax_f, ax_z):
         ax.plot(t_ref, u_ref, color=COLOR_REF, lw=1.2, ls=ls_ref, zorder=2)
@@ -600,12 +628,12 @@ def plot_pair_opensees(
 
     add_dual_disp_yaxis(ax_f, source="pier", primary_label=True)
     add_dual_disp_yaxis(ax_z, source="pier", primary_label=False)
-    add_dual_time_xaxis(ax_f, top=True)
-    add_dual_time_xaxis(ax_z, top=True)
-    ax_f.set_xlabel(LABEL_T_PROTO)
-    ax_z.set_xlabel(LABEL_T_PROTO)
+    add_dual_time_xaxis_lab(ax_f, top=True)
+    add_dual_time_xaxis_lab(ax_z, top=True)
+    ax_f.set_xlabel(LABEL_T_LAB)
+    ax_z.set_xlabel(LABEL_T_LAB)
     ax_z.set_title(r"D5–95 zoom", fontsize=14, pad=6)
-    ax_f.set_xlim(*XLIM_PROTO_S)
+    ax_f.set_xlim(*XLIM_FULL_MODEL_S)
     ax_z.set_xlim(t5, t95)
 
     fig.legend(
@@ -628,7 +656,7 @@ def plot_pair_opensees(
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=PAIR_DPI, bbox_inches="tight", pad_inches=0.22)
     plt.close(fig)
-    print(f"PlotEQComparePairs: wrote {out}  (OpenSees)")
+    print(f"PlotEQComparePairs: wrote {out}  (OpenSees, lab-mapped)")
 
 
 def write_group_pairs(
@@ -702,7 +730,7 @@ def write_group_pairs(
             "primary_figures: Simulink meaSigOS + stateOS "
             "(same lab clock; do not mix with OpenSees)"
         ),
-        "companion_figures: *_opensees.png = pier_top vs t_num only",
+        "companion_figures: *_opensees.png = pier vs lab-mapped t (k+f)",
         "pair_file_tag: Test ID (F##/W##) from TestMatrix_lab_runs.csv",
         (
             "true_reference_later: offline OpenSees per folder "
@@ -759,6 +787,7 @@ def write_group_pairs(
             out_dir / f"hist_ux_pair_{other_tag}_opensees.png",
             duration,
             labels,
+            run_mat,
         )
 
 

@@ -14,8 +14,8 @@ Wiring in `Run.tcl` / `RunParallel.tcl` (`realTimeON 1`):
 
 ## 1. What MKR asks for
 
-MKR forms equilibrium at the weighted station \(t_n + \alpha_f\Delta t\), not at
-\(t_{n+1}\). For `MKRAlphaExplicitMultiSOE` / `CudaMKRAlpha` with
+MKR forms equilibrium at the weighted station \(t_{\mathrm{int},n} + \alpha_f\Delta t\), not at
+\(t_{\mathrm{int},n+1}\). For `MKRAlphaExplicitMultiSOE` / `CudaMKRAlpha` with
 \(\rho_\infty^{\mathrm{eq}}=0.5\),
 
 \[
@@ -26,23 +26,23 @@ MKR forms equilibrium at the weighted station \(t_n + \alpha_f\Delta t\), not at
 
 Inside `newStep` (ExplicitAlpha / MKR family):
 
-1. **Predict** \(U_{n+1}\) and \(\dot U_{n+1}\) from the previous acceleration
+1. **Compute** \(\mathbf{u}_{n+1}\) and \(\mathbf{v}_{n+1}\) from the previous acceleration
    (explicit — no lab call yet).
-2. Form \(U_{n+\alpha_f} = (1-\alpha_f)U_n + \alpha_f U_{n+1}\).
-3. Put that on the nodes; advance domain time to \(t_n + \alpha_f\Delta t\).
+2. Form \(\mathbf{u}_{n+\alpha_f} = (1-\alpha_f)\mathbf{u}_n + \alpha_f \mathbf{u}_{n+1}\).
+3. Put that on the nodes; advance domain time to \(t_{\mathrm{int},n} + \alpha_f\Delta t\).
 4. `updateDomain` → `EEGeneric::update` → `setTrialResponse` (ctrlDisp =
-   \(U_{n+\alpha_f}\)).
+   \(u_{n+\alpha_f}\)).
 5. Residual / `getResistingForce` → `acquire()` waits for `atTarget`, then
    reads `daqForce`.
-6. That force is used to **solve \(\ddot U_{n+1}\)**.
-7. `commit`: domain time \(+= (1-\alpha_f)\Delta t\) → \(t_{n+1}\). No second
+6. That force is used to **solve \(\mathbf{a}_{n+1}\)**.
+7. `commit`: domain time \(+= (1-\alpha_f)\Delta t\) → \(t_{\mathrm{int},n+1}\). No second
    lab move (`ECSCRAMNetGT::commitState` is a no-op).
 
-So the physical force updates **acceleration**. Displacement \(U_{n+1}\) was
+So the physical force updates **acceleration**. Displacement \(\mathbf{u}_{n+1}\) was
 already predicted before the handshake.
 
-Numerical elements evaluate \(P_r(U_{n+\alpha_f})\) constitutively. The
-generic element does not: it commands \(U_{n+\alpha_f}\) and returns the
+Numerical elements evaluate \(P_r(\mathbf{u}_{n+\alpha_f})\) constitutively. The
+generic element does not: it commands \(u_{n+\alpha_f}\) and returns the
 measured force at `atTarget`.
 
 ---
@@ -57,15 +57,15 @@ Simulink never sees \(n\), \(n+\alpha_f\), or \(n+1\). Each handshake is:
 3. End of window: `atTarget`; host reads force.
 
 Arrival deadline = end of that \(\Delta t_\mathrm{sim}\), not “OpenSees
-\(t_{n+1}\)”. The value tracked is whatever OpenSees sent — for MKR,
-\(U_{n+\alpha_f}\).
+\(t_{\mathrm{int},n+1}\)”. The value tracked is whatever OpenSees sent — for MKR,
+\(u_{n+\alpha_f}\).
 
 Default `-updateElemDisp` off: after the force read, commit does not send
-\(U_{n+1}\). The actuator walks successive **\(\alpha\)-stations**, not the
-pure nodal \(U_n, U_{n+1}\) (unless \(\alpha_f = 1\)).
+\(u_{n+1}\). The actuator walks successive **\(\alpha\)-stations**, not the
+pure nodal \(\mathbf{u}_n, \mathbf{u}_{n+1}\) (unless \(\alpha_f = 1\)).
 
-“Behind” relative to host end-of-step: when OpenSees has committed \(U_{n+1}\),
-the last imposed target is still \(U_{n+\alpha_f}\). The DOF does not sit
+“Behind” relative to host end-of-step: when OpenSees has committed \(\mathbf{u}_{n+1}\),
+the last imposed target is still \(u_{n+\alpha_f}\). The DOF does not sit
 frozen — extrapolation / interpolation at \(\Delta t_\mathrm{con}\) keeps
 `comSig` moving (unless slowdown).
 
@@ -81,37 +81,37 @@ Assumptions (illustrative sub-ms stamps):
 | \(\Delta t_\mathrm{con}\) | \(0.001\,\mathrm{s}\) → \(N = 10\) counts / window |
 | \(\alpha_f\) | \(2-\sqrt{2}\approx 0.5858\) → \(\alpha_f\Delta t \approx 0.0059\,\mathrm{s}\) (mock \(\Delta t=0.010\)) |
 | Host work after each force | ~\(4\,\mathrm{ms}\) / count ~4 (read / solve / commit / predict / form / send) — ~40% of window extrapolate, ~60% interpolate (healthy-run order; cf. `STATEOS_SIGNALS.md` ~37% extrap) |
-| First begin-step (before any force) | ~\(2\,\mathrm{ms}\) (predict \(U_1\) / form \(U_{0+\alpha}\) / send) — not instantaneous; no prior solve |
+| First begin-step (before any force) | ~\(2\,\mathrm{ms}\) (compute \(\mathbf{u}_1, \mathbf{v}_1\) / form \(\mathbf{u}_{0+\alpha_f}\) / send) — not instantaneous; no prior solve |
 | Healthy run | later targets land ~count 4; no slowdown |
 
-Clocks: \(T_w\) = lab / wall time; \(t\) = OpenSees domain time.
+Clocks: \(t\) = lab / wall time; \(t_\mathrm{int}\) = OpenSees domain (integration) time.
 “Actuator” below means the command path (`comSig`); measured disp lags a bit.
 
 ### Start
 
-| \(T_w\) | Domain \(t\) | Lab | Host |
+| \(t\) | Integrator \(t_\mathrm{int}\) | Lab | Host |
 |---:|---:|---|---|
-| 0.0000 | 0.0000 | at \(U_0\) | committed \(U_0,\dot U_0,\ddot U_0\) |
+| 0.0000 | 0.0000 | at \(u_0\) | committed \(\mathbf{u}_0,\mathbf{v}_0,\mathbf{a}_0\) |
 
 ### Enter step \(0\to1\) (first begin-step — a bit expensive)
 
 No prior force/solve; still more host work than the short predict–form–send
 tail after later commits (cold start / first `newStep`).
 
-| \(T_w\) | Domain \(t\) | Lab | Host |
+| \(t\) | Integrator \(t_\mathrm{int}\) | Lab | Host |
 |---:|---:|---|---|
-| 0.0000 | 0.0000 | window 0, count 1 | **begin step:** predict \(U_1\) from \(\ddot U_0\) |
-| 0.0008 | 0.0000 | count 1–2 | form \(U_{0+\alpha}\) (in progress) |
-| 0.0015 | **0.0059** | count 2 | set domain time to \(0+\alpha\) |
-| **0.0020** | 0.0059 | receives target | **send** \(U_{0+\alpha}\) |
+| 0.0000 | 0.0000 | window 0, count 1 | **begin step:** compute \(\mathbf{u}_1, \mathbf{v}_1\) from \(\mathbf{a}_0\) |
+| 0.0008 | 0.0000 | count 1–2 | form \(\mathbf{u}_{0+\alpha_f}\) (in progress) |
+| 0.0015 | **0.0059** | count 2 | set domain time to \(0+\alpha_f\) |
+| **0.0020** | 0.0059 | receives target | **send** \(u_{0+\alpha_f}\) |
 | 0.0021 | 0.0059 | extrap → interp | **block** on `atTarget` |
 
 ### Window 0 (host waiting)
 
-| \(T_w\) | count | Lab | Domain \(t\) | Host |
+| \(t\) | count | Lab | Integrator \(t_\mathrm{int}\) | Host |
 |---:|---:|---|---:|---|
-| 0.0021–0.0060 | 3–7 | interp toward \(U_{0+\alpha}\) | 0.0059 | blocked |
-| 0.0070–0.0090 | 8–10 | interp → \(U_{0+\alpha}\) | 0.0059 | blocked |
+| 0.0021–0.0060 | 3–7 | interp toward \(u_{0+\alpha_f}\) | 0.0059 | blocked |
+| 0.0070–0.0090 | 8–10 | interp → \(u_{0+\alpha_f}\) | 0.0059 | blocked |
 | **0.0100** | end | **`atTarget`** | 0.0059 | unblock |
 
 Force for the residual is **not** mid-flight: `acquire()` waits for
@@ -119,83 +119,85 @@ Force for the residual is **not** mid-flight: `acquire()` waits for
 
 ### After force 0 (~4 ms into window 1 — ~40% extrap)
 
-| \(T_w\) | count | Lab | Domain \(t\) | Host |
+| \(t\) | count | Lab | Integrator \(t_\mathrm{int}\) | Host |
 |---:|---:|---|---:|---|
-| 0.0100 | 1 | window 1 starts; extrapolate | 0.0059 | **read** \(F\) at \(U_{0+\alpha}\) |
-| 0.0108 | 1–2 | extrapolate | 0.0059 | **solve** \(\ddot U_1\) (in progress) |
-| 0.0114 | 2 | extrapolate | 0.0059 | **solve** \(\ddot U_1\) (done) |
+| 0.0100 | 1 | window 1 starts; extrapolate | 0.0059 | **read** \(F\) at \(u_{0+\alpha_f}\) |
+| 0.0108 | 1–2 | extrapolate | 0.0059 | **solve** \(\mathbf{a}_1\) (in progress) |
+| 0.0114 | 2 | extrapolate | 0.0059 | **solve** \(\mathbf{a}_1\) (done) |
 | 0.0117 | 2 | extrapolate | **0.0100** | **commit** \(n=1\) |
-| 0.0123 | 3 | extrapolate | 0.0100 | **predict** \(U_2\) from \(\ddot U_1\) |
-| 0.0129 | 3 | extrapolate | 0.0100 | **form** \(U_{1+\alpha}\) |
-| 0.0135 | 4 | extrapolate | **0.0159** | set domain time to \(1+\alpha\) |
-| **0.0140** | 4 | flag → **interpolate** | 0.0159 | **send** \(U_{1+\alpha}\) |
-| 0.0141 | 4 | interp toward \(U_{1+\alpha}\) | 0.0159 | **block** on `atTarget` |
+| 0.0123 | 3 | extrapolate | 0.0100 | **compute** \(\mathbf{u}_2, \mathbf{v}_2\) from \(\mathbf{a}_1\) |
+| 0.0129 | 3 | extrapolate | 0.0100 | **form** \(\mathbf{u}_{1+\alpha_f}\) |
+| 0.0135 | 4 | extrapolate | **0.0159** | set domain time to \(1+\alpha_f\) |
+| **0.0140** | 4 | flag → **interpolate** | 0.0159 | **send** \(u_{1+\alpha_f}\) |
+| 0.0141 | 4 | interp toward \(u_{1+\alpha_f}\) | 0.0159 | **block** on `atTarget` |
 
 ### Rest of window 1
 
-| \(T_w\) | count | Lab | Domain \(t\) | Host |
+| \(t\) | count | Lab | Integrator \(t_\mathrm{int}\) | Host |
 |---:|---:|---|---:|---|
-| 0.0141–0.0190 | 4–10 | interp → \(U_{1+\alpha}\) | 0.0159 | blocked |
+| 0.0141–0.0190 | 4–10 | interp → \(u_{1+\alpha_f}\) | 0.0159 | blocked |
 | **0.0200** | end | **`atTarget`** | 0.0159 | unblock |
 
 ### After force 1 (same ~4 ms burst into window 2)
 
-| \(T_w\) | count | Lab | Domain \(t\) | Host |
+| \(t\) | count | Lab | Integrator \(t_\mathrm{int}\) | Host |
 |---:|---:|---|---:|---|
-| 0.0200 | 1 | window 2; extrapolate | 0.0159 | **read** \(F\) at \(U_{1+\alpha}\) |
-| 0.0208 | 1–2 | extrapolate | 0.0159 | **solve** \(\ddot U_2\) (in progress) |
-| 0.0214 | 2 | extrapolate | 0.0159 | **solve** \(\ddot U_2\) (done) |
+| 0.0200 | 1 | window 2; extrapolate | 0.0159 | **read** \(F\) at \(u_{1+\alpha_f}\) |
+| 0.0208 | 1–2 | extrapolate | 0.0159 | **solve** \(\mathbf{a}_2\) (in progress) |
+| 0.0214 | 2 | extrapolate | 0.0159 | **solve** \(\mathbf{a}_2\) (done) |
 | 0.0217 | 2 | extrapolate | **0.0200** | **commit** \(n=2\) |
-| 0.0223 | 3 | extrapolate | 0.0200 | **predict** \(U_3\) |
-| 0.0229 | 3 | extrapolate | 0.0200 | **form** \(U_{2+\alpha}\) |
-| 0.0235 | 4 | extrapolate | **0.0259** | set domain time to \(2+\alpha\) |
-| **0.0240** | 4 | → **interpolate** | 0.0259 | **send** \(U_{2+\alpha}\) |
-| 0.0241 | 4 | interp toward \(U_{2+\alpha}\) | 0.0259 | **block** on `atTarget` |
+| 0.0223 | 3 | extrapolate | 0.0200 | **compute** \(\mathbf{u}_3, \mathbf{v}_3\) |
+| 0.0229 | 3 | extrapolate | 0.0200 | **form** \(\mathbf{u}_{2+\alpha_f}\) |
+| 0.0235 | 4 | extrapolate | **0.0259** | set domain time to \(2+\alpha_f\) |
+| **0.0240** | 4 | → **interpolate** | 0.0259 | **send** \(u_{2+\alpha_f}\) |
+| 0.0241 | 4 | interp toward \(u_{2+\alpha_f}\) | 0.0259 | **block** on `atTarget` |
 
 ### Strip
 
 ![MKR-α + OpenFresco timing strip](mkr_openfresco_timing_strip.svg)
 
-*\(T_w\) in units of \(\Delta t_\mathrm{con}\) (\(\Delta t_\mathrm{sim}=10\,\Delta t_\mathrm{con}\), MKR \(\alpha_f\approx 0.5858\)). Lab / host / domain \(t\) / tar–comSig lanes. Zoom A: first begin (~2) predicts \(U_1\), forms/sends \(U_{0+\alpha}\). Zoom B: after force-ready, finish (~3: read / solve / commit) then begin (~1: predict / form / send); ~40% of the window extrapolating.*
+*MKR-α + OpenFresco handshake timing (6 in, 9 pt). Wall time \(t\) in units of \(\Delta t_\mathrm{con}\): 0 at the start of init, \(k\) at the end of the cold start (factorize, not to scale), then (k+N), (k+2N), (k+3N), with (Delta t_mathrm{sim}=N,Delta t_mathrm{con}) (drawn with (N=10)). Integrator time \(t_\mathrm{int}\) (OpenSees domain time) is in units of \(\Delta t_\mathrm{int}=\sqrt{\lambda}\,\Delta t_\mathrm{sim}\); circles mark \(t_\mathrm{int}=n+\alpha_f\) at each at-target instant (MKR \(\alpha_f=1/(1+\sqrt{\rho_\infty})\approx 0.586\) for \(\rho_\infty=0.5\)). The target machine sends the reference to the controller every \(\Delta t_\mathrm{con}\), interpolating toward the latest target and extrapolating while the host works. The zoom shows the burst after the first at target: finish step 0 (\(\approx 3\): read force, solve \(\mathbf{a}_1\), short commit of \(\mathbf{u}_1, \mathbf{v}_1, \mathbf{a}_1\)), then begin step 1 (\(\approx 1\): compute \(\mathbf{u}_2\) and \(\mathbf{v}_2\) from \(\mathbf{a}_1\), form \(\mathbf{u}_{1+\alpha_f}\) and \(\mathbf{v}_{1+\alpha_f}\), advance \(t_\mathrm{int}\), send). Interface \(u\) (scalar, the actuated DOF): the target \(u_{n+\alpha_f}\) steps at each send; reference samples every \(\Delta t_\mathrm{con}\) (circles = interpolate, squares aligned with the curve = extrapolate; open = on target, solid = off target) reach the target only at the at-target instants (open circles). Dashed blue: where extrapolation would have continued had no new target arrived; dashed green: the unused start of each interpolating 2nd-order Lagrange fit, from the previous target to the send. Targets are illustrative (\(u_{0+\alpha_f}=1.02\), \(u_{1+\alpha_f}=1.29\), \(u_{2+\alpha_f}=0.27\)), not the slow sine of `plot_mkr_disp_vs_tw.py`.*
 
-### Domain \(t\) and displacements vs \(T_w\)
+Labels ↔ code (three-loop terms): target = `tar` (target signal); reference = `comSig` (rate-transition output to the controller every \(\Delta t_\mathrm{con}\)); measured force = `daqForce` (measured signal); at target = SCRAMNet `atTarget`; read force = `getForce`; begin step = `newStep`; advance \(t_\mathrm{int}\) = `updateDomain`; factorize = `formOperators` (assemble and factorize M, the α-operator, and A).
+
+### Integrator \(t_\mathrm{int}\) and displacements vs \(t\)
 
 Three-window **mockup** with the same clocks as the strip
 (\(\Delta t_\mathrm{sim}=10\,\Delta t_\mathrm{con}\), first begin \(\approx 2\),
 later burst = finish \(\approx 3\) + begin \(\approx 1\) / ~40% extrap,
-MKR \(\alpha_f=1/(1+\sqrt{0.5})\approx 0.5858\), no slowdown). \(U_{n+\alpha}\)
-from a slow sine (peak at \(T_w=60\)). Script: `plot_mkr_disp_vs_tw.py`.
+MKR \(\alpha_f=1/(1+\sqrt{0.5})\approx 0.5858\), no slowdown). \(u_{n+\alpha_f}\)
+from a slow sine (peak at \(t=60\)). Script: `plot_mkr_disp_vs_tw.py`.
 
 ![Domain time and tar / comSig vs wall time](mkr_disp_vs_tw.png)
 
-Top: domain \(t\) holds at \(n+\alpha\) through force-ready (force is read at
+Top: integrator time \(t_\mathrm{int}\) holds at \(n+\alpha_f\) through at target (force is read at
 that station), then jumps at commit and at the next send. Middle / bottom:
-**tar** \(U_{n+\alpha}\) (stepwise at send — lab instruction) and **comSig**
+**tar** \(u_{n+\alpha_f}\) (stepwise at send — lab instruction) and **comSig**
 (**2nd-order Lagrange**, Seki et al. 2026 §2.1: one fit through interpolate,
-continues as extrapolate past force-ready; refit when the next target lands).
-Axis \(T_w/\Delta t_\mathrm{con}\in[0,30]\); bottom scaled to prototype
+continues as extrapolate past at target; refit when the next target lands).
+Axis \(t/\Delta t_\mathrm{con}\in[0,30]\); bottom scaled to prototype
 (\(\times\lambda\), \(\lambda=2.4\)).
 
 Glossary: begin step = OpenSees `newStep`; read force = `getForce`; advance
-\(t\) = `updateDomain`; force ready = SCRAMNet `atTarget`; send = SCRAMNet
+\(t_\mathrm{int}\) = `updateDomain`; at target = SCRAMNet `atTarget`; send = SCRAMNet
 target write.
 
-Pattern after the first send: **wait → read \(F\) → solve \(\ddot U\) →
-commit → predict → form \(U_{\cdot+\alpha}\) → send → wait**. Lab
+Pattern after the first send: **wait → read \(F\) → solve \(\mathbf{a}\) →
+commit → compute → form \(\mathbf{u}_{\cdot+\alpha_f}\) → send → wait**. Lab
 **extrapolates** during the host burst, then **interpolates** once the new
 target lands.
 
 ### Actuator vs host stations (ideal tracking)
 
-| Host station | Domain \(t\) | Wall when committed / forced | Actuator ≈ |
+| Host station | Integrator \(t_\mathrm{int}\) | Wall when committed / forced | Actuator ≈ |
 |---|---:|---|---|
-| \(n=0\) | 0.0000 | \(T_w=0\) | \(U_0\) |
-| send \(U_{0+\alpha}\) | 0.0059 | \(T_w\approx 0.002\) (first begin) | leaving \(U_0\) toward \(U_{0+\alpha}\) |
-| \(0+\alpha\) (force) | 0.0059 | `atTarget` at \(T_w=0.010\) | \(U_{0+\alpha}\) |
-| \(n=1\) (commit) | 0.0100 | \(T_w\approx 0.011\) | still \(U_{0+\alpha}\) (extrap starting) |
-| send \(U_{1+\alpha}\) | 0.0159 | \(T_w=0.014\) | leaving \(U_{0+\alpha}\) toward \(U_{1+\alpha}\) |
-| \(1+\alpha\) (force) | 0.0159 | \(T_w=0.020\) | \(U_{1+\alpha}\) |
-| \(n=2\) (commit) | 0.0200 | \(T_w\approx 0.021\) | still \(U_{1+\alpha}\) |
+| \(n=0\) | 0.0000 | \(t=0\) | \(u_0\) |
+| send \(u_{0+\alpha_f}\) | 0.0059 | \(t\approx 0.002\) (first begin) | leaving \(u_0\) toward \(u_{0+\alpha_f}\) |
+| \(0+\alpha_f\) (force) | 0.0059 | `atTarget` at \(t=0.010\) | \(u_{0+\alpha_f}\) |
+| \(n=1\) (commit) | 0.0100 | \(t\approx 0.011\) | still \(u_{0+\alpha_f}\) (extrap starting) |
+| send \(u_{1+\alpha_f}\) | 0.0159 | \(t=0.014\) | leaving \(u_{0+\alpha_f}\) toward \(u_{1+\alpha_f}\) |
+| \(1+\alpha_f\) (force) | 0.0159 | \(t=0.020\) | \(u_{1+\alpha_f}\) |
+| \(n=2\) (commit) | 0.0200 | \(t\approx 0.021\) | still \(u_{1+\alpha_f}\) |
 
 ### Real-time budget (this mockup)
 
@@ -223,12 +225,12 @@ when overlaying.
 
 ### What `tarSig` is
 
-For MKR, each host target is \(U_{n+\alpha_f}\) (not committed \(U_{n+1}\)).
+For MKR, each host target is \(u_{n+\alpha_f}\) (not committed \(\mathbf{u}_{n+1}\)).
 On the mats, new values appear with `typeConv3` **1→0** (and the `typeConv2/s1`
 pulse). In OpenSees time, sends sit at
 
 \[
-t_{\mathrm{OS},k}=(k+\alpha_f)\,\Delta t_{\mathrm{sim}},\qquad k=0,1,2,\ldots
+t_{\mathrm{int},k}=(k+\alpha_f)\,\Delta t_{\mathrm{sim}},\qquad k=0,1,2,\ldots
 \]
 
 (\(\Delta t_{\mathrm{sim}}=N\,\Delta t_{\mathrm{con}}\); on F05, \(N=10\),
@@ -242,8 +244,8 @@ Use the first **completed lab window** after the first real target:
 2. \(t_{\mathrm{ex}}\) — first 0→1 (into extrapolate) after that land.
 3. Window end \(t_{\mathrm{goal}}=t_{\mathrm{ex}}-\Delta t_{\mathrm{con}}\)
    (the 0→1 sample is already one \(\Delta t_{\mathrm{con}}\) into the next
-   window; force-ready / `atTarget` is the count-10 end of the prior window).
-4. Pin OpenSees \(t=\Delta t_{\mathrm{sim}}\) to that window end:
+   window; at target (`atTarget`) is the count-10 end of the prior window).
+4. Pin OpenSees \(t_{\mathrm{int}}=\Delta t_{\mathrm{sim}}\) to that window end:
 
 \[
 \mathrm{offset}
@@ -254,7 +256,7 @@ Use the first **completed lab window** after the first real target:
 \(\alpha_f\) does **not** enter this formula. On F05 (rowNeg4 / `r-04_…1010`):
 \(\mathrm{offset}\approx 187.5\,\mathrm{ms}\).
 
-### Where to put each \(U_{n+\alpha}\) on the lab axis
+### Where to put each \(u_{n+\alpha_f}\) on the lab axis
 
 \[
 t_k=\mathrm{offset}+(k+\alpha_f)\,\Delta t_{\mathrm{sim}}.
@@ -266,8 +268,8 @@ Plot those stations against `comSig` / `meaSig` on raw lab Time. Scripts:
 
 ### Expected gap when there is no slowdown
 
-Lab finishes the trial at window end (\(t_n+\Delta t_{\mathrm{sim}}\) in the
-synced OS clock). The send station is at \(t_n+\alpha_f\Delta t_{\mathrm{sim}}\).
+Lab finishes the trial at window end (\(t_{\mathrm{int},n}+\Delta t_{\mathrm{sim}}\) in the
+synced OS clock). The send station is at \(t_{\mathrm{int},n}+\alpha_f\Delta t_{\mathrm{sim}}\).
 So `comSig` should reach that tar level about
 
 \[
@@ -279,7 +281,7 @@ Checked on F05 no-slowdown windows with that \(\alpha_f\) on the OS send grid.
 First-1 mm com−tar is the same order.
 
 Do **not** use pier-top UX for this check: the pier recorder is committed
-\(U_{n+1}\) samples, not the \(\alpha\)-stations on SCRAMNet. Use `tarSig`.
+\(u_{n+1}\) samples, not the \(\alpha\)-stations on SCRAMNet. Use `tarSig`.
 
 ### Related (not the same)
 
@@ -289,6 +291,20 @@ Do **not** use pier-top UX for this check: the pier recorder is committed
 | `t_land - α_f Δt_sim` | Alternate offset that *builds in* \(\alpha_f\); prefer window-end form so \(\alpha_f\) is tested, not assumed |
 | Mid-run `typeConv3→2` | Real-time slowdowns; keep out of the startup offset |
 
+### Post-process: map OpenSees recorders onto lab Time
+
+For RTHS history / PSD / hyst figures under `plots/runs/<Test>/os/`, use
+
+\[
+t_{\mathrm{lab}}=k+\frac{t_{\mathrm{OS}}}{\sqrt{\lambda}}+f
+\]
+
+with \(k\) from the window-end offset above (no `|tar|` cut) and \(f\) = cumulative
+**mid-run** `typeConv3==2` only. Helper: `plot/lab_time_map.py`. Used by
+`PlotActuatorForce`, `PlotPierBaseForce`, `PlotActuatorVsPier`, `PlotHydroSpectra`,
+`PlotActuatorHyst`, `PlotLabTimeMapDiag`, and compare `*_opensees.png` companions.
+Leave `eq/` on domain time; PlotMatOS / Simulink pairs stay on native lab Time.
+
 ---
 
 ## 5. Code anchors
@@ -296,11 +312,12 @@ Do **not** use pier-top UX for this check: the pier recorder is committed
 | Piece | Where |
 |-------|--------|
 | OpenFresco UX disp / force, `-checkTime` | `Run.tcl`, `RunParallel.tcl` (`realTimeON`) |
-| MKR `newStep` / \(U_{n+\alpha_f}\) / commit | simpsoba `ExplicitAlphaMultiSOE.cpp` (MKR family) |
+| MKR `newStep` / \(\mathbf{u}_{n+\alpha_f}\) / commit | simpsoba `ExplicitAlphaMultiSOE.cpp` (MKR family) |
 | EEGeneric send trial / get force | OpenFresco `EEGeneric.cpp` |
 | SCRAMNet wait on `atTarget` | `ECSCRAMNetGT::acquire()` |
 | `stateOS` extrap / interp / slowdown | `plot/lab/STATEOS_SIGNALS.md` |
 | Lab↔OS offset; tar vs com/mea | §4; `plot_clock_offset_start.py`, `plot_mkr_disp_vs_tw_real.py` |
+| OS→lab map for `os/` plotters | §4 post-process; `plot/lab_time_map.py` |
 
 Stock OpenFresco HybridController / PredictorCorrector (no \(\alpha_f\) input):
 `simpsoba/RTHS-CUDA/OpenFresco/SRC/experimentalControl/Simulink/`.

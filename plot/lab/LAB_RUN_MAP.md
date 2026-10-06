@@ -89,3 +89,7 @@ with `hist_ux_pair_F##.png`. Excluded (twoNodeLink / single-precision)
 - OpenSees EQ plots: `python plot/PlotEQParallel.py <LOCAL dump>`
 - Simulink *OS: `python plot/PlotMatOS.py`
 - Pairwise pier compare: `python plot/PlotEQComparePairs.py`
+- Lab-mapped OS histories / PSD / hyst / diags: `plot/lab_time_map.py` +
+  `PlotActuatorForce`, `PlotPierBaseForce`, `PlotActuatorVsPier`,
+  `PlotHydroSpectra`, `PlotActuatorHyst`, `PlotLabTimeMapDiag`
+  → `plots/runs/<Test>/os/` (mat+dump Tests)

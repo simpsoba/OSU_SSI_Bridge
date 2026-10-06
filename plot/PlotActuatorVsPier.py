@@ -2,8 +2,9 @@
 """
 Goals
 -----
-Overlay meaSigOS (actuator) and OpenSees pier UX on shared prototype axes
-(full | D5–95), with amber vertical lines at each typeConv3==2 onset.
+Overlay meaSigOS (actuator, native lab Time) and OpenSees pier UX (mapped with
+k + t_OS/√λ + f) on shared lab axes (full | D5–95), with amber lines at each
+mid-run typeConv3==2 onset.
 
 twoNodeLink runs use relative pier UX (inner top node minus inner base node,
 nodes 4--2 for lumpedPlasticity) so the numerical line matches the actuator DOF.
@@ -28,29 +29,28 @@ import matplotlib.patheffects as pe
 from matplotlib.lines import Line2D
 
 from PlotEQ import subplots_full_zoom
-from PlotEQCompareRuns import pier_ux_legend_label
+from PlotEQCompareRuns import apply_paper_style, load_mat_mea_feedback, model_disp_to_proto_mm, pier_ux_legend_label
 from PlotEQComparePairs import (
     COLOR_OTHER,
     COLOR_REF,
-    LABEL_T_PROTO,
-    SLOWDOWN_STATE,
-    add_dual_time_xaxis,
-    load_mea_ux_proto,
     load_pier_ux_mm,
-    load_type_conv3,
 )
-from PlotEQCompareRuns import apply_paper_style
 from gm_duration import d595_proto_window, gm_start_time_s
 from lab_paths import (
     CYLINDER_LENGTH_SCALE,
     LOCAL_OPENSEES_DATA,
-    TIME_SCALE_FROUDE,
-    XLIM_FULL_PROTO_S,
     YLIM_DISP_PROTO_MM,
-    full_xlim_proto_s,
+    full_xlim_model_s,
     load_lab_runs_rows,
     resolve_opensees_data,
     test_os_plots_dir,
+)
+from lab_time_map import (
+    LABEL_T_LAB,
+    add_dual_time_xaxis_lab,
+    map_os_to_lab,
+    os_window_to_lab,
+    slowdown_lab_onsets,
 )
 
 COLOR_ACT = COLOR_OTHER  # #001F3F
@@ -95,26 +95,9 @@ def mat_dump_for_test(test_id: str) -> tuple[str, str] | None:
     return None
 
 
-def slowdown_times_proto_s(mat_name: str) -> list[float]:
-    """Prototype time at the start of each contiguous typeConv3==2 episode."""
-    pair = load_type_conv3(mat_name)
-    if pair is None:
-        return []
-    t_lab_s, state = pair
-    times: list[float] = []
-    in_span = False
-    for i in range(len(state)):
-        if int(state[i]) == SLOWDOWN_STATE and not in_span:
-            in_span = True
-            times.append(float(t_lab_s[i]) * TIME_SCALE_FROUDE)
-        elif int(state[i]) != SLOWDOWN_STATE and in_span:
-            in_span = False
-    return times
-
-
-def mark_slowdowns(ax, t_proto: list[float]) -> int:
-    """Fixed-thickness amber vertical line at each slowdown onset."""
-    for t in t_proto:
+def mark_slowdowns(ax, t_lab: list[float]) -> int:
+    """Fixed-thickness amber vertical line at each slowdown onset (lab s)."""
+    for t in t_lab:
         ax.axvline(
             t,
             color=COLOR_SLOW,
@@ -123,7 +106,7 @@ def mark_slowdowns(ax, t_proto: list[float]) -> int:
             solid_capstyle="butt",
             zorder=1,
         )
-    return len(t_proto)
+    return len(t_lab)
 
 
 def write_plot(
@@ -144,19 +127,29 @@ def write_plot(
     root = data_root or resolve_opensees_data() or LOCAL_OPENSEES_DATA
     out = test_os_plots_dir(test_id) / OUT_NAME
 
-    mea = load_mea_ux_proto(mat)
+    mea = load_mat_mea_feedback(mat)
     dump_path = root / dump
     pier = load_pier_ux_mm(dump_path)
     if mea is None or pier is None:
         print(f"PlotActuatorVsPier: skip {test_id} (missing mea or pier)", file=sys.stderr)
         return 1
-    t_act, u_act = mea
-    t_pier, u_pier = pier
+    t_act, u_m = mea
+    u_act = model_disp_to_proto_mm(u_m)
+    t_pier_os, u_pier = pier
+    try:
+        mapped = map_os_to_lab(t_pier_os, mat)
+    except RuntimeError as exc:
+        print(f"PlotActuatorVsPier: skip {test_id} ({exc})", file=sys.stderr)
+        return 1
+    t_pier = mapped.t_lab
     pier_label = pier_ux_legend_label(dump_path)
-    t_slow = slowdown_times_proto_s(mat)
+    t_slow = slowdown_lab_onsets(mat)
 
     t0 = gm_start_time_s(dump_path)
-    d595 = d595_proto_window(gm_start_s=t0)
+    d595_os = d595_proto_window(gm_start_s=t0)
+    d595 = (
+        os_window_to_lab(d595_os[0], d595_os[1], mat) if d595_os is not None else None
+    )
 
     fig_h = 4.2 * (0.65 + 0.35 * font_scale)
     fig, axes_f, axes_z = subplots_full_zoom(1, fig_h=fig_h, sharey=True, wspace=0.04)
@@ -184,22 +177,16 @@ def write_plot(
         )
         ax.grid(True, ls=":", alpha=0.45)
 
-    ax_f.set_xlim(*full_xlim_proto_s(t_act if t_act.size >= t_pier.size else t_pier))
+    ax_f.set_xlim(*full_xlim_model_s(t_act if t_act.size >= t_pier.size else t_pier))
     ax_f.set_ylim(*YLIM_DISP_PROTO_MM)
     if d595 is not None:
         ax_z.set_xlim(d595[0], d595[1])
 
-    ax_f.set_xlabel(LABEL_T_PROTO)
-    ax_z.set_xlabel(LABEL_T_PROTO)
+    ax_f.set_xlabel(LABEL_T_LAB)
+    ax_z.set_xlabel(LABEL_T_LAB)
     ax_z.tick_params(labelleft=False)
-    add_dual_time_xaxis(ax_f, top=True)
-    ax_z.secondary_xaxis(
-        "top",
-        functions=(
-            lambda t_proto: t_proto / TIME_SCALE_FROUDE,
-            lambda t_model: t_model * TIME_SCALE_FROUDE,
-        ),
-    )
+    add_dual_time_xaxis_lab(ax_f, top=True)
+    add_dual_time_xaxis_lab(ax_z, top=True)
 
     engine = fig.get_layout_engine()
     if engine is not None:

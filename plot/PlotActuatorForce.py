@@ -2,15 +2,18 @@
 """
 Goals
 -----
-Plot OpenFresco daqForce vs time (full | D5–95) with amber lines at each
-typeConv3==2 onset. Dual axes: prototype force / time, and model via /λ³
-and /√λ.
+Plot OpenFresco actuator force vs lab Time (full | D5–95 | hydro) with amber
+lines at each mid-run typeConv3==2 onset. OS recorder t is mapped with
+``lab_time_map`` (k + t_OS/√λ + f). Dual axes: prototype force, model via /λ³;
+time primary = lab, top = t√λ.
 
   python plot/PlotActuatorForce.py --mesh-ladder
   python plot/PlotActuatorForce.py F06 F08
   python plot/PlotActuatorForce.py
 
 Source: dump ``ServerSetup_daqFrc.out`` (OpenSees t, N, prototype).
+Recorded daqForce is the experimental-element resisting force; plots use
+F = −daqForce (external force on the numerical substructure).
 Several Test IDs in one call share one F axis (max |F| over each full record).
 Writes ``plots/runs/<Test>/os/hist_frc_actuator.png``.
 """
@@ -30,9 +33,7 @@ from matplotlib.lines import Line2D
 
 from PlotEQComparePairs import (
     COLOR_OTHER,
-    LABEL_T_PROTO,
     SLOWDOWN_STATE,
-    add_dual_time_xaxis,
     load_type_conv3,
 )
 from PlotEQCompareRuns import apply_paper_style
@@ -41,11 +42,18 @@ from lab_paths import (
     CYLINDER_LENGTH_SCALE,
     LOCAL_OPENSEES_DATA,
     TIME_SCALE_FROUDE,
-    XLIM_FULL_PROTO_S,
-    full_xlim_proto_s,
+    full_xlim_model_s,
     load_lab_runs_rows,
     resolve_opensees_data,
     test_os_plots_dir,
+)
+from lab_time_map import (
+    LABEL_T_LAB,
+    add_dual_time_xaxis_lab,
+    map_os_to_lab,
+    os_times_to_lab,
+    os_window_to_lab,
+    slowdown_lab_onsets,
 )
 
 # Froude force scale (same density): F_proto / F_model = λ³.
@@ -247,24 +255,16 @@ def mat_dump_for_test(test_id: str) -> tuple[str, str] | None:
 
 
 def slowdown_times_proto_s(mat_name: str) -> list[float]:
-    """Prototype time at the start of each contiguous typeConv3==2 episode."""
-    pair = load_type_conv3(mat_name)
-    if pair is None:
-        return []
-    t_lab_s, state = pair
-    times: list[float] = []
-    in_span = False
-    for i in range(len(state)):
-        if int(state[i]) == SLOWDOWN_STATE and not in_span:
-            in_span = True
-            times.append(float(t_lab_s[i]) * TIME_SCALE_FROUDE)
-        elif int(state[i]) != SLOWDOWN_STATE and in_span:
-            in_span = False
-    return times
+    """
+    Deprecated name: lab onset times (model s), not prototype.
+
+    Prefer ``slowdown_lab_onsets``. Kept for callers that still import this name.
+    """
+    return slowdown_lab_onsets(mat_name)
 
 
 def mark_slowdowns(ax, t_proto: list[float]) -> int:
-    """Fixed-thickness amber vertical line at each slowdown onset."""
+    """Fixed-thickness amber vertical line at each slowdown onset (plot x units)."""
     for t in t_proto:
         ax.axvline(
             t,
@@ -545,7 +545,10 @@ def detect_wave_start_proto_s(
 
 def load_daq_force_kn(dump_path: Path) -> tuple[np.ndarray, np.ndarray] | None:
     """
-    OpenFresco daqForce history from a dump folder.
+    Actuator force history as an external load on the numerical model.
+
+    Reads OpenFresco ``daqForce`` (experimental resisting force) and returns
+    F = −daqForce so plotted F is the force applied to the numerical side.
 
     Args:    dump_path  LOCAL opensees_data/<DumpFolder>
     Returns: (t_proto_s, F_proto_kN) or None
@@ -560,7 +563,8 @@ def load_daq_force_kn(dump_path: Path) -> tuple[np.ndarray, np.ndarray] | None:
     if data.size == 0 or data.shape[1] < 2:
         return None
     t = np.asarray(data[:, 0], dtype=float)
-    f_kn = np.asarray(data[:, 1], dtype=float) * N_TO_KN
+    # daqForce = resisting; F_ext on numerical = −daqForce
+    f_kn = -np.asarray(data[:, 1], dtype=float) * N_TO_KN
     return t, f_kn
 
 
@@ -637,29 +641,44 @@ def write_plot(
     if frc is None:
         print(f"PlotActuatorForce: skip {test_id} (no {DAQ_FRC_NAME})", file=sys.stderr)
         return 1
-    t_frc, f_kn = frc
-    t_slow = slowdown_times_proto_s(mat)
+    t_os, f_kn = frc
+    try:
+        mapped = map_os_to_lab(t_os, mat)
+    except RuntimeError as exc:
+        print(f"PlotActuatorForce: skip {test_id} ({exc})", file=sys.stderr)
+        return 1
+    t_frc = mapped.t_lab
+    t_slow = slowdown_lab_onsets(mat)
     t0 = gm_start_time_s(root / dump)
-    d595 = d595_window(t0)
+    d595_os = d595_window(t0)
     t_wave_period = wave_period_proto_s(test_id)
-    # Wed (known T_wave): spectral onset. Fri: post–free-vib |F| spike.
-    t_wave = None
-    t_wave_peak = None
+    # Detect on OS clock, then map markers / windows to lab.
+    t_wave_os = None
+    t_wave_peak_os = None
     if t_wave_period is not None:
-        t_wave = detect_wave_start_proto_s(t_frc, f_kn, t_wave_period)
-    wave_hit = detect_wave_hit_proto_s(t_frc, f_kn)
+        t_wave_os = detect_wave_start_proto_s(t_os, f_kn, t_wave_period)
+    wave_hit = detect_wave_hit_proto_s(t_os, f_kn)
     if wave_hit is not None:
-        t_wave_peak = wave_hit[1]
-        if t_wave is None:
-            t_wave = wave_hit[0]
-    hydro_xlim = hydro_force_zoom_proto(
-        t_frc,
+        t_wave_peak_os = wave_hit[1]
+        if t_wave_os is None:
+            t_wave_os = wave_hit[0]
+    hydro_os = hydro_force_zoom_proto(
+        t_os,
         f_kn,
         t_wave_proto=t_wave_period,
-        d595=d595,
-        t_wave_peak=t_wave_peak,
+        d595=d595_os,
+        t_wave_peak=t_wave_peak_os,
     )
-    full_xlim = full_xlim_proto_s(t_frc)
+    d595 = (
+        os_window_to_lab(d595_os[0], d595_os[1], mat) if d595_os is not None else None
+    )
+    hydro_xlim = (
+        os_window_to_lab(hydro_os[0], hydro_os[1], mat) if hydro_os is not None else None
+    )
+    t_wave = (
+        float(os_times_to_lab(t_wave_os, mat)[0]) if t_wave_os is not None else None
+    )
+    full_xlim = full_xlim_model_s(t_frc)
     if ylim_kn is None:
         ylim_kn = (-F_LIM_PROTO_KN, F_LIM_PROTO_KN)
 
@@ -691,7 +710,7 @@ def write_plot(
             f_kn,
             color=COLOR_FRC,
             lw=LW_FRC,
-            label="actuator (daqForce)",
+            label=r"$-F_{\mathrm{daq}}$ (on numerical)",
             zorder=5,
         )
         n_ex = mark_force_exceedances(ax, t_frc, f_kn, F_LIM_PROTO_KN)
@@ -722,20 +741,14 @@ def write_plot(
     else:
         ax_f.set_ylim(-F_LIM_PROTO_KN, F_LIM_PROTO_KN)
 
-    ax_f.set_xlabel(LABEL_T_PROTO)
-    ax_z.set_xlabel(LABEL_T_PROTO)
-    ax_w.set_xlabel(LABEL_T_PROTO)
+    ax_f.set_xlabel(LABEL_T_LAB)
+    ax_z.set_xlabel(LABEL_T_LAB)
+    ax_w.set_xlabel(LABEL_T_LAB)
     ax_z.tick_params(labelleft=False)
     ax_w.tick_params(labelleft=False)
-    add_dual_time_xaxis(ax_f, top=True)
+    add_dual_time_xaxis_lab(ax_f, top=True)
     for ax in (ax_z, ax_w):
-        ax.secondary_xaxis(
-            "top",
-            functions=(
-                lambda t_proto: t_proto / TIME_SCALE_FROUDE,
-                lambda t_model: t_model * TIME_SCALE_FROUDE,
-            ),
-        )
+        add_dual_time_xaxis_lab(ax, top=True)
     if hydro_xlim is not None and t_wave_period is not None:
         ax_w.set_title(
             rf"hydro (${HYDRO_N_PERIODS:g}\,T_{{\mathrm{{w}}}}$)",
@@ -749,7 +762,7 @@ def write_plot(
     if engine is not None:
         engine.set(w_pad=0.015, h_pad=0.015, wspace=0.02, hspace=0.02)
 
-    ax_f.set_ylabel(r"$F$ (kN) prototype scale")
+    ax_f.set_ylabel(r"$-F_{\mathrm{daq}}$ (kN) prototype scale")
     sec_y = ax_w.secondary_yaxis(
         "right",
         functions=(
@@ -757,7 +770,7 @@ def write_plot(
             lambda f_model: f_model * FORCE_SCALE_FROUDE,
         ),
     )
-    sec_y.set_ylabel(r"$F/\lambda^{3}$ (kN) model scale")
+    sec_y.set_ylabel(r"$-F_{\mathrm{daq}}/\lambda^{3}$ (kN) model scale")
 
     handles, labels = ax_f.get_legend_handles_labels()
     handles.append(
@@ -806,10 +819,10 @@ def write_plot(
                 color=COLOR_WAVE,
                 lw=LW_WAVE,
                 ls="--",
-                label=rf"wave start ($t={t_wave:.0f}$ s proto)",
+                label=rf"wave start ($t={t_wave:.0f}$ s lab)",
             )
         )
-        labels.append(rf"wave start ($t={t_wave:.0f}$ s proto)")
+        labels.append(rf"wave start ($t={t_wave:.0f}$ s lab)")
     ax_f.legend(
         handles,
         labels,
@@ -823,25 +836,27 @@ def write_plot(
         handlelength=1.8,
     )
 
-    fig.suptitle(run_title(test_id), y=1.02, fontsize=plt.rcParams["axes.labelsize"])
+    fig.suptitle(
+        rf"{run_title(test_id)}  ·  "
+        rf"$k={mapped.k*1e3:.1f}\,\mathrm{{ms}}$, "
+        rf"$f_{{\mathrm{{end}}}}={mapped.f_end*1e3:.1f}\,\mathrm{{ms}}$",
+        y=1.02,
+        fontsize=plt.rcParams["axes.labelsize"],
+    )
 
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
-    wave_txt = (
-        f"wave={t_wave:.1f}s proto ({t_wave / TIME_SCALE_FROUDE:.1f}s model)"
-        if t_wave is not None
-        else "wave=none"
-    )
+    wave_txt = f"wave={t_wave:.1f}s lab" if t_wave is not None else "wave=none"
     hydro_txt = (
-        f"hydro=[{hydro_xlim[0]:.1f},{hydro_xlim[1]:.1f}]"
+        f"hydro=[{hydro_xlim[0]:.1f},{hydro_xlim[1]:.1f}] lab"
         if hydro_xlim is not None
         else "hydro=none"
     )
     print(
         f"PlotActuatorForce: wrote {out}  "
         f"(lines={n_slow}, exceed={n_ex}, {wave_txt}, {hydro_txt}, "
-        f"t_end={float(t_frc[-1]):.1f}s)"
+        f"t_end={float(t_frc[-1]):.1f}s lab)"
     )
     return 0
 

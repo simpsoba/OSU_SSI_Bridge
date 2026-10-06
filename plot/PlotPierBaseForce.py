@@ -2,9 +2,10 @@
 """
 Goals
 -----
-Plot numerical pier-base hinge section force (P, Mz) vs time (full | D5–95)
-with amber lines at each typeConv3==2 onset. Dual axes: prototype and model
-via Froude (P/λ³, M/λ⁴; t/√λ).
+Plot numerical pier-base hinge section force (P, Mz) vs lab Time (full | D5–95)
+with amber lines at each mid-run typeConv3==2 onset. OS t mapped via
+``lab_time_map`` (k + t_OS/√λ + f). Dual axes: prototype and model via Froude
+(P/λ³, M/λ⁴); time primary = lab, top = t√λ.
 
   python plot/PlotPierBaseForce.py --mesh-ladder
   python plot/PlotPierBaseForce.py F06 F14
@@ -40,20 +41,26 @@ from PlotActuatorForce import (
     mat_dump_for_test,
     run_title,
     scale_paper_fonts,
-    slowdown_times_proto_s,
 )
 from PlotEQ import loadtxt_partial, subplots_full_zoom
-from PlotEQComparePairs import COLOR_OTHER, LABEL_T_PROTO, add_dual_time_xaxis
+from PlotEQComparePairs import COLOR_OTHER
 from PlotEQCompareRuns import apply_paper_style
 from gm_duration import d595_proto_window, gm_start_time_s
 from lab_paths import (
     CYLINDER_LENGTH_SCALE,
     LOCAL_OPENSEES_DATA,
     TIME_SCALE_FROUDE,
-    XLIM_FULL_PROTO_S,
-    full_xlim_proto_s,
+    full_xlim_model_s,
     resolve_opensees_data,
     test_os_plots_dir,
+)
+from lab_time_map import (
+    LABEL_T_LAB,
+    add_dual_time_xaxis_lab,
+    map_os_to_lab,
+    os_times_to_lab,
+    os_window_to_lab,
+    slowdown_lab_onsets,
 )
 
 # Froude: F ~ λ³, M ~ F·L ~ λ⁴ (same density).
@@ -145,17 +152,6 @@ def shared_ylims(
     )
 
 
-def add_model_time_top(ax) -> None:
-    """Secondary x-axis: model time = t_proto / √λ."""
-    ax.secondary_xaxis(
-        "top",
-        functions=(
-            lambda t_proto: t_proto / TIME_SCALE_FROUDE,
-            lambda t_model: t_model * TIME_SCALE_FROUDE,
-        ),
-    )
-
-
 def write_plot(
     test_id: str,
     *,
@@ -183,15 +179,26 @@ def write_plot(
     if pm is None:
         print(f"PlotPierBaseForce: skip {test_id} (no {HINGE_FORCE_NAME})", file=sys.stderr)
         return 1
-    t, p_kn, m_knm = pm
-    t_slow = slowdown_times_proto_s(mat)
-    # Wave onset from actuator force (same clock / dump as hinge).
+    t_os, p_kn, m_knm = pm
+    try:
+        mapped = map_os_to_lab(t_os, mat)
+    except RuntimeError as exc:
+        print(f"PlotPierBaseForce: skip {test_id} ({exc})", file=sys.stderr)
+        return 1
+    t = mapped.t_lab
+    t_slow = slowdown_lab_onsets(mat)
+    # Wave onset from actuator force (same dump); detect on OS, map to lab.
     frc = load_daq_force_kn(root / dump)
-    t_wave = (
-        detect_wave_onset_proto_s(frc[0], frc[1]) if frc is not None else None
-    )
+    t_wave = None
+    if frc is not None:
+        t_wave_os = detect_wave_onset_proto_s(frc[0], frc[1])
+        if t_wave_os is not None:
+            t_wave = float(os_times_to_lab(t_wave_os, mat)[0])
     t0 = gm_start_time_s(root / dump)
-    d595 = d595_window(t0)
+    d595_os = d595_window(t0)
+    d595 = (
+        os_window_to_lab(d595_os[0], d595_os[1], mat) if d595_os is not None else None
+    )
 
     fig_h = 6.6 * (0.65 + 0.35 * font_scale)
     fig, axes_f, axes_z = subplots_full_zoom(2, fig_h=fig_h, sharey="row", wspace=0.04)
@@ -211,7 +218,7 @@ def write_plot(
             ax.plot(t, y, color=COLOR_SIG, lw=LW_SIG, label=label, zorder=5)
             ax.grid(True, ls=":", alpha=0.45)
             ax.axhline(0.0, color="#666666", lw=0.6, zorder=0)
-        ax_f.set_xlim(*full_xlim_proto_s(t))
+        ax_f.set_xlim(*full_xlim_model_s(t))
         if d595 is not None:
             ax_z.set_xlim(d595[0], d595[1])
         if ylim is not None:
@@ -231,15 +238,15 @@ def write_plot(
         )
         sec_y.set_ylabel(ylab_m)
         if i == 0:
-            add_dual_time_xaxis(ax_f, top=True)
-            add_model_time_top(ax_z)
+            add_dual_time_xaxis_lab(ax_f, top=True)
+            add_dual_time_xaxis_lab(ax_z, top=True)
             ax_f.tick_params(labelbottom=False)
             ax_z.tick_params(labelbottom=False)
         else:
-            ax_f.set_xlabel(LABEL_T_PROTO)
-            ax_z.set_xlabel(LABEL_T_PROTO)
-            add_model_time_top(ax_f)
-            add_model_time_top(ax_z)
+            ax_f.set_xlabel(LABEL_T_LAB)
+            ax_z.set_xlabel(LABEL_T_LAB)
+            add_dual_time_xaxis_lab(ax_f, top=True)
+            add_dual_time_xaxis_lab(ax_z, top=True)
 
     engine = fig.get_layout_engine()
     if engine is not None:
@@ -269,12 +276,10 @@ def write_plot(
                 color=COLOR_WAVE,
                 lw=LW_WAVE,
                 ls="--",
-                label=rf"wave ($t/\sqrt{{\lambda}}={t_wave / TIME_SCALE_FROUDE:.0f}$ s)",
+                label=rf"wave ($t={t_wave:.0f}$ s lab)",
             )
         )
-        labels.append(
-            rf"wave ($t/\sqrt{{\lambda}}={t_wave / TIME_SCALE_FROUDE:.0f}$ s)"
-        )
+        labels.append(rf"wave ($t={t_wave:.0f}$ s lab)")
     axes_f[0].legend(
         handles,
         labels,
@@ -289,7 +294,9 @@ def write_plot(
     )
 
     fig.suptitle(
-        run_title(test_id) + r"  —  pier base hinge",
+        rf"{run_title(test_id)}  —  pier base hinge  ·  "
+        rf"$k={mapped.k*1e3:.1f}\,\mathrm{{ms}}$, "
+        rf"$f_{{\mathrm{{end}}}}={mapped.f_end*1e3:.1f}\,\mathrm{{ms}}$",
         y=1.01,
         fontsize=plt.rcParams["axes.labelsize"],
     )
@@ -297,11 +304,7 @@ def write_plot(
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
-    wave_txt = (
-        f"wave={t_wave:.1f}s proto ({t_wave / TIME_SCALE_FROUDE:.1f}s model)"
-        if t_wave is not None
-        else "wave=none"
-    )
+    wave_txt = f"wave={t_wave:.1f}s lab" if t_wave is not None else "wave=none"
     print(f"PlotPierBaseForce: wrote {out}  (lines={n_slow}, {wave_txt})")
     return 0
 
