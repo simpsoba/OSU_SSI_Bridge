@@ -4,11 +4,11 @@ Goals
 -----
 Pairwise Simulink compare plots within each physical-model group.
 
-  Reference (interim) = dump with the fewest typeConv3==2 rising edges inside
-  the ground-motion D5–95 window (Arias on FKSH19.NS1.VT2). Prefer complete
-  analyses when counts tie; require meaSigOS; exclude testBaseline mats,
-  single-precision CuDSS (unstable OpenSees recorders), and twoNodeLink
-  (those land under plots/compare/_excluded/…).
+  Reference (interim) = dump matching the group's majority gmStartTime, then
+  a complete analysis, then fewest typeConv3==2 rising edges inside GM D5–95
+  shifted by that gmStart (Arias on FKSH19.NS1.VT2). Wed → W02 (150 s), not
+  W01 (70 s) or an incomplete zero-slowdown peer. Require meaSigOS; exclude
+  testBaseline mats, single-precision CuDSS, and twoNodeLink (→ _excluded/).
 
   True reference (later) = offline OpenSees for the same folder with
   realTimeON 0 (no OpenFresco / Simulink). Until those exist, fewest
@@ -20,26 +20,27 @@ Pairwise Simulink compare plots within each physical-model group.
 Writes under OSU_SSI_BRIDGE_DATA_LOCAL/plots/compare/<Mesh>/<variant>/pairs/ :
 
   hist_ux_pair_F##.png            Simulink only (mandatory; meaSigOS + stateOS)
-  hist_ux_pair_F##_opensees.png   OpenSees only (optional; pier vs lab-mapped t)
+  hist_ux_pair_F##_opensees.png   OpenSees only (optional; pier vs $t_{\mathrm{int}}$)
   reference.txt                       chosen ref + D5–95 slowdown counts
 
 Mesh folders: Baseline / Moderate / Large / X-Large (excluded → _excluded/).
 
 Do not mix OpenSees and Simulink on one figure — hybrid clocks desync.
+  Primary hist = lab $t$; *_opensees companion = $t_{\mathrm{int}}$.
 
   Ref = grey (#B0B0B0); other = navy (#001F3F) — BRB-Calibration pair.
-  Axis notation (matched): prototype $t$, $\Delta u$; model $t/\sqrt{\lambda}$,
-  $\Delta u/\lambda$. Simulink $\Delta u$ = actuator (meaSigOS); OpenSees =
-  pier-top nodal.
+  Axis notation (matched): prototype $t$ / $t_{\mathrm{int}}$, $\Delta u$;
+  model $t/\sqrt{\lambda}$, $\Delta u/\lambda$. Simulink $\Delta u$ =
+  actuator (meaSigOS); OpenSees = pier-top nodal.
 
 Units
 -----
-  Simulink Time: t_lab (s, model). Primary x = t_lab√λ (prototype).
+  Simulink Time: $t$ (s, model). Primary x = $t\sqrt{\lambda}$.
   meaSigOS disp: model m → primary Δu (mm, prototype) via ·λ·1000.
-  stateOS: same t_lab clock as meaSigOS.
-  OpenSees companion: pier Δux (mm) vs lab-mapped t (k + t_OS/√λ + f).
-  D5–95 on GM / prototype clock: [t5, t95] from gm_duration (gmStart≈0).
-  Lab D5–95 window for counts: t_lab ∈ [t5/√λ, t95/√λ].
+  stateOS: same lab $t$ clock as meaSigOS.
+  OpenSees companion: pier Δux (mm) vs $t_{\mathrm{int}}$ (prototype).
+  D5–95 zoom / counts: [t5, t95] from Arias on the GM clock, shifted by
+  each dump's gmStartTime (prototype). Lab counts use that window / √λ.
 
 Loading note (2026-08-21): folder nicknames may say Storm_Wave; the campaign
 is earthquake followed by tsunami (not storm-wave-only).
@@ -73,6 +74,7 @@ from compare_groups import (
 from gm_duration import (
     SignificantDuration,
     arias_significant_duration,
+    d595_lab_window,
     d595_proto_window,
     gm_start_time_s,
 )
@@ -81,18 +83,12 @@ from lab_paths import (
     MAT_EXTRACT_DIR,
     M_TO_MM,
     TIME_SCALE_FROUDE,
-    XLIM_FULL_MODEL_S,
     XLIM_FULL_PROTO_S,
     YLIM_DISP_PROTO_MM,
     compare_plots_dir,
     resolve_opensees_data,
 )
-from lab_time_map import (
-    LABEL_T_LAB,
-    add_dual_time_xaxis_lab,
-    map_os_to_lab,
-    os_window_to_lab,
-)
+from lab_time_map import LABEL_T_INT, LABEL_T_INT_SINCE_GM
 from paths import HERE
 from PlotEQCompareRuns import (
     DPI,
@@ -131,7 +127,7 @@ usage: python plot/PlotEQComparePairs.py [runDir ...]
             (excluded runs → compare/_excluded/<reason>/<variant>/pairs/)
             hist_ux_pair_F##.png           Simulink (primary)
             hist_ux_pair_F##_opensees.png  OpenSees companion
-  ref       fewest typeConv3→2 events in GM D5-95 (complete preferred)
+  ref       fewest typeConv3→2 in GM D5-95; complete; majority gmStart
   note      offline OpenSees (realTimeON 0) is the eventual true reference
 """
 
@@ -193,22 +189,30 @@ def rising_edges_to_state(
 def slowdown_stats_for_mat(
     mat_name: str,
     duration: SignificantDuration,
+    *,
+    gm_start_proto_s: float = 0.0,
 ) -> SlowdownStats | None:
     """
-    Count slowdown onsets inside the lab-mapped D5–95 window.
+    Count slowdown onsets inside lab-time D5–95 (GM window + gmStart).
 
-    Lab window: [t5/√λ, t95/√λ] so it matches GM [t5, t95] under Froude.
+    Lab window: (gmStart + [t5, t95]) / √λ on the Simulink Time axis.
 
-    Args:    mat_name, duration  Arias D5–95 on GM / prototype clock
+    Args:    mat_name; duration  Arias on GM clock; gm_start_proto_s
+             Path ``-startTime`` (prototype s) for this dump
     Returns: SlowdownStats or None if no stateOS
     """
+    _ = duration  # kept for call-site compatibility; window from VT2 + gmStart
     pair = load_type_conv3(mat_name)
     if pair is None:
         return None
     t_lab_s, state = pair
     onsets = rising_edges_to_state(t_lab_s, state)
-    t5_lab = duration.t5_s / TIME_SCALE_FROUDE
-    t95_lab = duration.t95_s / TIME_SCALE_FROUDE
+    win = d595_lab_window(
+        gm_start_proto_s, time_scale_froude=TIME_SCALE_FROUDE
+    )
+    if win is None:
+        return None
+    t5_lab, t95_lab = win
     in_window = (onsets >= t5_lab) & (onsets <= t95_lab)
     return SlowdownStats(
         mat_name=mat_name,
@@ -240,6 +244,22 @@ def is_single_precision_dump(dump_name: str, rows_by_dump: dict[str, dict[str, s
     return ("-precision" in blob) or ("single precision" in blob)
 
 
+def _majority_gm_start_s(runs: list[Path]) -> float | None:
+    """
+    Modal gmStartTime (prototype s) among dumps that report one.
+
+    Args:    runs  dump folders in the compare group
+    Returns: majority gm start, or None if none found
+    """
+    counts: dict[float, int] = {}
+    for eq_dir in runs:
+        key = float(gm_start_time_s(eq_dir))
+        counts[key] = counts.get(key, 0) + 1
+    if not counts:
+        return None
+    return max(counts.items(), key=lambda kv: (kv[1], -kv[0]))[0]
+
+
 def pick_reference(
     runs: list[Path],
     run_mat: dict[str, str],
@@ -248,7 +268,8 @@ def pick_reference(
     allow_excluded: bool = False,
 ) -> tuple[Path | None, dict[str, SlowdownStats]]:
     """
-    Interim reference: fewest D5–95 slowdowns; complete preferred on ties.
+    Interim reference among the group's majority gmStartTime: prefer a
+    complete analysis, then fewest D5–95 slowdowns (Wed: W02 at 150 s).
 
     Requires plottable Simulink meaSigOS. Unless ``allow_excluded``, skip
     dry/PID baseline mats, single-precision CuDSS, and twoNodeLink.
@@ -258,7 +279,8 @@ def pick_reference(
     """
     stats: dict[str, SlowdownStats] = {}
     rows_by_dump = dump_to_row()
-    # sort key: n_d595, incomplete, is_baseline, dump name
+    gm_pref = _majority_gm_start_s(runs)
+    # sort: majority gmStart → complete → fewest D5–95 slowdowns → name
     candidates: list[tuple[int, int, int, str, Path]] = []
 
     for eq_dir in runs:
@@ -268,15 +290,21 @@ def pick_reference(
         row = rows_by_dump.get(eq_dir.name)
         if not allow_excluded and analysis_skip_reason(row, mat_name):
             continue
-        s = slowdown_stats_for_mat(mat_name, duration)
+        gm0 = float(gm_start_time_s(eq_dir))
+        s = slowdown_stats_for_mat(mat_name, duration, gm_start_proto_s=gm0)
         if s is None:
             continue
         stats[eq_dir.name] = s
         if load_mea_ux_proto(mat_name) is None:
             continue
         _, _, complete = run_duration(eq_dir)
+        gm_mismatch = (
+            0
+            if gm_pref is None or abs(gm0 - gm_pref) < 0.5
+            else 1
+        )
         candidates.append(
-            (s.n_d595, 0 if complete else 1, 0, eq_dir.name, eq_dir)
+            (gm_mismatch, 0 if complete else 1, s.n_d595, eq_dir.name, eq_dir)
         )
 
     if not candidates:
@@ -382,10 +410,11 @@ def add_dual_time_xaxis(ax: plt.Axes, *, top: bool) -> None:
                 lambda t_model: t_model * TIME_SCALE_FROUDE,
             ),
         )
-        sec_x.set_xlabel(r"$t/\sqrt{\lambda}$ (s) model scale")
+        sec_x.set_xlabel(r"$t_{\mathrm{int}}/\sqrt{\lambda}$ (s) model scale")
 
 
-LABEL_T_PROTO = r"$t$ (s) prototype scale"
+LABEL_T_PROTO = LABEL_T_INT
+LABEL_T_SINCE_GM = LABEL_T_INT_SINCE_GM
 
 
 def format_state_axis(ax: plt.Axes, y_stack: list[np.ndarray]) -> None:
@@ -443,6 +472,50 @@ def _pair_line_styles(ref: Path, other: Path) -> tuple[str, str]:
     return ("-" if complete_ref else "--", "-" if complete_other else "--")
 
 
+def _d595_zoom_clock(
+    ref: Path,
+    other: Path,
+    duration: SignificantDuration,
+) -> tuple[bool, float, float, float, float, str, str]:
+    """
+    D5–95 zoom clock: absolute proto if gmStarts match, else since gmStart.
+
+    When gmStarts differ (Wed W01 vs W02), each series is plotted as
+    \(t-\mathrm{gmStart}\) so the EQ windows overlay; xlim is GM-clock D5–95.
+
+    Args:    ref, other dumps; duration  Arias on GM clock
+    Returns: (align_since_gm, gm_ref, gm_oth, t5_zoom, t95_zoom,
+              zoom_xlabel, zoom_title)
+    """
+    gm_ref = float(gm_start_time_s(ref))
+    gm_oth = float(gm_start_time_s(other))
+    if abs(gm_ref - gm_oth) < 0.5:
+        d595 = d595_proto_window(gm_ref)
+        if d595 is not None:
+            t5, t95 = float(d595[0]), float(d595[1])
+        else:
+            t5 = float(duration.t5_s) + gm_ref
+            t95 = float(duration.t95_s) + gm_ref
+        return (
+            False,
+            gm_ref,
+            gm_oth,
+            t5,
+            t95,
+            LABEL_T_PROTO,
+            r"D5–95 zoom",
+        )
+    return (
+        True,
+        gm_ref,
+        gm_oth,
+        float(duration.t5_s),
+        float(duration.t95_s),
+        LABEL_T_SINCE_GM,
+        r"D5–95 zoom ($t$ since gmStart)",
+    )
+
+
 # ------------------------------------------------------------
 # 3. PAIRWISE FIGURES (Simulink primary; OpenSees companion)
 # ------------------------------------------------------------
@@ -498,38 +571,49 @@ def plot_pair_simulink(
     label_other = labels[other.name]
     t_ref, u_ref = mea_ref
     t_oth, u_oth = mea_other
-    t5, t95 = duration.t5_s, duration.t95_s
+    since_gm, gm_ref, gm_oth, t5, t95, zoom_xlab, zoom_title = _d595_zoom_clock(
+        ref, other, duration
+    )
+    t_ref_z = t_ref - gm_ref if since_gm else t_ref
+    t_oth_z = t_oth - gm_oth if since_gm else t_oth
 
-    for ax in (ax_ux_f, ax_ux_z):
-        ax.plot(t_ref, u_ref, color=COLOR_REF, lw=1.2, ls=ls_ref, zorder=2)
-        ax.plot(t_oth, u_oth, color=COLOR_OTHER, lw=1.1, ls=ls_other, zorder=3)
+    ax_ux_f.plot(t_ref, u_ref, color=COLOR_REF, lw=1.2, ls=ls_ref, zorder=2)
+    ax_ux_f.plot(t_oth, u_oth, color=COLOR_OTHER, lw=1.1, ls=ls_other, zorder=3)
+    ax_ux_z.plot(t_ref_z, u_ref, color=COLOR_REF, lw=1.2, ls=ls_ref, zorder=2)
+    ax_ux_z.plot(t_oth_z, u_oth, color=COLOR_OTHER, lw=1.1, ls=ls_other, zorder=3)
     ax_ux_f.set_ylim(*YLIM_DISP_PROTO_MM)
 
     y_stack: list[np.ndarray] = []
-    for ax in (ax_st_f, ax_st_z):
+    for which, ax in (("full", ax_st_f), ("zoom", ax_st_z)):
         if state_ref is not None:
             t_lab, st = state_ref
+            t_plot = t_lab * TIME_SCALE_FROUDE
+            if which == "zoom" and since_gm:
+                t_plot = t_plot - gm_ref
             ax.plot(
-                t_lab * TIME_SCALE_FROUDE,
+                t_plot,
                 st,
                 color=COLOR_REF,
                 lw=1.1,
                 drawstyle="steps-post",
                 zorder=2,
             )
-            if ax is ax_st_f:
+            if which == "full":
                 y_stack.append(st)
         if state_other is not None:
             t_lab, st = state_other
+            t_plot = t_lab * TIME_SCALE_FROUDE
+            if which == "zoom" and since_gm:
+                t_plot = t_plot - gm_oth
             ax.plot(
-                t_lab * TIME_SCALE_FROUDE,
+                t_plot,
                 st,
                 color=COLOR_OTHER,
                 lw=1.05,
                 drawstyle="steps-post",
                 zorder=3,
             )
-            if ax is ax_st_f:
+            if which == "full":
                 y_stack.append(st)
         ax.axhline(SLOWDOWN_STATE, color="0.65", lw=0.7, ls=":", zorder=1)
     format_state_axis(ax_st_f, y_stack)
@@ -539,9 +623,9 @@ def plot_pair_simulink(
     add_dual_disp_yaxis(ax_ux_z, source="actuator", primary_label=False)
     add_dual_time_xaxis(ax_ux_f, top=True)
     add_dual_time_xaxis(ax_ux_z, top=True)
-    ax_ux_z.set_title(r"D5–95 zoom", fontsize=14, pad=6)
+    ax_ux_z.set_title(zoom_title, fontsize=14, pad=6)
     ax_st_f.set_xlabel(LABEL_T_PROTO)
-    ax_st_z.set_xlabel(LABEL_T_PROTO)
+    ax_st_z.set_xlabel(zoom_xlab)
 
     ax_ux_f.set_xlim(*XLIM_PROTO_S)
     ax_st_f.set_xlim(*XLIM_PROTO_S)
@@ -580,27 +664,23 @@ def plot_pair_opensees(
     run_mat: dict[str, str],
 ) -> None:
     """
-    Optional OpenSees-only companion: pier Δu full | D5–95 on lab-mapped t.
+    Optional OpenSees-only companion: pier Δu full | D5–95 on OpenSees t.
 
-    Args:    ref, other, out, duration, labels, run_mat  dump→MatFile
+    Primary hist pairs already use lab Time; this companion stays on the
+    recorder / domain clock (no k+f map).
+
+    Args:    ref, other, out, duration, labels, run_mat  (run_mat unused)
     Returns: none (writes PNG when both piers exist)
     """
+    _ = run_mat
     pier_ref = load_pier_ux_mm(ref)
     pier_other = load_pier_ux_mm(other)
-    mat_ref = (run_mat.get(ref.name) or "").strip()
-    mat_oth = (run_mat.get(other.name) or "").strip()
-    if pier_ref is None or pier_other is None or not mat_ref or not mat_oth:
-        print(f"PlotEQComparePairs: skip OpenSees pair {other.name} (no pier/mat)")
+    if pier_ref is None or pier_other is None:
+        print(f"PlotEQComparePairs: skip OpenSees pair {other.name} (no pier)")
         return
 
-    try:
-        t_ref, u_ref = pier_ref
-        t_oth, u_oth = pier_other
-        t_ref = map_os_to_lab(t_ref, mat_ref).t_lab
-        t_oth = map_os_to_lab(t_oth, mat_oth).t_lab
-    except RuntimeError as exc:
-        print(f"PlotEQComparePairs: skip OpenSees pair {other.name} ({exc})")
-        return
+    t_ref, u_ref = pier_ref
+    t_oth, u_oth = pier_other
 
     apply_pair_style()
     fig, (ax_f, ax_z) = plt.subplots(
@@ -613,27 +693,26 @@ def plot_pair_opensees(
     ls_ref, ls_other = _pair_line_styles(ref, other)
     label_ref = f"ref  {labels[ref.name]}"
     label_other = labels[other.name]
-    gm0 = gm_start_time_s(ref)
-    d595_os = d595_proto_window(gm0)
-    if d595_os is not None:
-        t5, t95 = os_window_to_lab(d595_os[0], d595_os[1], mat_ref)
-    else:
-        t5 = float(duration.t5_s) / TIME_SCALE_FROUDE
-        t95 = float(duration.t95_s) / TIME_SCALE_FROUDE
+    since_gm, gm_ref, gm_oth, t5, t95, zoom_xlab, zoom_title = _d595_zoom_clock(
+        ref, other, duration
+    )
+    t_ref_z = t_ref - gm_ref if since_gm else t_ref
+    t_oth_z = t_oth - gm_oth if since_gm else t_oth
 
-    for ax in (ax_f, ax_z):
-        ax.plot(t_ref, u_ref, color=COLOR_REF, lw=1.2, ls=ls_ref, zorder=2)
-        ax.plot(t_oth, u_oth, color=COLOR_OTHER, lw=1.1, ls=ls_other, zorder=3)
+    ax_f.plot(t_ref, u_ref, color=COLOR_REF, lw=1.2, ls=ls_ref, zorder=2)
+    ax_f.plot(t_oth, u_oth, color=COLOR_OTHER, lw=1.1, ls=ls_other, zorder=3)
+    ax_z.plot(t_ref_z, u_ref, color=COLOR_REF, lw=1.2, ls=ls_ref, zorder=2)
+    ax_z.plot(t_oth_z, u_oth, color=COLOR_OTHER, lw=1.1, ls=ls_other, zorder=3)
     ax_f.set_ylim(*YLIM_DISP_PROTO_MM)
 
     add_dual_disp_yaxis(ax_f, source="pier", primary_label=True)
     add_dual_disp_yaxis(ax_z, source="pier", primary_label=False)
-    add_dual_time_xaxis_lab(ax_f, top=True)
-    add_dual_time_xaxis_lab(ax_z, top=True)
-    ax_f.set_xlabel(LABEL_T_LAB)
-    ax_z.set_xlabel(LABEL_T_LAB)
-    ax_z.set_title(r"D5–95 zoom", fontsize=14, pad=6)
-    ax_f.set_xlim(*XLIM_FULL_MODEL_S)
+    add_dual_time_xaxis(ax_f, top=True)
+    add_dual_time_xaxis(ax_z, top=True)
+    ax_f.set_xlabel(LABEL_T_PROTO)
+    ax_z.set_xlabel(zoom_xlab)
+    ax_z.set_title(zoom_title, fontsize=14, pad=6)
+    ax_f.set_xlim(*XLIM_PROTO_S)
     ax_z.set_xlim(t5, t95)
 
     fig.legend(
@@ -656,7 +735,7 @@ def plot_pair_opensees(
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=PAIR_DPI, bbox_inches="tight", pad_inches=0.22)
     plt.close(fig)
-    print(f"PlotEQComparePairs: wrote {out}  (OpenSees, lab-mapped)")
+    print(f"PlotEQComparePairs: wrote {out}  (t_int)")
 
 
 def write_group_pairs(
@@ -715,22 +794,22 @@ def write_group_pairs(
         f"group: {slug}",
         f"label: {label}",
         (
-            f"D5-95 (GM / prototype): t5={duration.t5_s:.3f}s  "
+            f"D5-95 (GM clock): t5={duration.t5_s:.3f}s  "
             f"t95={duration.t95_s:.3f}s  D={duration.d5_95_s:.3f}s  "
-            f"({duration.path.name})"
+            f"({duration.path.name}); zoom/counts += dump gmStartTime"
         ),
         (
-            "interim_reference: fewest typeConv3→2 rising edges in D5-95 "
-            "(complete preferred; meaSigOS required; "
-            "exclude single-precision CuDSS and twoNodeLink "
+            "interim_reference: majority gmStartTime, then complete, then "
+            "fewest typeConv3→2 in D5-95 (gmStart-shifted); meaSigOS "
+            "required; exclude single-precision CuDSS and twoNodeLink "
             "from campaign folders — those go under _excluded/; "
-            "dry OpenFresco baseline F01 is included)"
+            "dry OpenFresco baseline F01 is included"
         ),
         (
             "primary_figures: Simulink meaSigOS + stateOS "
             "(same lab clock; do not mix with OpenSees)"
         ),
-        "companion_figures: *_opensees.png = pier vs lab-mapped t (k+f)",
+        "companion_figures: *_opensees.png = pier vs $t_{int}$",
         "pair_file_tag: Test ID (F##/W##) from TestMatrix_lab_runs.csv",
         (
             "true_reference_later: offline OpenSees per folder "

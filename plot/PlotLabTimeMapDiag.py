@@ -2,13 +2,14 @@
 """
 Goals
 -----
-Lab-time map diagnostics for RTHS (k + t_OS/√λ + f):
+Lab-time map diagnostics for RTHS. Map from the start: ctrlDisp
+recorder \(t_{i+1}\) ↔ lab atTarget; \(f=t_{\mathrm{lab}}-t_{\mathrm{OS}}/\sqrt{\lambda}\):
 
-  diag_lab_time_map.png   before/after Froude map, map curve, mid-run f
-  diag_offset_align.png   ctrlDisp vs tar/com/mea (early + motion)
+  diag_lab_time_map.png   before/after, map curve, f
+  diag_offset_align.png   ctrlDisp vs tar/com/mea (start + peak)
 
   python plot/PlotLabTimeMapDiag.py
-  python plot/PlotLabTimeMapDiag.py F06 F14
+  python plot/PlotLabTimeMapDiag.py W02 W04
 """
 
 from __future__ import annotations
@@ -44,6 +45,12 @@ from lab_paths import (
     resolve_opensees_data,
     test_os_plots_dir,
 )
+from lab_time_map import (
+    handshake_map_for_dump,
+    lab_times_to_os_handshake,
+    map_os_times_handshake,
+    slowdown_lab_onsets,
+)
 
 N_COUNT = 10
 SLOWDOWN_STATE = 2
@@ -58,11 +65,8 @@ COLOR_REF = "#666666"
 COLOR_K = "#6a1b9a"
 COLOR_SLOW = "#FFC04D"
 
-ZOOM_MOTION = {
-    "F14": (40.0, 55.0),
-    "F07": (40.0, 55.0),
-    "F08": (40.0, 55.0),
-}
+# Half-width (lab s) for motion panels centered on the handshake peak.
+PEAK_ZOOM_HALF_S = 7.5
 
 
 def lab_clock_parts(mat_name: str) -> tuple[float, float, float, float, float]:
@@ -135,22 +139,24 @@ def write_map(test_id: str) -> int:
     root = resolve_opensees_data() or LOCAL_OPENSEES_DATA
     dump_path = root / dump
     mea = load_mat_mea_feedback(mat)
-    tc = load_type_conv3(mat)
-    if mea is None or tc is None:
+    tar = load_os_block(mat, "tarSigOS")
+    if mea is None or tar is None:
         return 1
     t_lab_mea, u_model = mea
     u_lab = model_disp_to_proto_mm(u_model)
-    t_state, tc3 = tc
+    t_tar, u_tar = tar[0], model_disp_to_proto_mm(tar[1])
     d = np.loadtxt(dump_path / "Elmt101_ctrlDsp.out", ndmin=2)
     t_os = np.asarray(d[:, 0], dtype=float)
     u_os = (np.asarray(d[:, 1], dtype=float) - d[0, 1]) * M_TO_MM
     t_naive = t_os / TIME_SCALE_FROUDE
 
-    k, _, t_ex, _, _ = lab_clock_parts(mat)
-    cum_mid, ons_lab = midrun_cum_slow(t_state, tc3, t_ex)
-    t_mapped, f_nl = map_os_with_slow_f(t_os, k, t_state, cum_mid)
-    t_slow_os = lab_times_to_os(ons_lab, t_os, t_mapped)
-    n_slow = int(ons_lab.size)
+    try:
+        hs = handshake_map_for_dump(dump_path, mat, t_tar, u_tar)
+    except RuntimeError as exc:
+        print(f"PlotLabTimeMapDiag: {test_id} handshake failed: {exc}", file=sys.stderr)
+        return 1
+    t_mapped = map_os_times_handshake(t_os, hs)
+    f_nl = t_mapped - t_naive
 
     t0 = gm_start_time_s(dump_path)
     d595 = d595_proto_window(t0)
@@ -158,6 +164,8 @@ def write_map(test_id: str) -> int:
         z0, z1 = d595[0] / TIME_SCALE_FROUDE, d595[1] / TIME_SCALE_FROUDE
     else:
         z0, z1 = 36.0, 90.0
+    t_peak_lab = float(hs.t_lab[hs.i_peak])
+    z1 = max(z1, t_peak_lab + 5.0)
 
     apply_paper_style()
     scale_paper_fonts(1.35)
@@ -171,48 +179,72 @@ def write_map(test_id: str) -> int:
     step_lab = max(1, len(t_lab_mea) // 8000)
     step_os = max(1, len(t_os) // 8000)
     step_m = max(1, len(t_os) // 12000)
+    step_tar = max(1, len(t_tar) // 8000)
 
+    ax_b.plot(
+        t_tar[::step_tar],
+        u_tar[::step_tar],
+        color=COLOR_TAR,
+        lw=0.9,
+        ls="--",
+        label="tarSigOS (lab $t$)",
+        zorder=3,
+    )
     ax_b.plot(
         t_lab_mea[::step_lab],
         u_lab[::step_lab],
         color=COLOR_LAB,
-        lw=0.9,
+        lw=0.85,
+        alpha=0.75,
         label="meaSigOS (lab $t$)",
+        zorder=2,
     )
     ax_b.plot(
         t_naive[::step_os],
         u_os[::step_os],
         color=COLOR_OS,
         lw=0.9,
-        label=r"ctrlDisp ($t_{\mathrm{OS}}/\sqrt{\lambda}$)",
+        label=r"ctrlDisp ($t_{\mathrm{int}}/\sqrt{\lambda}$)",
+        zorder=4,
     )
     ax_b.set_xlim(z0, z1)
     ax_b.set_ylabel(r"$\Delta u$ (mm, prototype)")
-    ax_b.set_title("before: naive Froude (no $k$, no slowdown $f$)")
+    ax_b.set_title(r"before: naive Froude ($t_{\mathrm{int}}/\sqrt{\lambda}$)")
     ax_b.legend(loc="upper right", frameon=True, fancybox=False, edgecolor="#333")
     ax_b.grid(True, ls=":", alpha=0.45)
 
     ax_a.plot(
+        t_tar[::step_tar],
+        u_tar[::step_tar],
+        color=COLOR_TAR,
+        lw=0.9,
+        ls="--",
+        label="tarSigOS (lab $t$)",
+        zorder=3,
+    )
+    ax_a.plot(
         t_lab_mea[::step_lab],
         u_lab[::step_lab],
         color=COLOR_LAB,
-        lw=0.9,
+        lw=0.85,
+        alpha=0.75,
         label="meaSigOS (lab $t$)",
+        zorder=2,
     )
     ax_a.plot(
         t_mapped[::step_os],
         u_os[::step_os],
         color=COLOR_OS,
         lw=0.9,
-        label=r"ctrlDisp on $t_{\mathrm{lab}}=k+t_{\mathrm{OS}}/\sqrt{\lambda}+f$",
+        label=r"ctrlDisp on $t=$atTarget$(t_{\mathrm{int}})$",
+        zorder=4,
     )
     ax_a.set_xlim(z0, z1)
     ax_a.set_xlabel(r"$t$ (s) lab / model scale")
     ax_a.set_ylabel(r"$\Delta u$ (mm, prototype)")
     ax_a.set_title(
-        rf"after: $k={k*1e3:.1f}\,\mathrm{{ms}}$; "
-        rf"$n_{{\mathrm{{slow}}}}={n_slow}$ mid-run; "
-        rf"$f=\sum\Delta t_{{\mathrm{{lab}}}}$ (typeConv3$=2$)"
+        rf"after: $t_{{\mathrm{{int}}}}\leftrightarrow$atTarget  ·  "
+        rf"$f_{{\mathrm{{end}}}}={float(hs.f_at[-1])*1e3:.1f}\,\mathrm{{ms}}$"
     )
     ax_a.legend(loc="upper right", frameon=True, fancybox=False, edgecolor="#333")
     ax_a.grid(True, ls=":", alpha=0.45)
@@ -223,61 +255,50 @@ def write_map(test_id: str) -> int:
         color="#bdbdbd",
         lw=1.0,
         ls=":",
-        label=r"$t_{\mathrm{OS}}/\sqrt{\lambda}$",
-    )
-    ax_m.plot(
-        t_os[::step_m],
-        (k + t_naive)[::step_m],
-        color=COLOR_REF,
-        lw=1.1,
-        ls="--",
-        label=r"$k+t_{\mathrm{OS}}/\sqrt{\lambda}$",
+        label=r"$t_{\mathrm{int}}/\sqrt{\lambda}$",
     )
     ax_m.plot(
         t_os[::step_m],
         t_mapped[::step_m],
         color=COLOR_MAP,
         lw=1.05,
-        label=r"$t_{\mathrm{lab}}(t_{\mathrm{OS}})$",
+        label=r"$t=$atTarget$(t_{\mathrm{int}})$",
     )
-    ax_m.text(
-        0.03,
-        0.97,
-        rf"$k={k*1e3:.1f}\,\mathrm{{ms}}$",
-        transform=ax_m.transAxes,
-        color=COLOR_K,
-        fontsize=10,
-        va="top",
-        fontweight="bold",
-        bbox=dict(facecolor="white", edgecolor="none", alpha=0.9, pad=2.0),
-    )
-    ax_m.set_xlabel(r"$t_{\mathrm{OS}}$ (s, prototype)")
-    ax_m.set_ylabel(r"$t_{\mathrm{lab}}$ (s, model)")
-    ax_m.set_title(r"map: $k + t_{\mathrm{OS}}/\sqrt{\lambda} + f$")
+    ax_m.set_xlabel(r"$t_{\mathrm{int}}$ (s, prototype)")
+    ax_m.set_ylabel(r"$t$ (s, lab / model)")
+    ax_m.set_title(r"map: recorder $t_{i+1}$ $\leftrightarrow$ atTarget")
     ax_m.legend(loc="lower right", frameon=True, fancybox=False, edgecolor="#333")
     ax_m.grid(True, ls=":", alpha=0.45)
     ax_m.set_xlim(0.0, float(t_os[-1]))
-    ax_m.set_ylim(0.0, max(float(t_mapped[-1]), float(k + t_naive[-1])) * 1.02)
+    ax_m.set_ylim(0.0, max(float(t_mapped[-1]), float(t_naive[-1])) * 1.02)
 
     ax_f.plot(t_os[::step_m], f_nl[::step_m] * 1e3, color=COLOR_MAP, lw=1.2)
     ax_f.axhline(0.0, color=COLOR_REF, lw=0.7, ls="--")
-    step_mark = max(1, n_slow // 40) if n_slow else 1
-    for ts in t_slow_os[::step_mark]:
-        ax_f.axvline(ts, color=COLOR_SLOW, alpha=0.35, lw=0.7, zorder=0)
-    ax_f.set_xlabel(r"$t_{\mathrm{OS}}$ (s, prototype)")
-    ax_f.set_ylabel(r"$f(t_{\mathrm{OS}})$ (ms model)")
+    # typeConv3==2 onsets (lab) → OS t via inverse atTarget map
+    ons_lab = slowdown_lab_onsets(mat)
+    n_slow = len(ons_lab)
+    if n_slow:
+        t_slow_os = lab_times_to_os_handshake(np.asarray(ons_lab, dtype=float), hs)
+        step_mark = max(1, n_slow // 40)
+        for tos in np.asarray(t_slow_os, dtype=float)[::step_mark]:
+            if 0.0 <= float(tos) <= float(t_os[-1]):
+                ax_f.axvline(float(tos), color=COLOR_SLOW, alpha=0.35, lw=0.7, zorder=0)
+    ax_f.set_xlabel(r"$t_{\mathrm{int}}$ (s, prototype)")
+    ax_f.set_ylabel(r"$f(t_{\mathrm{int}})$ (ms model)")
     ax_f.set_title(
-        rf"mid-run cum.\ typeConv3$=2$  "
-        rf"($f_{{\mathrm{{end}}}}={f_nl[-1]*1e3:.1f}\,\mathrm{{ms}}$; amber=onset)"
+        rf"$f=t-t_{{\mathrm{{int}}}}/\sqrt{{\lambda}}$  "
+        rf"($f_{{\mathrm{{end}}}}={float(f_nl[-1])*1e3:.1f}\,\mathrm{{ms}}$; "
+        rf"amber$=$slowdown onset, $n={n_slow}$)"
     )
+    y_lo = min(0.0, float(np.min(f_nl) * 1e3))
     y_hi = max(10.0, float(np.max(f_nl) * 1e3) * 1.15)
-    ax_f.set_ylim(-0.05 * y_hi, y_hi)
+    ax_f.set_ylim(y_lo - 0.05 * (y_hi - y_lo + 1e-9), y_hi)
     ax_f.grid(True, ls=":", alpha=0.45)
 
     fig.suptitle(
         rf"{run_title(test_id)}  ·  "
-        rf"$t_{{\mathrm{{lab}}}}=k+t_{{\mathrm{{OS}}}}/\sqrt{{\lambda}}+f$ "
-        rf"(mid-run $n_{{\mathrm{{slow}}}}={n_slow}$)",
+        rf"atTarget map (from start)  ·  "
+        rf"$n_{{\mathrm{{pair}}}}={hs.t_os.size}$",
         fontsize=plt.rcParams["axes.labelsize"],
         y=1.01,
     )
@@ -287,7 +308,7 @@ def write_map(test_id: str) -> int:
     plt.close(fig)
     print(
         f"PlotLabTimeMapDiag: wrote {out}  "
-        f"k={k*1e3:.2f} ms  n_slow={n_slow}  f_end={f_nl[-1]*1e3:.2f} ms"
+        f"f_end={float(f_nl[-1])*1e3:.2f} ms  n_pair={hs.t_os.size}"
     )
     return 0
 
@@ -337,33 +358,46 @@ def write_align(test_id: str) -> int:
         return 1
     mat, dump = pair
     root = resolve_opensees_data() or LOCAL_OPENSEES_DATA
+    dump_path = root / dump
     tar = load_os_block(mat, "tarSigOS")
     com = load_os_block(mat, "comSigOS")
     mea = load_os_block(mat, "meaSigOS")
     t_tar, u_tar = tar[0], model_disp_to_proto_mm(tar[1])
     t_com, u_com = com[0], model_disp_to_proto_mm(com[1])
     t_mea, u_mea = mea[0], model_disp_to_proto_mm(mea[1])
-    d = np.loadtxt((root / dump) / "Elmt101_ctrlDsp.out", ndmin=2)
+    d = np.loadtxt(dump_path / "Elmt101_ctrlDsp.out", ndmin=2)
     t_os = np.asarray(d[:, 0], dtype=float)
     u_os = (np.asarray(d[:, 1], dtype=float) - d[0, 1]) * M_TO_MM
-    k, _, t_ex, _, _ = lab_clock_parts(mat)
-    # full map with f for "after" on motion; early still just k
-    tc = load_type_conv3(mat)
-    t_state, tc3 = tc
-    cum_mid, _ = midrun_cum_slow(t_state, tc3, t_ex)
-    t_mapped, _ = map_os_with_slow_f(t_os, k, t_state, cum_mid)
+    try:
+        hs = handshake_map_for_dump(dump_path, mat, t_tar, u_tar)
+    except RuntimeError as exc:
+        print(f"PlotLabTimeMapDiag: {test_id} handshake failed: {exc}", file=sys.stderr)
+        return 1
+    t_mapped = map_os_times_handshake(t_os, hs)
     t_naive = t_os / TIME_SCALE_FROUDE
-    t_shift_k = k + t_naive  # early panels: k only
-    z0_m, z1_m = ZOOM_MOTION.get(test_id, (40.0, 55.0))
+
+    # Start zoom: span naive vs mapped first motion; after = lab [0, T_EARLY].
+    t_start_lab = float(hs.t_lab[0])
+    t_start_naive = float(hs.t_os[0]) / TIME_SCALE_FROUDE
+    z0_start_b = 0.0
+    z1_start_b = max(T_EARLY_S, t_start_lab + 0.2, t_start_naive + 0.2)
+    z0_start_a = 0.0
+    z1_start_a = T_EARLY_S
+
+    t_peak_lab = float(hs.t_lab[hs.i_peak])
+    t_peak_naive = float(hs.t_os[hs.i_peak]) / TIME_SCALE_FROUDE
+    # Same xlim for peak before/after (span both clocks so lag is visible).
+    z0_peak = max(0.0, min(t_peak_lab, t_peak_naive) - PEAK_ZOOM_HALF_S)
+    z1_peak = max(t_peak_lab, t_peak_naive) + PEAK_ZOOM_HALF_S
 
     apply_paper_style()
     scale_paper_fonts(1.25)
     fig, axes = plt.subplots(4, 1, figsize=(11.2, 10.4), layout="constrained")
-    ax_eb, ax_ea, ax_mb, ax_ma = axes
+    ax_sb, ax_sa, ax_pb, ax_pa = axes
     step_lab = max(1, len(t_com) // 10000)
     step_os = max(1, len(t_os) // 12000)
 
-    def draw(ax, z0, z1, t_os_plot, label_os, *, mark_k, slip):
+    def draw(ax, z0, z1, t_os_plot, label_os):
         m_tar = (t_tar >= z0) & (t_tar <= z1)
         m_com = (t_com >= z0) & (t_com <= z1)
         m_mea = (t_mea >= z0) & (t_mea <= z1)
@@ -403,10 +437,6 @@ def write_align(test_id: str) -> int:
             label=label_os,
             zorder=5,
         )
-        if mark_k:
-            ax.axvline(k, color=COLOR_K, lw=1.2, ls=":", alpha=0.75)
-        if slip:
-            annotate_k_slip(ax, t_com, u_com, t_naive, u_os, k, m_com, (t_naive >= z0) & (t_naive <= z1))
         ax.set_xlim(z0, z1)
         ax.set_ylabel(r"$\Delta u$ (mm, proto)")
         ax.legend(loc="best", fontsize=7.5, frameon=True, fancybox=False, edgecolor="#333")
@@ -416,72 +446,41 @@ def write_align(test_id: str) -> int:
         )
         y0, y1 = float(np.nanmin(u_all)), float(np.nanmax(u_all))
         pad = 0.12 * (y1 - y0 + 1e-9)
-        # keep arrow headroom if already expanded
-        cur = ax.get_ylim()
-        ax.set_ylim(min(cur[0], y0 - pad), max(cur[1], y1 + pad))
+        ax.set_ylim(y0 - pad, y1 + pad)
 
-    draw(
-        ax_eb,
-        0.0,
-        T_EARLY_S,
-        t_naive,
-        r"ctrlDisp unshifted",
-        mark_k=True,
-        slip=False,
-    )
-    ax_eb.set_title(
-        rf"early before: unshifted  ·  $[0,\,{T_EARLY_S:g}]$ s"
-        rf"  ($k={k*1e3:.1f}\,\mathrm{{ms}}$)",
+    draw(ax_sb, z0_start_b, z1_start_b, t_naive, r"ctrlDisp ($t_{\mathrm{int}}/\sqrt{\lambda}$)")
+    ax_sb.set_title(
+        rf"start before: naive Froude  "
+        rf"(zoom $[{z0_start_b:.2f},{z1_start_b:.2f}]$ s)",
         loc="left",
     )
-    draw(
-        ax_ea,
-        0.0,
-        T_EARLY_S,
-        t_shift_k,
-        r"ctrlDisp $+k$",
-        mark_k=True,
-        slip=False,
-    )
-    ax_ea.plot([k], [0.0], "o", ms=6.5, color=COLOR_K, zorder=6, label=r"$t_{\mathrm{OS}}=0$ at $k$")
-    ax_ea.legend(loc="best", fontsize=7.5, frameon=True, fancybox=False, edgecolor="#333")
-    ax_ea.set_title(
-        rf"early after: ctrlDisp shifted by $k$ (no mid-run $f$ yet)",
+    draw(ax_sa, z0_start_a, z1_start_a, t_mapped, r"ctrlDisp on $t=$atTarget")
+    ax_sa.set_title(
+        rf"start after: atTarget map  "
+        rf"(zoom $[{z0_start_a:.2f},{z1_start_a:.2f}]$ s · "
+        rf"$f_0={float(hs.f_at[0])*1e3:.1f}\,\mathrm{{ms}}$)",
         loc="left",
     )
-    ax_ea.set_xlabel(r"$t$ (s) lab / model")
+    ax_sa.set_xlabel(r"$t$ (s) lab / model")
 
-    draw(
-        ax_mb,
-        z0_m,
-        z1_m,
-        t_naive,
-        r"ctrlDisp unshifted",
-        mark_k=False,
-        slip=True,
-    )
-    ax_mb.set_title(
-        rf"motion before: unshifted  (zoom $[{z0_m:g},{z1_m:g}]$ s)",
+    draw(ax_pb, z0_peak, z1_peak, t_naive, r"ctrlDisp ($t_{\mathrm{int}}/\sqrt{\lambda}$)")
+    ax_pb.set_title(
+        rf"peak before: naive Froude  "
+        rf"(zoom $[{z0_peak:.1f},{z1_peak:.1f}]$ s · "
+        rf"atTarget peak ${t_peak_lab:.1f}$ s, naive ${t_peak_naive:.1f}$ s)",
         loc="left",
     )
-    draw(
-        ax_ma,
-        z0_m,
-        z1_m,
-        t_mapped,
-        r"ctrlDisp on $k+t_{\mathrm{OS}}/\sqrt{\lambda}+f$",
-        mark_k=False,
-        slip=False,
-    )
-    ax_ma.set_title(
-        rf"motion after: ctrlDisp with $k$ + mid-run $f$  "
-        rf"(zoom $[{z0_m:g},{z1_m:g}]$ s)",
+    draw(ax_pa, z0_peak, z1_peak, t_mapped, r"ctrlDisp on $t=$atTarget")
+    ax_pa.set_title(
+        rf"peak after: atTarget map  "
+        rf"(zoom $[{z0_peak:.1f},{z1_peak:.1f}]$ s · peak ${t_peak_lab:.1f}$ s · "
+        rf"$f={float(hs.f_at[hs.i_peak])*1e3:.1f}\,\mathrm{{ms}}$)",
         loc="left",
     )
-    ax_ma.set_xlabel(r"$t$ (s) lab / model scale")
+    ax_pa.set_xlabel(r"$t$ (s) lab / model scale")
 
     fig.suptitle(
-        rf"{run_title(test_id)}  ·  $k$ / $f$ align: ctrlDisp vs tar / com / mea",
+        rf"{run_title(test_id)}  ·  atTarget map: ctrlDisp vs tar / com / mea",
         fontsize=plt.rcParams["axes.labelsize"],
         y=1.01,
     )

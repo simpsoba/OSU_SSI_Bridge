@@ -2,8 +2,8 @@
 """
 Goals
 -----
-Overlay meaSigOS (actuator, native lab Time) and OpenSees pier UX (mapped with
-k + t_OS/√λ + f) on shared lab axes (full | D5–95), with amber lines at each
+Overlay meaSigOS (actuator, native lab $t$) and OpenSees pier UX (mapped with
+atTarget handshake) on shared lab axes (full | D5–95), with amber lines at each
 mid-run typeConv3==2 onset.
 
 twoNodeLink runs use relative pier UX (inner top node minus inner base node,
@@ -137,7 +137,7 @@ def write_plot(
     u_act = model_disp_to_proto_mm(u_m)
     t_pier_os, u_pier = pier
     try:
-        mapped = map_os_to_lab(t_pier_os, mat)
+        mapped = map_os_to_lab(t_pier_os, mat, dump_dir=dump_path)
     except RuntimeError as exc:
         print(f"PlotActuatorVsPier: skip {test_id} ({exc})", file=sys.stderr)
         return 1
@@ -148,7 +148,9 @@ def write_plot(
     t0 = gm_start_time_s(dump_path)
     d595_os = d595_proto_window(gm_start_s=t0)
     d595 = (
-        os_window_to_lab(d595_os[0], d595_os[1], mat) if d595_os is not None else None
+        os_window_to_lab(d595_os[0], d595_os[1], mat, dump_dir=dump_path)
+        if d595_os is not None
+        else None
     )
 
     fig_h = 4.2 * (0.65 + 0.35 * font_scale)

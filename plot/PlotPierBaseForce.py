@@ -2,18 +2,20 @@
 """
 Goals
 -----
-Plot numerical pier-base hinge section force (P, Mz) vs lab Time (full | D5–95)
-with amber lines at each mid-run typeConv3==2 onset. OS t mapped via
-``lab_time_map`` (k + t_OS/√λ + f). Dual axes: prototype and model via Froude
-(P/λ³, M/λ⁴); time primary = lab, top = t√λ.
+Plot numerical pier-base hinge section force (P, Mz) (full | D5–95) with amber
+lines at each mid-run typeConv3==2 onset. Two clocks:
+
+  hist_pier_base_PM.png           — lab $t$ (atTarget map)
+  hist_pier_base_PM_opensees.png  — $t_{\mathrm{int}}$
+
+Dual axes: prototype and model via Froude (P/λ³, M/λ⁴).
 
   python plot/PlotPierBaseForce.py --mesh-ladder
   python plot/PlotPierBaseForce.py F06 F14
 
-Source: dump ``pier_hinge_force.out`` (OpenSees t; N, N·m; prototype).
+Source: dump ``pier_hinge_force.out`` ($t_{\mathrm{int}}$; N, N·m; prototype).
 Bottom zeroLength hinge for lumpedPlasticity (section 1 for forceBeamColumn).
 Several Test IDs share one P axis and one M axis (max |·| over full records).
-Writes ``plots/runs/<Test>/os/hist_pier_base_PM.png``.
 """
 
 from __future__ import annotations
@@ -51,12 +53,17 @@ from lab_paths import (
     LOCAL_OPENSEES_DATA,
     TIME_SCALE_FROUDE,
     full_xlim_model_s,
+    full_xlim_proto_s,
     resolve_opensees_data,
     test_os_plots_dir,
 )
 from lab_time_map import (
+    LABEL_T_INT,
     LABEL_T_LAB,
+    add_dual_time_xaxis_int,
     add_dual_time_xaxis_lab,
+    handshake_map_for_dump,
+    lab_times_to_os_handshake,
     map_os_to_lab,
     os_times_to_lab,
     os_window_to_lab,
@@ -75,6 +82,7 @@ ALPHA_SLOW = 0.32
 LW_SLOW = 1.0
 LW_SIG = 1.15
 OUT_NAME = "hist_pier_base_PM.png"
+OUT_NAME_OS = "hist_pier_base_PM_opensees.png"
 HINGE_FORCE_NAME = "pier_hinge_force.out"
 
 
@@ -152,61 +160,58 @@ def shared_ylims(
     )
 
 
-def write_plot(
-    test_id: str,
+def _write_pm_figure(
     *,
-    data_root: Path | None = None,
-    font_scale: float = DEFAULT_FONT_SCALE,
-    ylim_p: tuple[float, float] | None = None,
-    ylim_m: tuple[float, float] | None = None,
+    test_id: str,
+    out: Path,
+    t_x: np.ndarray,
+    p_kn: np.ndarray,
+    m_knm: np.ndarray,
+    t_slow: list[float],
+    t_wave: float | None,
+    full_xlim: tuple[float, float] | None,
+    d595: tuple[float, float] | None,
+    ylim_p: tuple[float, float] | None,
+    ylim_m: tuple[float, float] | None,
+    font_scale: float,
+    clock: str,
+    title_extra: str,
+    wave_legend: str | None,
 ) -> int:
     """
-    Write one pier-base P/M PNG for a Test ID.
+    One two-row P/M figure on lab $t$ or $t_{\mathrm{int}}$.
 
-    Returns: 0 ok, 1 skip/error
+    Args:    clock  "lab" | "int"
+    Returns: n_slow
     """
     apply_paper_style()
     scale_paper_fonts(font_scale)
-    pair = mat_dump_for_test(test_id)
-    if pair is None:
-        print(f"PlotPierBaseForce: skip {test_id} (no mat+dump)", file=sys.stderr)
-        return 1
-    mat, dump = pair
-    root = data_root or resolve_opensees_data() or LOCAL_OPENSEES_DATA
-    out = test_os_plots_dir(test_id) / OUT_NAME
-
-    pm = load_pier_base_pm(root / dump)
-    if pm is None:
-        print(f"PlotPierBaseForce: skip {test_id} (no {HINGE_FORCE_NAME})", file=sys.stderr)
-        return 1
-    t_os, p_kn, m_knm = pm
-    try:
-        mapped = map_os_to_lab(t_os, mat)
-    except RuntimeError as exc:
-        print(f"PlotPierBaseForce: skip {test_id} ({exc})", file=sys.stderr)
-        return 1
-    t = mapped.t_lab
-    t_slow = slowdown_lab_onsets(mat)
-    # Wave onset from actuator force (same dump); detect on OS, map to lab.
-    frc = load_daq_force_kn(root / dump)
-    t_wave = None
-    if frc is not None:
-        t_wave_os = detect_wave_onset_proto_s(frc[0], frc[1])
-        if t_wave_os is not None:
-            t_wave = float(os_times_to_lab(t_wave_os, mat)[0])
-    t0 = gm_start_time_s(root / dump)
-    d595_os = d595_window(t0)
-    d595 = (
-        os_window_to_lab(d595_os[0], d595_os[1], mat) if d595_os is not None else None
-    )
-
     fig_h = 6.6 * (0.65 + 0.35 * font_scale)
     fig, axes_f, axes_z = subplots_full_zoom(2, fig_h=fig_h, sharey="row", wspace=0.04)
     series = (
-        (axes_f[0], axes_z[0], p_kn, ylim_p, r"$P$ (kN) prototype", r"$P/\lambda^{3}$ (kN) model", FORCE_SCALE_FROUDE, "axial $P$"),
-        (axes_f[1], axes_z[1], m_knm, ylim_m, r"$M$ (kN·m) prototype", r"$M/\lambda^{4}$ (kN·m) model", MOMENT_SCALE_FROUDE, "moment $M_z$"),
+        (
+            axes_f[0],
+            axes_z[0],
+            p_kn,
+            ylim_p,
+            r"$P$ (kN) prototype",
+            r"$P/\lambda^{3}$ (kN) model",
+            FORCE_SCALE_FROUDE,
+            "axial $P$",
+        ),
+        (
+            axes_f[1],
+            axes_z[1],
+            m_knm,
+            ylim_m,
+            r"$M$ (kN·m) prototype",
+            r"$M/\lambda^{4}$ (kN·m) model",
+            MOMENT_SCALE_FROUDE,
+            "moment $M_z$",
+        ),
     )
-
+    xlab = LABEL_T_LAB if clock == "lab" else LABEL_T_INT
+    add_dual = add_dual_time_xaxis_lab if clock == "lab" else add_dual_time_xaxis_int
     n_slow = 0
     has_wave = False
     for i, (ax_f, ax_z, y, ylim, ylab, ylab_m, scale, label) in enumerate(series):
@@ -215,10 +220,11 @@ def write_plot(
         has_wave = mark_wave(ax_f, t_wave) or has_wave
         mark_wave(ax_z, t_wave)
         for ax in (ax_f, ax_z):
-            ax.plot(t, y, color=COLOR_SIG, lw=LW_SIG, label=label, zorder=5)
+            ax.plot(t_x, y, color=COLOR_SIG, lw=LW_SIG, label=label, zorder=5)
             ax.grid(True, ls=":", alpha=0.45)
             ax.axhline(0.0, color="#666666", lw=0.6, zorder=0)
-        ax_f.set_xlim(*full_xlim_model_s(t))
+        if full_xlim is not None:
+            ax_f.set_xlim(*full_xlim)
         if d595 is not None:
             ax_z.set_xlim(d595[0], d595[1])
         if ylim is not None:
@@ -238,15 +244,15 @@ def write_plot(
         )
         sec_y.set_ylabel(ylab_m)
         if i == 0:
-            add_dual_time_xaxis_lab(ax_f, top=True)
-            add_dual_time_xaxis_lab(ax_z, top=True)
+            add_dual(ax_f, top=True)
+            add_dual(ax_z, top=True)
             ax_f.tick_params(labelbottom=False)
             ax_z.tick_params(labelbottom=False)
         else:
-            ax_f.set_xlabel(LABEL_T_LAB)
-            ax_z.set_xlabel(LABEL_T_LAB)
-            add_dual_time_xaxis_lab(ax_f, top=True)
-            add_dual_time_xaxis_lab(ax_z, top=True)
+            ax_f.set_xlabel(xlab)
+            ax_z.set_xlabel(xlab)
+            add_dual(ax_f, top=True)
+            add_dual(ax_z, top=True)
 
     engine = fig.get_layout_engine()
     if engine is not None:
@@ -268,7 +274,7 @@ def write_plot(
             )
         )
         labels.append(f"slowdown ({n_slow})")
-    if has_wave and t_wave is not None:
+    if has_wave and t_wave is not None and wave_legend is not None:
         handles.append(
             Line2D(
                 [0],
@@ -276,10 +282,10 @@ def write_plot(
                 color=COLOR_WAVE,
                 lw=LW_WAVE,
                 ls="--",
-                label=rf"wave ($t={t_wave:.0f}$ s lab)",
+                label=wave_legend,
             )
         )
-        labels.append(rf"wave ($t={t_wave:.0f}$ s lab)")
+        labels.append(wave_legend)
     axes_f[0].legend(
         handles,
         labels,
@@ -292,20 +298,128 @@ def write_plot(
         framealpha=1.0,
         handlelength=1.8,
     )
-
     fig.suptitle(
-        rf"{run_title(test_id)}  —  pier base hinge  ·  "
-        rf"$k={mapped.k*1e3:.1f}\,\mathrm{{ms}}$, "
-        rf"$f_{{\mathrm{{end}}}}={mapped.f_end*1e3:.1f}\,\mathrm{{ms}}$",
+        rf"{run_title(test_id)}  —  pier base hinge  ·  {title_extra}",
         y=1.01,
         fontsize=plt.rcParams["axes.labelsize"],
     )
-
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
-    wave_txt = f"wave={t_wave:.1f}s lab" if t_wave is not None else "wave=none"
-    print(f"PlotPierBaseForce: wrote {out}  (lines={n_slow}, {wave_txt})")
+    return n_slow
+
+
+def write_plot(
+    test_id: str,
+    *,
+    data_root: Path | None = None,
+    font_scale: float = DEFAULT_FONT_SCALE,
+    ylim_p: tuple[float, float] | None = None,
+    ylim_m: tuple[float, float] | None = None,
+) -> int:
+    """
+    Write lab-$t$ and $t_{\mathrm{int}}$ pier-base P/M PNGs for a Test ID.
+
+    Returns: 0 ok, 1 skip/error
+    """
+    pair = mat_dump_for_test(test_id)
+    if pair is None:
+        print(f"PlotPierBaseForce: skip {test_id} (no mat+dump)", file=sys.stderr)
+        return 1
+    mat, dump = pair
+    root = data_root or resolve_opensees_data() or LOCAL_OPENSEES_DATA
+    dump_path = root / dump
+    out_lab = test_os_plots_dir(test_id) / OUT_NAME
+    out_os = test_os_plots_dir(test_id) / OUT_NAME_OS
+
+    pm = load_pier_base_pm(dump_path)
+    if pm is None:
+        print(f"PlotPierBaseForce: skip {test_id} (no {HINGE_FORCE_NAME})", file=sys.stderr)
+        return 1
+    t_os, p_kn, m_knm = pm
+    try:
+        mapped = map_os_to_lab(t_os, mat, dump_dir=dump_path)
+    except RuntimeError as exc:
+        print(f"PlotPierBaseForce: skip {test_id} ({exc})", file=sys.stderr)
+        return 1
+    t_lab = mapped.t_lab
+    t_slow_lab = slowdown_lab_onsets(mat)
+    frc = load_daq_force_kn(dump_path)
+    t_wave_os = None
+    if frc is not None:
+        t_wave_os = detect_wave_onset_proto_s(frc[0], frc[1])
+    t_wave_lab = (
+        float(os_times_to_lab(t_wave_os, mat, dump_dir=dump_path)[0])
+        if t_wave_os is not None
+        else None
+    )
+    t0 = gm_start_time_s(dump_path)
+    d595_os = d595_window(t0)
+    d595_lab = (
+        os_window_to_lab(d595_os[0], d595_os[1], mat, dump_dir=dump_path)
+        if d595_os is not None
+        else None
+    )
+    t_slow_os: list[float] = []
+    if t_slow_lab:
+        try:
+            hs = handshake_map_for_dump(dump_path, mat)
+            t_slow_os = [
+                float(x)
+                for x in lab_times_to_os_handshake(
+                    np.asarray(t_slow_lab, dtype=float), hs
+                ).ravel()
+            ]
+        except RuntimeError:
+            t_slow_os = []
+
+    n_slow = _write_pm_figure(
+        test_id=test_id,
+        out=out_lab,
+        t_x=t_lab,
+        p_kn=p_kn,
+        m_knm=m_knm,
+        t_slow=t_slow_lab,
+        t_wave=t_wave_lab,
+        full_xlim=full_xlim_model_s(t_lab),
+        d595=d595_lab,
+        ylim_p=ylim_p,
+        ylim_m=ylim_m,
+        font_scale=font_scale,
+        clock="lab",
+        title_extra=(
+            rf"atTarget map  ·  "
+            rf"$f_{{\mathrm{{end}}}}={mapped.f_end*1e3:.1f}\,\mathrm{{ms}}$"
+        ),
+        wave_legend=(
+            rf"wave ($t={t_wave_lab:.0f}$ s lab)" if t_wave_lab is not None else None
+        ),
+    )
+    wave_txt = f"wave={t_wave_lab:.1f}s lab" if t_wave_lab is not None else "wave=none"
+    print(f"PlotPierBaseForce: wrote {out_lab}  (lines={n_slow}, {wave_txt})")
+
+    n_slow_os = _write_pm_figure(
+        test_id=test_id,
+        out=out_os,
+        t_x=t_os,
+        p_kn=p_kn,
+        m_knm=m_knm,
+        t_slow=t_slow_os,
+        t_wave=float(t_wave_os) if t_wave_os is not None else None,
+        full_xlim=full_xlim_proto_s(t_os),
+        d595=d595_os,
+        ylim_p=ylim_p,
+        ylim_m=ylim_m,
+        font_scale=font_scale,
+        clock="int",
+        title_extra=r"$t_{\mathrm{int}}$ (OpenSees domain)",
+        wave_legend=(
+            rf"wave ($t_{{\mathrm{{int}}}}={float(t_wave_os):.0f}$ s)"
+            if t_wave_os is not None
+            else None
+        ),
+    )
+    print(f"PlotPierBaseForce: wrote {out_os}  (lines={n_slow_os})")
     return 0
 
 

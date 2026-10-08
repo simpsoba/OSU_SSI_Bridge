@@ -56,11 +56,26 @@ the ponding depth knob (2.4 m), not the free-surface wave height.
 3. Duration — mat `Time_last × √2.4` ≈ OpenSees pier record length (ratio ≈ 1.0).
 4. Early shape — pier Δux vs `meaSigOS` when clocks desync.
 
-**Clocks:** mat `Time` = lab DAQ (model scale). OpenSees `t` = prototype. λ = 2.4.
+### Clocks and map
 
-**Slowdowns:** `stateOS` / `typeConv3` = 2 marks OpenFresco waits. Many brief events
-can still give duration ratio ≈ 1.0 if sample fraction in state 2 stays small.
-Campaign bars: `python plot/PlotStateOSBars.py` → `plots/compare/stateos/`.
+| Symbol | Clock | Source |
+|--------|-------|--------|
+| **\(t\)** | Lab / wall | Simulink `Time` (model s): tar/com/mea, stateOS |
+| **\(t_{\mathrm{int}}\)** | OpenSees integrator | Recorder domain time (prototype s): pier, ctrlDisp, daqFrc |
+
+Map OpenSees → lab with **atTarget handshakes** (`plot/lab_time_map.py`): pair
+ctrlDisp recorder \(t_{i+1}\) with lab atTarget from start; \(f = t - t_{\mathrm{int}}/\sqrt{\lambda}\)
+(no separate \(k\)). Public helpers: `map_os_to_lab`, `os_times_to_lab` (handshake
+preferred; typeConv3 wait proxy only if ctrlDisp missing).
+
+- Lab overlays / mapped OS: `hist_frc_actuator.png`, `hist_pier_base_PM.png`, hyst,
+  actuator-vs-pier, primary hist pairs, PSD lab rows.
+- Native \(t_{\mathrm{int}}\): `*_opensees.png`, PSD pier/ctrlDisp rows, hydro structure PSDs,
+  `eq/` PlotEQ* (not remapped).
+- Diags: `PlotLabTimeMapDiag.py`. Bulk regen: `python plot/RegenCampaignOsPlots.py`.
+
+λ = 2.4. **Slowdowns:** `typeConv3` = 2. Campaign bars:
+`python plot/PlotStateOSBars.py` → `plots/compare/stateos/`.
 
 ## Compare reference
 

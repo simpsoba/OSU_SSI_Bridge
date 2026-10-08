@@ -2,25 +2,25 @@
 """
 Goals
 -----
-Welch PSDs for RTHS dumps on lab-mapped time (k + t_OS/√λ + f), then uniform
-resample; frequency axis shown in prototype Hz (f_lab/√λ) with Froude dual axes.
+Raw Hann FFT periodograms (one FFT per analysis window; mean kept; no Welch,
+no resample / interpolate).
 
-Figure 1 (``psd_pier_ux_M_theta_F.png``): pier-top \(u_x\), pier-base \(M_z\),
-base ZLS rotation \(\theta\), actuator \(F=-\mathrm{daqForce}\) (on numerical).
+Figure 1–2 (OpenSees domain \(t\)): structure + SSI recorder PSDs
+(``psd_pier_ux_M_theta_F.png``, ``psd_pileM_py_soil.png``).
 
-Figure 2 (``psd_pileM_py_soil.png``): center-pile \(M\), one p-y spring, and
-center-column soil \(\gamma\) when those recorders exist.
+Figure 3 (``psd_tar_com_mea_lab_vs_pier_os.png``): tar/com/mea on lab \(t\) vs
+pier \(u_x\) on \(t_{\mathrm{int}}\) (each native grid; lab \(f\) → proto /√λ).
 
-Columns = time windows on lab Time (Wed: pre-EQ hydro | D5–95 | post-EQ + wave;
-Fri: D5–95 | post-EQ free vib | wave).
+Figure 4 (``psd_frc_actuator.png``): \(-F_{\mathrm{daq}}\) on \(t_{\mathrm{int}}\)
+only (uniform recorder dt; no map / resample).
 
-Mode guides \(f_1,f_4,f_5\) and the soil/SSI poles \(f_\mathrm{SSI}\),
-\(f'_\mathrm{SSI}\) (~8 and ~8.8 Hz) come from
-``plot/out/eigen/mesh<soilMesh>/`` (DumpEigenModes.tcl) so Fri/Wed meshes
-stay distinct without re-running eigen for every plot.
+Columns = analysis windows (Wed: pre-EQ hydro | D5–95 | post-EQ + wave;
+Fri: D5–95 | post-EQ free vib | wave) in the same time unit as each series.
+
+Mode guides from ``plot/out/eigen/mesh<soilMesh>/``.
 
   python plot/PlotHydroSpectra.py W05 F05
-  python plot/PlotHydroSpectra.py
+  python plot/PlotHydroSpectra.py --lab-vs-pier-os F06
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.signal import welch
+from scipy.signal import periodogram
 
 from PlotActuatorForce import (
     DEFAULT_FONT_SCALE,
@@ -47,22 +47,30 @@ from PlotActuatorForce import (
     wave_period_proto_s,
 )
 from PlotEQ import loadtxt_partial
-from PlotEQCompareRuns import apply_paper_style
+from PlotEQCompareRuns import apply_paper_style, model_disp_to_proto_mm
+from PlotMatOS import load_block, non_time_cols
 from PlotPierBaseForce import load_pier_base_pm
 from gm_duration import d595_proto_window, gm_start_time_s
 from lab_paths import (
     CYLINDER_LENGTH_SCALE,
     LOCAL_OPENSEES_DATA,
+    MAT_EXTRACT_DIR,
     TIME_SCALE_FROUDE,
     load_lab_runs_rows,
     resolve_opensees_data,
     test_os_plots_dir,
 )
-from lab_time_map import map_os_to_lab, os_times_to_lab, os_window_to_lab, resample_on_lab
+from lab_time_map import os_times_to_lab, os_window_to_lab
 
 OUT_NAME = "psd_pier_ux_M_theta_F.png"
 OUT_NAME_SSI = "psd_pileM_py_soil.png"
+OUT_NAME_LAB_VS_PIER = "psd_tar_com_mea_lab_vs_pier_os.png"
+OUT_NAME_FRC = "psd_frc_actuator.png"
 COLOR_UX = "#1565C0"
+COLOR_TAR = "#6A1B9A"
+COLOR_COM = "#2A9D8F"
+COLOR_MEA = "#001F3F"
+COLOR_PIER_OS = "#B0B0B0"
 COLOR_M = "#6A1B9A"
 COLOR_F = "#001F3F"
 COLOR_TH = "#00695C"
@@ -312,34 +320,6 @@ def load_soil_gamma(
     return t, gamma, rf"soil $\gamma$ ({layer})"
 
 
-def interpolate_uniform(
-    t: np.ndarray,
-    y: np.ndarray,
-    *,
-    t0: float,
-    t1: float,
-) -> tuple[np.ndarray, np.ndarray, float] | None:
-    """
-    Uniform samples on [t0, t1] for Welch.
-
-    Returns: (t_u, y_u, dt) or None
-    """
-    m = (t >= t0) & (t <= t1) & np.isfinite(y)
-    if int(np.count_nonzero(m)) < 64:
-        return None
-    tt = t[m]
-    yy = y[m]
-    dt = float(np.median(np.diff(tt)))
-    if not np.isfinite(dt) or dt <= 0.0:
-        return None
-    t_u = np.arange(float(tt[0]), float(tt[-1]) + 0.5 * dt, dt)
-    if t_u.size < 64:
-        return None
-    y_u = np.interp(t_u, tt, yy)
-    y_u = y_u - float(np.mean(y_u))
-    return t_u, y_u, dt
-
-
 def soil_mesh_id(test_id: str) -> int | None:
     """
     soilMesh integer from TestMatrix (e.g. ``0 (BASELINE)`` → 0).
@@ -455,31 +435,30 @@ def ssi_guide_freqs(test_id: str) -> tuple[float, float]:
     return float(f_lo), float(f_hi)
 
 
-def welch_psd(
+def fft_psd(
     y: np.ndarray,
     dt: float,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    One-sided Welch PSD vs frequency (Hz, prototype clock).
+    One-sided raw FFT periodogram (full record, Hann taper).
 
-    Longer segments than the default (finer Δf) so low-frequency wave / pier
-    peaks are resolved; still ≤ record length.
+    One FFT of the entire record — mean kept, no Welch segment averaging.
+    Hann reduces spectral leakage from finite windows. Δf = 1/(N·dt).
+    Density scaling (SciPy corrects for window power): units of y²/Hz.
 
-    Args:    y  zero-mean series; dt  sampling interval (s)
+    Args:    y  series; dt  sampling interval (s)
     Returns: (f_Hz, PSD)
     """
-    # Aim for Δf ≲ 0.01 Hz when the window is long enough.
-    target = int(max(1.0 / (0.01 * dt), 1024))
-    nperseg = min(max(target, 512), y.size)
-    if nperseg < 64:
-        nperseg = y.size
-    noverlap = nperseg // 2
-    f_hz, pxx = welch(
+    y = np.asarray(y, dtype=float)
+    if y.size < 64 or not np.isfinite(dt) or dt <= 0.0:
+        return np.asarray([]), np.asarray([])
+    f_hz, pxx = periodogram(
         y,
         fs=1.0 / dt,
-        nperseg=nperseg,
-        noverlap=noverlap,
+        window="hann",
+        nfft=None,
         detrend=False,
+        return_onesided=True,
         scaling="density",
     )
     return f_hz, pxx
@@ -636,7 +615,7 @@ def analysis_windows(
     t_wave_fri: float | None,
 ) -> list[tuple[str, float, float]]:
     """
-    Named PSD windows (same units as the series time axis — lab s after map).
+    Named PSD windows (same units as the series time axis).
 
     Wed (wave then EQ): pre-EQ hydro | D5–95 | post-EQ + wave.
     Fri (EQ then wave): D5–95 | post-EQ free vib | wave.
@@ -682,9 +661,9 @@ def save_psd_figure(
     title_extra: str = "",
 ) -> None:
     """
-    Write one PSD grid PNG.
+    Write one OpenSees-domain PSD grid PNG (Hann FFT, no resample).
 
-    series items: (sname, t, y, ylab_p, ylab_m, s2m, color)
+    series items: (sname, t_os, y, ylab_p, ylab_m, s2m, color)
     """
     n_win = len(windows)
     n_sig = len(series)
@@ -708,22 +687,12 @@ def save_psd_figure(
     for i_sig, (sname, t, y, ylab_p, ylab_m, s2m, color) in enumerate(series):
         for j_win, (wname, t0, t1) in enumerate(windows):
             ax = axes[i_sig, j_win]
-            # t,y are lab-mapped; Welch on uniform lab dt, plot proto Hz.
-            uni = resample_on_lab(t, y, t0=t0, t1=t1)
-            if uni is None:
-                uni = interpolate_uniform(t, y, t0=t0, t1=t1)
-            if uni is None:
+            got = _fft_proto_hz(t, y, t0, t1, lab_clock=False)
+            if got is None:
                 ax.text(0.5, 0.5, "short", transform=ax.transAxes, ha="center")
             else:
-                _tu, yu, dt_lab = uni
-                f_lab, pxx_lab = welch_psd(yu, dt_lab)
-                f_hz = f_lab / TIME_SCALE_FROUDE
-                pxx = pxx_lab * TIME_SCALE_FROUDE
-                m_pos = (f_hz > 0.0) & (pxx > 0.0) & np.isfinite(pxx)
-                ax.loglog(f_hz[m_pos], pxx[m_pos], color=color, lw=1.15)
-                nyquist = 0.5 / (dt_lab * TIME_SCALE_FROUDE)
-                f_hi = min(F_MAX_PROTO_HZ, 0.95 * nyquist)
-                f_lo = F_MIN_PROTO_HZ
+                f_hz, pxx, f_hi = got
+                ax.loglog(f_hz, pxx, color=color, lw=1.15, label=sname)
                 mark_freq_guides(
                     ax,
                     f_wave=f_wave,
@@ -734,7 +703,7 @@ def save_psd_figure(
                     f_max=f_hi * 1.05,
                     with_labels=(i_sig == 0 and j_win == n_win - 1),
                 )
-                ax.set_xlim(f_lo, f_hi)
+                ax.set_xlim(F_MIN_PROTO_HZ, f_hi)
             ax.grid(True, which="both", ls=":", alpha=0.45)
             tick_fs = float(plt.rcParams["xtick.labelsize"])
             ax.tick_params(labelsize=tick_fs)
@@ -768,6 +737,7 @@ def save_psd_figure(
         run_title(test_id)
         + mesh_bit
         + title_extra
+        + r"  ·  FFT PSD ($t_{\mathrm{int}}$)"
         + (
             rf"  ·  wave start $t={t_wave_label:.1f}$ s"
             if t_wave_label is not None
@@ -781,7 +751,7 @@ def save_psd_figure(
 
 
 def write_plot(test_id: str, *, font_scale: float = DEFAULT_FONT_SCALE_PSD) -> int:
-    """Write structure + SSI PSD PNGs for a Test ID."""
+    """Write structure + SSI PSD PNGs on $t_{\mathrm{int}}$ (no time map)."""
     apply_paper_style()
     scale_paper_fonts(font_scale)
     label_fs = float(plt.rcParams["axes.labelsize"])
@@ -791,7 +761,7 @@ def write_plot(test_id: str, *, font_scale: float = DEFAULT_FONT_SCALE_PSD) -> i
     if pair is None:
         print(f"PlotHydroSpectra: skip {test_id} (no mat+dump)", file=sys.stderr)
         return 1
-    mat, dump = pair
+    _mat, dump = pair
     root = resolve_opensees_data() or LOCAL_OPENSEES_DATA
     dump_path = root / dump
 
@@ -802,45 +772,25 @@ def write_plot(test_id: str, *, font_scale: float = DEFAULT_FONT_SCALE_PSD) -> i
         print(f"PlotHydroSpectra: skip {test_id} (missing F / ux / M)", file=sys.stderr)
         return 1
 
-    t_f_os, f_kn = frc
-    t_u_os, ux_mm = pier
-    t_m_os, _p, m_knm = pm
-    try:
-        t_f = map_os_to_lab(t_f_os, mat).t_lab
-        t_u = map_os_to_lab(t_u_os, mat).t_lab
-        t_m = map_os_to_lab(t_m_os, mat).t_lab
-    except RuntimeError as exc:
-        print(f"PlotHydroSpectra: skip {test_id} ({exc})", file=sys.stderr)
-        return 1
+    t_f, f_kn = frc
+    t_u, ux_mm = pier
+    t_m, _p, m_knm = pm
     th = load_pier_base_theta_rad(dump_path)
     pile_m = load_center_pile_M_knm(dump_path)
     py = load_py_force_kn(dump_path)
     soil_g = load_soil_gamma(dump_path)
 
     t_wave_period = wave_period_proto_s(test_id)
-    t_wave_wed_os = (
-        detect_wave_start_proto_s(t_f_os, f_kn, t_wave_period)
+    t_wave_wed = (
+        detect_wave_start_proto_s(t_f, f_kn, t_wave_period)
         if t_wave_period is not None
         else None
     )
-    wave_hit = detect_wave_hit_proto_s(t_f_os, f_kn)
-    t_wave_fri_os = None if wave_hit is None else float(wave_hit[0])
-    t_wave_wed = (
-        float(os_times_to_lab(t_wave_wed_os, mat)[0])
-        if t_wave_wed_os is not None
-        else None
-    )
-    t_wave_fri = (
-        float(os_times_to_lab(t_wave_fri_os, mat)[0])
-        if t_wave_fri_os is not None
-        else None
-    )
+    wave_hit = detect_wave_hit_proto_s(t_f, f_kn)
+    t_wave_fri = None if wave_hit is None else float(wave_hit[0])
     t_wave_label = t_wave_wed if t_wave_wed is not None else t_wave_fri
     gm0 = gm_start_time_s(dump_path)
-    d595_os = d595_proto_window(gm0)
-    d595 = (
-        os_window_to_lab(d595_os[0], d595_os[1], mat) if d595_os is not None else None
-    )
+    d595 = d595_proto_window(gm0)
     t_end = float(min(float(t_f[-1]), float(t_u[-1]), float(t_m[-1])))
     windows = analysis_windows(
         t_end,
@@ -882,8 +832,7 @@ def write_plot(test_id: str, *, font_scale: float = DEFAULT_FONT_SCALE_PSD) -> i
         ),
     ]
     if th is not None:
-        t_th_os, theta = th
-        t_th = map_os_to_lab(t_th_os, mat).t_lab
+        t_th, theta = th
         series_struct.append(
             (
                 r"pier base $\theta$",
@@ -926,8 +875,7 @@ def write_plot(test_id: str, *, font_scale: float = DEFAULT_FONT_SCALE_PSD) -> i
 
     series_ssi: list[tuple] = []
     if pile_m is not None:
-        t_pm_os, m_pile, lab_pm = pile_m
-        t_pm = map_os_to_lab(t_pm_os, mat).t_lab
+        t_pm, m_pile, lab_pm = pile_m
         series_ssi.append(
             (
                 lab_pm,
@@ -940,8 +888,7 @@ def write_plot(test_id: str, *, font_scale: float = DEFAULT_FONT_SCALE_PSD) -> i
             )
         )
     if py is not None:
-        t_py_os, f_py, lab_py = py
-        t_py = map_os_to_lab(t_py_os, mat).t_lab
+        t_py, f_py, lab_py = py
         series_ssi.append(
             (
                 lab_py,
@@ -954,8 +901,7 @@ def write_plot(test_id: str, *, font_scale: float = DEFAULT_FONT_SCALE_PSD) -> i
             )
         )
     if soil_g is not None:
-        t_g_os, gamma, lab_g = soil_g
-        t_g = map_os_to_lab(t_g_os, mat).t_lab
+        t_g, gamma, lab_g = soil_g
         series_ssi.append(
             (
                 lab_g,
@@ -987,6 +933,342 @@ def write_plot(test_id: str, *, font_scale: float = DEFAULT_FONT_SCALE_PSD) -> i
     return 0
 
 
+def _window_uniform_dt(
+    t: np.ndarray,
+    y: np.ndarray,
+    t0: float,
+    t1: float,
+) -> tuple[np.ndarray, float] | None:
+    """
+    Time-window cut on an already-uniform series (no interp, keep mean).
+
+    Args:    t,y; t0,t1  window
+    Returns: (y_win, dt) or None
+    """
+    m = (t >= t0) & (t <= t1) & np.isfinite(y)
+    if int(np.count_nonzero(m)) < 64:
+        return None
+    yy = np.asarray(y[m], dtype=float)
+    tt = np.asarray(t[m], dtype=float)
+    dt = float(np.median(np.diff(tt)))
+    if not np.isfinite(dt) or dt <= 0.0:
+        return None
+    return yy, dt
+
+
+def _fft_proto_hz(
+    t: np.ndarray,
+    y: np.ndarray,
+    t0: float,
+    t1: float,
+    *,
+    lab_clock: bool,
+) -> tuple[np.ndarray, np.ndarray, float] | None:
+    """
+    Hann FFT periodogram on the native sample grid (no resample / interp).
+
+    Args:    t,y  series; t0,t1  window; lab_clock  True → t is lab Time
+             (convert f → proto via /√λ); False → OpenSees / proto t
+    Returns: (f_proto_Hz, Pxx_proto, f_hi) or None
+    """
+    got = _window_uniform_dt(t, y, t0, t1)
+    if got is None:
+        return None
+    yu, dt_use = got
+    if lab_clock:
+        f_lab, pxx_lab = fft_psd(yu, dt_use)
+        f_hz = f_lab / TIME_SCALE_FROUDE
+        pxx = pxx_lab * TIME_SCALE_FROUDE
+        nyquist = 0.5 / (dt_use * TIME_SCALE_FROUDE)
+    else:
+        f_hz, pxx = fft_psd(yu, dt_use)
+        nyquist = 0.5 / dt_use
+    m = (f_hz > 0.0) & (pxx > 0.0) & np.isfinite(pxx)
+    if not np.any(m):
+        return None
+    f_hi = min(F_MAX_PROTO_HZ, 0.95 * nyquist)
+    return f_hz[m], pxx[m], f_hi
+
+
+
+def _load_os_disp_proto_mm(mat_name: str, key: str) -> tuple[np.ndarray, np.ndarray] | None:
+    """
+    Primary *OS displacement: lab Time (model s), Δu prototype mm.
+
+    Args:    mat_name; key  tarSigOS | comSigOS | meaSigOS
+    Returns: (t_lab, u_proto_mm) or None
+    """
+    npz = MAT_EXTRACT_DIR / f"{Path(mat_name).stem}.npz"
+    if not npz.is_file():
+        return None
+    z = np.load(npz, allow_pickle=True)
+    if f"{key}_time" in z.files and f"{key}_primary" in z.files:
+        t = np.asarray(z[f"{key}_time"], dtype=float)
+        u_m = np.asarray(z[f"{key}_primary"], dtype=float)
+        return t, model_disp_to_proto_mm(u_m)
+    block = load_block(z, key)
+    if block is None:
+        return None
+    t, names, data = block
+    cols = non_time_cols(names, data.shape[1])
+    if not cols:
+        return None
+    return t, model_disp_to_proto_mm(np.asarray(data[:, cols[0]], dtype=float))
+
+
+def write_force_psd(
+    test_id: str, *, font_scale: float = DEFAULT_FONT_SCALE_PSD
+) -> int:
+    """
+    Actuator force Hann PSD on $t_{\mathrm{int}}$ only (no map).
+
+    Writes ``psd_frc_actuator.png``. Windows match structure/SSI PSDs.
+    """
+    apply_paper_style()
+    scale_paper_fonts(font_scale)
+    label_fs = float(plt.rcParams["axes.labelsize"])
+    plt.rcParams["axes.titlesize"] = label_fs
+    plt.rcParams["figure.titlesize"] = label_fs * 1.15
+    pair = mat_dump_for_test(test_id)
+    if pair is None:
+        print(f"PlotHydroSpectra: skip {test_id} force PSD (no mat+dump)", file=sys.stderr)
+        return 1
+    _mat, dump = pair
+    root = resolve_opensees_data() or LOCAL_OPENSEES_DATA
+    dump_path = root / dump
+    frc = load_daq_force_kn(dump_path)
+    if frc is None:
+        print(f"PlotHydroSpectra: skip {test_id} force PSD (no daqFrc)", file=sys.stderr)
+        return 1
+    t_f, f_kn = frc
+    t_wave_period = wave_period_proto_s(test_id)
+    t_wave_wed = (
+        detect_wave_start_proto_s(t_f, f_kn, t_wave_period)
+        if t_wave_period is not None
+        else None
+    )
+    wave_hit = detect_wave_hit_proto_s(t_f, f_kn)
+    t_wave_fri = None if wave_hit is None else float(wave_hit[0])
+    t_wave_label = t_wave_wed if t_wave_wed is not None else t_wave_fri
+    gm0 = gm_start_time_s(dump_path)
+    d595 = d595_proto_window(gm0)
+    windows = analysis_windows(
+        float(t_f[-1]),
+        d595,
+        t_wave_wed=t_wave_wed,
+        t_wave_fri=t_wave_fri,
+    )
+    if not windows:
+        return 1
+    f_wave = (1.0 / t_wave_period) if t_wave_period else None
+    series = [
+        (
+            r"$-F_{\mathrm{daq}}$ (on numerical)",
+            t_f,
+            f_kn,
+            r"(kN$^2$/Hz) proto",
+            r"(kN$^2$/Hz) model",
+            PSD_F_TO_MODEL,
+            COLOR_F,
+        )
+    ]
+    out = test_os_plots_dir(test_id) / OUT_NAME_FRC
+    save_psd_figure(
+        test_id=test_id,
+        out_path=out,
+        windows=windows,
+        series=series,
+        f_wave=f_wave,
+        f_pier=pier_f1_hz(test_id),
+        f_mode4=pier_f4_hz(test_id),
+        f_mode5=pier_f5_hz(test_id),
+        f_ssi=ssi_guide_freqs(test_id),
+        t_wave_label=t_wave_label,
+        font_scale=font_scale,
+        title_extra=r"  ·  actuator force",
+    )
+    return 0
+
+
+def write_lab_vs_pier_domain_psd(
+    test_id: str, *, font_scale: float = DEFAULT_FONT_SCALE_PSD
+) -> int:
+    """
+    PSD overlay: tar / com / mea on lab $t$ vs pier UX on $t_{\mathrm{int}}$.
+
+    Writes ``psd_tar_com_mea_lab_vs_pier_os.png``. Freq axis = prototype Hz
+    (lab FFT via /√λ; pier FFT on OpenSees t). Hann FFT on each native grid
+    only — no resample / interpolate.
+    """
+    apply_paper_style()
+    scale_paper_fonts(font_scale)
+    label_fs = float(plt.rcParams["axes.labelsize"])
+    plt.rcParams["axes.titlesize"] = label_fs
+    plt.rcParams["figure.titlesize"] = label_fs * 1.15
+    pair = mat_dump_for_test(test_id)
+    if pair is None:
+        print(f"PlotHydroSpectra: skip {test_id} (no mat+dump)", file=sys.stderr)
+        return 1
+    mat, dump = pair
+    root = resolve_opensees_data() or LOCAL_OPENSEES_DATA
+    dump_path = root / dump
+
+    tar = _load_os_disp_proto_mm(mat, "tarSigOS")
+    com = _load_os_disp_proto_mm(mat, "comSigOS")
+    mea = _load_os_disp_proto_mm(mat, "meaSigOS")
+    pier = load_pier_ux_mm(dump_path)
+    frc = load_daq_force_kn(dump_path)
+    if mea is None or pier is None or frc is None:
+        print(
+            f"PlotHydroSpectra: skip {test_id} (need mea + pier + F)",
+            file=sys.stderr,
+        )
+        return 1
+
+    t_mea, u_mea = mea
+    t_pier_os, u_pier = pier
+    t_f_os, f_kn = frc
+
+    t_wave_period = wave_period_proto_s(test_id)
+    t_wave_wed_os = (
+        detect_wave_start_proto_s(t_f_os, f_kn, t_wave_period)
+        if t_wave_period is not None
+        else None
+    )
+    wave_hit = detect_wave_hit_proto_s(t_f_os, f_kn)
+    t_wave_fri_os = None if wave_hit is None else float(wave_hit[0])
+    t_wave_wed_lab = (
+        float(os_times_to_lab(t_wave_wed_os, mat, dump_dir=dump_path)[0])
+        if t_wave_wed_os is not None
+        else None
+    )
+    t_wave_fri_lab = (
+        float(os_times_to_lab(t_wave_fri_os, mat, dump_dir=dump_path)[0])
+        if t_wave_fri_os is not None
+        else None
+    )
+    gm0 = gm_start_time_s(dump_path)
+    d595_os = d595_proto_window(gm0)
+    d595_lab = (
+        os_window_to_lab(d595_os[0], d595_os[1], mat, dump_dir=dump_path)
+        if d595_os is not None
+        else None
+    )
+    windows_os = analysis_windows(
+        float(t_pier_os[-1]),
+        d595_os,
+        t_wave_wed=t_wave_wed_os,
+        t_wave_fri=t_wave_fri_os,
+    )
+    windows_lab = analysis_windows(
+        float(t_mea[-1]),
+        d595_lab,
+        t_wave_wed=t_wave_wed_lab,
+        t_wave_fri=t_wave_fri_lab,
+    )
+    n_win = min(len(windows_os), len(windows_lab))
+    if n_win == 0:
+        return 1
+
+    lab_series: list[tuple[str, np.ndarray, np.ndarray, str]] = []
+    if tar is not None:
+        lab_series.append((r"tarSig (lab $t$)", tar[0], tar[1], COLOR_TAR))
+    if com is not None:
+        lab_series.append((r"comSig (lab $t$)", com[0], com[1], COLOR_COM))
+    lab_series.append((r"meaSig (lab $t$)", t_mea, u_mea, COLOR_MEA))
+
+    f_wave = (1.0 / t_wave_period) if t_wave_period else None
+    f_pier = pier_f1_hz(test_id)
+    f_mode4 = pier_f4_hz(test_id)
+    f_mode5 = pier_f5_hz(test_id)
+    f_ssi = ssi_guide_freqs(test_id)
+
+    fig_w = max(4.4 * n_win, 11.0)
+    fig_h = 4.2 * (0.7 + 0.3 * font_scale)
+    fig, axes = plt.subplots(
+        1,
+        n_win,
+        figsize=(fig_w, fig_h),
+        sharey=True,
+        layout="constrained",
+        squeeze=False,
+    )
+    fig.set_constrained_layout_pads(w_pad=0.02, h_pad=0.02, wspace=0.04)
+    axes_1d = axes[0]
+
+    for j in range(n_win):
+        ax = axes_1d[j]
+        wname, t0_os, t1_os = windows_os[j]
+        _wn, t0_lab, t1_lab = windows_lab[j]
+        f_hi = F_MAX_PROTO_HZ
+        for label, t, u, color in lab_series:
+            got = _fft_proto_hz(t, u, t0_lab, t1_lab, lab_clock=True)
+            if got is None:
+                continue
+            f_hz, pxx, f_hi_i = got
+            ax.loglog(f_hz, pxx, color=color, lw=1.15, label=label, zorder=3)
+            f_hi = min(f_hi, f_hi_i)
+        got_p = _fft_proto_hz(t_pier_os, u_pier, t0_os, t1_os, lab_clock=False)
+        if got_p is not None:
+            f_hz, pxx, f_hi_i = got_p
+            ax.loglog(
+                f_hz,
+                pxx,
+                color=COLOR_PIER_OS,
+                lw=1.4,
+                label=r"pier $u_x$ ($t_{\mathrm{int}}$)",
+                zorder=2,
+            )
+            f_hi = min(f_hi, f_hi_i)
+        mark_freq_guides(
+            ax,
+            f_wave=f_wave,
+            f_pier=f_pier,
+            f_mode4=f_mode4,
+            f_mode5=f_mode5,
+            f_ssi=f_ssi,
+            f_max=f_hi * 1.05,
+            with_labels=(j == n_win - 1),
+        )
+        ax.set_xlim(F_MIN_PROTO_HZ, f_hi)
+        ax.grid(True, which="both", ls=":", alpha=0.45)
+        ax.text(
+            0.02,
+            0.96,
+            wname,
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=float(plt.rcParams["xtick.labelsize"]),
+        )
+        add_dual_freq_xaxis(ax, label=(j == n_win // 2))
+        if j == 0:
+            ax.set_ylabel(r"$\Delta u$ PSD" "\n" r"(mm$^2$/Hz) proto")
+        if j == n_win - 1:
+            add_dual_psd_yaxis(ax, PSD_UX_TO_MODEL, r"(mm$^2$/Hz) model")
+            ax.legend(
+                loc="lower left",
+                frameon=True,
+                fontsize=float(plt.rcParams["legend.fontsize"]),
+            )
+        if j == n_win // 2:
+            ax.set_xlabel(r"$f$ (Hz) prototype scale")
+
+    mesh = soil_mesh_id(test_id)
+    mesh_bit = f"  ·  mesh{mesh}" if mesh is not None else ""
+    fig.suptitle(
+        run_title(test_id)
+        + mesh_bit
+        + r"  ·  FFT PSD: tar/com/mea (lab $t$) vs pier ($t_{\mathrm{int}}$)"
+    )
+    out = test_os_plots_dir(test_id) / OUT_NAME_LAB_VS_PIER
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=140)
+    plt.close(fig)
+    print(f"PlotHydroSpectra: wrote {out}  windows={n_win}")
+    return 0
+
+
 def default_tests() -> list[str]:
     """Wed rows with waveT, plus Friday RTHS rows with a mat+dump pair."""
     out: list[str] = []
@@ -1003,17 +1285,26 @@ def default_tests() -> list[str]:
 
 
 def main() -> int:
-    args = [a for a in sys.argv[1:] if a not in ("-h", "--help")]
-    if any(a in ("-h", "--help") for a in sys.argv[1:]):
+    raw = sys.argv[1:]
+    if any(a in ("-h", "--help") for a in raw):
         print(__doc__)
+        print(
+            "  --lab-vs-pier-os     tar/com/mea (lab $t$) vs pier UX ($t_int$)"
+        )
         return 0
+    lab_pier = "--lab-vs-pier-os" in raw
+    args = [a for a in raw if a not in ("-h", "--help", "--lab-vs-pier-os")]
     tests = args if args else default_tests()
     if not tests:
         print("PlotHydroSpectra: no tests", file=sys.stderr)
         return 1
     rc = 0
     for tid in tests:
-        rc = max(rc, write_plot(tid))
+        if lab_pier:
+            rc = max(rc, write_lab_vs_pier_domain_psd(tid))
+        else:
+            rc = max(rc, write_plot(tid))
+        rc = max(rc, write_force_psd(tid))
     return rc
 
 

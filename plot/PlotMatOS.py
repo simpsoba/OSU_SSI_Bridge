@@ -150,7 +150,7 @@ def dual_time_xaxis(ax) -> None:
     Args:    ax  axes plotted against model time (s)
     Returns: none (updates ax)
     """
-    ax.set_xlabel(r"$t_\mathrm{lab}$ (s) model scale")
+    ax.set_xlabel(r"$t$ (s) lab / model scale")
     prototype_axis = ax.secondary_xaxis(
         "top",
         functions=(

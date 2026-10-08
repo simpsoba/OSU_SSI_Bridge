@@ -2,8 +2,8 @@
 """
 Goals
 -----
-Actuator hysteresis on lab-mapped OpenSees force (k + t_OS/√λ + f).
-F from daqForce (−); Δu / udot from meaSigOS on lab Time (udot = ∇ meaSig).
+Actuator hysteresis on lab-mapped OpenSees force (atTarget map).
+F from daqForce (−); Δu / udot from meaSigOS on lab $t$ (udot = ∇ meaSig).
 
   python plot/PlotActuatorHyst.py
   python plot/PlotActuatorHyst.py F06 W05
@@ -139,11 +139,11 @@ def write_fu(test_id: str) -> int:
     u_lab = model_disp_to_proto_mm(u_m)
     t_os, f_kn = frc
     try:
-        mapped = map_os_to_lab(t_os, mat)
+        mapped = map_os_to_lab(t_os, mat, dump_dir=dump_path)
     except RuntimeError as exc:
         print(f"PlotActuatorHyst: skip {test_id} ({exc})", file=sys.stderr)
         return 1
-    t_lab_os, k, f_end = mapped.t_lab, mapped.k, mapped.f_end
+    t_lab_os, f_end = mapped.t_lab, mapped.f_end
     # force onto dense lab grid for histories; hysteresis uses OS samples on mapped t
     f_on_lab = np.interp(t_lab, t_lab_os, f_kn, left=np.nan, right=np.nan)
     u_at_os = np.interp(t_lab_os, t_lab, u_lab)
@@ -231,9 +231,8 @@ def write_fu(test_id: str) -> int:
     ax_f.set_xlim(*XLIM_FULL_MODEL_S)
 
     fig.suptitle(
-        rf"{run_title(test_id)}  ·  "
-        rf"$t_{{\mathrm{{lab}}}}=k+t_{{\mathrm{{OS}}}}/\sqrt{{\lambda}}+f$ "
-        rf"($k={k*1e3:.1f}\,\mathrm{{ms}}$, $f_{{\mathrm{{end}}}}={f_end*1e3:.1f}\,\mathrm{{ms}}$)",
+        rf"{run_title(test_id)}  ·  atTarget map  ·  "
+        rf"$f_{{\mathrm{{end}}}}={f_end*1e3:.1f}\,\mathrm{{ms}}$",
         y=1.01,
         fontsize=plt.rcParams["axes.labelsize"],
     )
@@ -260,11 +259,11 @@ def write_udot(test_id: str) -> int:
     u_lab = model_disp_to_proto_mm(u_m)
     t_os, f_kn = frc
     try:
-        mapped = map_os_to_lab(t_os, mat)
+        mapped = map_os_to_lab(t_os, mat, dump_dir=dump_path)
     except RuntimeError as exc:
         print(f"PlotActuatorHyst: skip {test_id} ({exc})", file=sys.stderr)
         return 1
-    t_lab_os, k, f_end = mapped.t_lab, mapped.k, mapped.f_end
+    t_lab_os, f_end = mapped.t_lab, mapped.f_end
     f_on_lab = np.interp(t_lab, t_lab_os, f_kn, left=np.nan, right=np.nan)
     u_at_os = np.interp(t_lab_os, t_lab, u_lab)
     u_lab_mm0 = (u_m - u_m[0]) * M_TO_MM
@@ -339,8 +338,8 @@ def write_udot(test_id: str) -> int:
         edgecolor="#333",
     )
     fig.suptitle(
-        rf"{run_title(test_id)}  ·  mapped lab $t$ "
-        rf"($k={k*1e3:.1f}\,\mathrm{{ms}}$, $f_{{\mathrm{{end}}}}={f_end*1e3:.1f}\,\mathrm{{ms}}$)  ·  "
+        rf"{run_title(test_id)}  ·  atTarget map  ·  "
+        rf"$f_{{\mathrm{{end}}}}={f_end*1e3:.1f}\,\mathrm{{ms}}$  ·  "
         rf"$\langle -F\rangle_{{\mathrm{{R}}}}={mean_r:.2f}$, "
         rf"$\langle -F\rangle_{{\mathrm{{L}}}}={mean_l:.2f}$ kN",
         y=1.01,
