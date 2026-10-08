@@ -335,8 +335,8 @@ set nModesEigen 30;                       # <-- EDIT  (-) modes after gravity (r
 # After gravity: pin pier-base UX/UY at the gravity displacement (-subtractInit).
 # 0 = leave free (gravity state only; base can translate with soil/springs in EQ).
 set holdPierON 1;                         # <-- EDIT  0 | 1
-# recordersON (EQ; both Run.tcl and RunParallel.tcl). Every recorder samples at
-# -dT gmVelDT (the PEER step), not at every dtAnalysis step:
+# recordersON (EQ; both Run.tcl and RunParallel.tcl). Sample interval is
+# dTRecorder (s), set in an override. Unset: every analysis step, no -dT.
 #   0  off
 #   1  full window: |x|<=eqWindowX nodes + quads; all pile beams, all SSI springs
 #   2  center column (2026-08-19 tag): pier nodes 1/2/4/5 (UX UY RZ), both

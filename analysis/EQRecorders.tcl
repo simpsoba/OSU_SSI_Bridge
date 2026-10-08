@@ -1,7 +1,7 @@
 # analysis/EQRecorders.tcl
 # Goals: node and element recorders for the EQ run, sourced after
-# `analysis Transient`. Units N, m, s. Every recorder samples at the ground
-# motion step (-dT $gmVelDT), not at every dtAnalysis step.
+# `analysis Transient`. Units N, m, s. Recorders write every analysis step
+# unless dTRecorder is set (s), in which case each recorder gets -dT.
 #
 # recordersON
 #   0  off
@@ -94,11 +94,13 @@ proc eqOwnedEleRange {e0 e1} {
 	return $out
 }
 
-# Sample at the ground-motion step, so file length follows the record and not
-# dtAnalysis. 0 = every analysis step (no -dT).
+# -dT only when an override sets dTRecorder (s). Unset or 0: every analysis step.
 set eqRecDt 0.0
-if {[info exists gmVelDT] && $gmVelDT > 0.0} {
-	set eqRecDt $gmVelDT
+if {[info exists dTRecorder] && $dTRecorder ne ""} {
+	if {![string is double -strict $dTRecorder] || $dTRecorder < 0.0} {
+		error "EQRecorders.tcl: dTRecorder must be >= 0 s (got '$dTRecorder')"
+	}
+	set eqRecDt $dTRecorder
 }
 
 # Time flags shared by every recorder below.
@@ -799,9 +801,14 @@ if {$eqRecNine} {
 set recCounts [format "nodes=%d (disp %d) eles=%d quads=%d pileBeams=%d pileSprings=%d" \
 	$nGeomNode $nDispNode $nWinEle $nQuadRec \
 	[llength $eqPileBeamRows] [llength $eqPileSprRows]]
+if {$eqRecDt > 0.0} {
+	set recDtMsg [format "dT=%g s" $eqRecDt]
+} else {
+	set recDtMsg "every step"
+}
 if {$eqNP <= 1} {
-	puts [format "----- EQ recorders  %s  dT=%g s  %s -> %s -----" \
-		$recKind $eqRecDt $recCounts $eqOutDir]
+	puts [format "----- EQ recorders  %s  %s  %s -> %s -----" \
+		$recKind $recDtMsg $recCounts $eqOutDir]
 	if {$eqRecNine} {
 		puts "  SSI stations (iy y layer isTip iSeg):"
 		foreach st $eqLeanStations {
