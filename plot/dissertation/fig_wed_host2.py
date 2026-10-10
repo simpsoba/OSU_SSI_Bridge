@@ -8,15 +8,15 @@ state, zero target); intervals are counted from the last handshake flag. Panels 
     analysis setup, assembly of M, A-tilde, and A on every rank, merge on rank 0, factorization of A-tilde at the
     predictor's first solve, first predictor and update pass; (2) first to second target: first force read,
     factorization of M and A at the corrector's first solves, second predictor; (3) first-pass warm-up
-(b) share of samples in each typeConv3 state (initialize excluded, as plot/PlotStateOSBars.py); numbers above the
+(d) share of samples in each typeConv3 state (initialize excluded, as plot/PlotStateOSBars.py); numbers above the
     bars = slowdown episodes (entries into state 2) after start-up + during start-up, k = thousands
 (c) host latency per dt_sim window: window start (count resets to 1) to arrival of the new target (s1 rising edge)
     = extrapolation plus slowdown time in that window. Host critical path (force read, assembly, solves, predictor,
     update up to the experimental element) plus any overrun of the work after the target is sent; work that ends
     before the next force is held is not observed, so this is not a speedup of the whole step.
-(d) interval between consecutive targets. interval_k = dt_sim + (latency_k - latency_k-1) + slowdown stretch
+(b) interval between consecutive targets. interval_k = dt_sim + (latency_k - latency_k-1) + slowdown stretch
     (exact to one tick in every parallel step), so the mean is locked to dt_sim while the host keeps up.
-(c), (d): box = quartiles, whiskers = 1st and 99th percentiles, x = maximum (triangle = off scale, value printed).
+(b), (c): box = quartiles, whiskers = 1st and 99th percentiles, x = maximum (triangle = off scale, value printed).
 Bold panel tags, no titles or legends (direct labels with leaders), uniform font, constrained layout.
 """
 import sys
@@ -92,7 +92,9 @@ for r in R:
 x = np.arange(len(R))
 m1 = R[0]["lat"].mean()
 
-fig, ((ax_a, ax_b), (ax_c, ax_d)) = plt.subplots(2, 2, figsize=(6.0, 4.6), layout="constrained")
+# Story order: (a) start-up intervals, (b) intervals between targets, (c) host latency, (d) rate-transition states.
+# ax_d draws the intervals (top right, tag b); ax_b draws the states (bottom right, tag d).
+fig, ((ax_a, ax_d), (ax_c, ax_b)) = plt.subplots(2, 2, figsize=(6.0, 4.6), layout="constrained")
 
 # (a) the three start-up intervals of each test (log scale)
 BW, SHADE = 0.26, (1.0, 0.6, 0.32)
@@ -151,7 +153,7 @@ ax_d.annotate(r"$\Delta t_{\mathrm{sim}}$", (3.5, DT), xytext=(3.5, 10.2), ha="c
 ax_d.set_ylim(2.5, 13.7)
 ax_d.set_ylabel("Interval between targets (ms)")
 
-for ax, tg in ((ax_a, "(a)"), (ax_b, "(b)"), (ax_c, "(c)"), (ax_d, "(d)")):
+for ax, tg in ((ax_a, "(a)"), (ax_d, "(b)"), (ax_c, "(c)"), (ax_b, "(d)")):
     ax.set_xticks(x)
     ax.set_xticklabels([f"{r['nr']}\n{r['wid']}" for r in R])
     if ax is not ax_b:
