@@ -98,7 +98,10 @@ ax_b.text(2.5, 0.8 * DT * 1.07, r"$0.8\,\Delta t_{\mathrm{sim}}$", ha="center", 
 bottom = np.zeros(len(R))
 for j, (c, name, col) in enumerate(STATES):
     hh = np.array([r["frac"][j] for r in R])
-    ax_c.bar(x, hh, bottom=bottom, width=0.6, color=col, edgecolor="w", lw=0.4)
+    ax_c.bar(x, hh, bottom=bottom, width=0.74, color=col, edgecolor="w", lw=0.4)
+    for xi, b0, hj in zip(x, bottom, hh):  # percentages inside the extrapolate / interpolate segments
+        if c != 2 and hj >= 10:
+            ax_c.text(xi, b0 + 0.5 * hj, f"{hj:.0f}", ha="center", va="center", color="w")
     bottom += hh
 for xi, r in zip(x, R):
     n = f"{r['n'] / 1000:.0f}k" if r["n"] >= 1000 else f"{r['n']}"
@@ -106,7 +109,7 @@ for xi, r in zip(x, R):
 ax_c.set_ylim(0, 100)
 ax_c.set_xticks(x)
 ax_c.set_xlim(-0.6, len(R) + 1.05)
-xr = x[-1] + 0.3
+xr = x[-1] + 0.37
 bot = 0.0
 for j, (c, name, col) in enumerate(STATES[:2]):
     h_last = R[-1]["frac"][j]
