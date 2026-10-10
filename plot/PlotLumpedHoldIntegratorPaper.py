@@ -78,13 +78,16 @@ SOIL_X = 5.7912
 # Mudline only (the 10.1 m soil history tracks the 10.1 m pile one closely).
 SOIL_Y = (0.0,)
 
-# Newmark: wide light-grey solid line under MKR-α: thin black dashes, so the grey
-# shows on both sides of the dash where the two agree (and still reads in B&W).
+# Newmark: thin mid-grey solid line under MKR-α: black dashes with open gaps, so the grey
+# reads through the gaps where the two agree and as its own line where they differ (B&W
+# safe). A wide light-grey line was hidden under the dashes in dense loops and zooms.
 # Dash length is in points.
-NM_COLOR = "#a8a8a8"
-NM_LW = 2.0
-MKR_LW = 0.8
-MKR_LS = (0, (2.6, 1.8))
+NM_COLOR = "#8c8c8c"
+NM_LW = 1.2
+MKR_LW = 0.7
+MKR_LS = (0, (2.0, 2.2))
+# Station letters on the mesh sketch (gray, regular weight) vs bold black panel tags.
+STATION_GRAY = "#6e6e6e"
 
 FIG_W = 6.0
 # Mesh (true scale, no axes) is a left column, top-aligned with (b); the legend
@@ -335,16 +338,16 @@ def draw_mesh(
             xytext, ha = (x - 1.8, y + 2.4), "right"
         textcoords = "data"
         ax.annotate(
-            rf"\textbf{{({letter})}}",
+            rf"({letter})",  # station reference: gray, regular weight (panel tags are bold black)
             xy=(x, y),
             xytext=xytext,
             textcoords=textcoords,
             ha=ha,
             va="center",
-            color="#111111",
+            color=STATION_GRAY,
             zorder=6,
             clip_on=False,
-            arrowprops=dict(arrowstyle="-", lw=0.4, color="#111111", shrinkA=1.5, shrinkB=1.5),
+            arrowprops=dict(arrowstyle="-", lw=0.4, color=STATION_GRAY, shrinkA=1.5, shrinkB=1.5),
             # White backing box: a withStroke halo shrinks usetex glyphs.
             bbox=dict(boxstyle="square,pad=0.08", fc="white", ec="none", alpha=0.85),
         )
@@ -782,16 +785,17 @@ def place_box_tags(
         tx = min(max(bx, best[0]), best[1])
         ty = min(max(by, best[2]), best[3])
         if np.hypot((tx - bx) * HIST_W, (ty - by) * HIST_H) > 0.06:
-            ax_h.plot([tx, bx], [ty, by], transform=ax_h.transAxes, color="0.35", lw=0.4, zorder=5)
+            ax_h.plot([tx, bx], [ty, by], transform=ax_h.transAxes, color=STATION_GRAY, lw=0.4, zorder=5)
+        # Reference to a zoom panel: gray, regular weight (the zoom's own tag is bold black).
         ax_h.text(
             best[0],
             best[2],
-            rf"\textbf{{{tag}}}",
+            tag,
             transform=ax_h.transAxes,
             ha="left",
             va="bottom",
             fontsize=ZOOM_TICK_FS,
-            color="0.25",
+            color=STATION_GRAY,
             zorder=6,
         )
 

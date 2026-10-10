@@ -147,16 +147,16 @@ def mark_stations(ax: plt.Axes, pts: dict[str, tuple[float, float]]) -> None:
         x, y = pts[key]
         ax.scatter([x], [y], s=10, c="#111111", marker="o", zorder=5, linewidths=0.3, edgecolors="white")
         ax.annotate(
-            rf"\textbf{{({letter})}}",
+            rf"({letter})",  # station reference: gray, regular weight (panel tags are bold black)
             xy=(x, y),
             xytext=(lx, ly),
             textcoords="data",
             ha=ha,
             va="center",
-            color="#111111",
+            color=disp.STATION_GRAY,
             zorder=6,
             clip_on=False,
-            arrowprops=dict(arrowstyle="-", lw=0.4, color="#111111", shrinkA=1.5, shrinkB=1.5),
+            arrowprops=dict(arrowstyle="-", lw=0.4, color=disp.STATION_GRAY, shrinkA=1.5, shrinkB=1.5),
             bbox=dict(boxstyle="square,pad=0.08", fc="white", ec="none", alpha=0.85),
         )
 
