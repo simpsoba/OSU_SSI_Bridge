@@ -3,9 +3,13 @@
 Phases on integrator time t_int (prototype): before EQ < 150 s (waves only); during 150 s to the Arias 95%
 time (289.1 s; Arias 5% at 206.0 s); after > 289.1 s. 1-rank record cut where its actuator stops tracking.
 NRMSE = RMS(y - x) / (max x - min x) within the phase (Chae et al. 2013 / Dong et al. 2015 convention), x the
-reference (target or compensated command), y measured. Delays: least-squares shift (see xdelay), model scale.
-  command -> measured   comSigOS vs meaSigOS (actuator + AFC residual)
-  target -> measured    tarSigOS vs meaSigOS
+reference, y measured. The dissertation reports NRMSE_cm (x = command). Delays: least-squares shift (see xdelay),
+model scale.
+  command -> measured   comSigOS vs meaSigOS: actuator tracking error. comSigOS is the rate-transition reference,
+                        updated every controller sample and equal to the new target at the end of each dt_sim
+                        (count 10); no compensation lead is visible in it
+  target -> measured    tarSigOS vs meaSigOS: tarSigOS holds each target as a staircase (constant over dt_sim,
+                        changing once every 10 samples), so this error also contains the rate-transition lag
   integrator -> target  ctrlDsp/lambda placed at hard real time vs tarSigOS on the laboratory clock: rate
                         transition plus lag behind real time. Hard real time is referenced to the arrival of the
                         row at t_int = 5 s (row r due at t_r0 + (r - r0) dt_sim), which removes the start-up offset
