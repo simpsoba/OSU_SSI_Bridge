@@ -36,7 +36,7 @@ RUNS = [
     ("F10", "0821_GusBridge_rowNeg9_16Core", "r-09_20260821_1108_Storm_Wave", "Large", 4620, "GPU", "cuDSS", 16, ""),
     ("F12", "0821_GusBridge_rowNeg9_20Core", "r-09_20260821_1303_Storm_Wave", "Large", 4620, "GPU", "cuDSS", 20, ""),
     ("F11", "0821_GusBridge_rowNeg9_24Core", "r-09_20260821_1132_Storm_Wave", "Large", 4620, "GPU", "cuDSS", 24, ""),
-    ("F14", "0821_GusBridge_rowNeg91_16Core", "r-91_20260821_1342_Storm_Wave", "Large", 4620, "CPU", "cuDSS", 16, ""),
+    ("F14", "0821_GusBridge_rowNeg91_16Core", "r-91_20260821_1342_Storm_Wave", "Large", 4620, "CPU", "cuDSS", 16, ""),  # host WiFi on (G. Araujo)
     ("F15", "0821_GusBridge_rowNeg91_20Core", "r-91_20260821_1358_Storm_Wave", "Large", 4620, "CPU", "cuDSS", 20, ""),
     ("F13", "0821_GusBridge_rowNeg10_24Core_duplicate", "r-10_20260821_1312_Storm_Wave", "Extra-large", 5484, "GPU", "cuDSS", 24, ""),
     ("F20", "0821_GusBridge_rowNeg15_8Core", "r-15_20260821_1521_Storm_Wave", "Quad PIMY", 2028, "GPU", "cuDSS", 8, ""),
@@ -44,7 +44,9 @@ RUNS = [
     ("F23", "0821_GusBridge_rowNeg13_8Core", "r-13_20260821_1535_Storm_Wave", "Stiff soil", 2028, "GPU", "cuDSS", 8, ""),
     ("F30", "0821_GusBridge_rowNeg17_8Core_P1", "r-17_20260821_1649_Storm_Wave", "2% Rayleigh", 2028, "GPU", "cuDSS", 8, ""),
 ]
-# lunch dry runs (no actuator motion, no OpenSees dump); timing only
+# lunch dry runs: OpenSees + OpenFresco + rate transition running and commands generated, but the actuator did not
+# move (measured displacement within 0.1 mm, load-cell force ~0) and no OpenSees dump; records end near t_int = 310-330 s,
+# before the solitary wave. Timing only.
 DRY = [
     ("Fd01", "0821_GusBridge_rowNeg8_16Core", "", "Moderate", 3216, "GPU", "cuDSS", 16, "dry"),
     ("Fd02", "0821_GusBridge_rowNeg9_18Core", "", "Large", 4620, "GPU", "cuDSS", 18, "dry"),

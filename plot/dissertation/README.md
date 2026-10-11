@@ -46,6 +46,8 @@ writes them to `out/friday`.
 | `fig_fri_ranks.py` | `fri_rank_sweep` | GPU rank sweeps of the moderate, large, and extra-large models, wet tests and lunch dry runs |
 | `fig_fri_formulation.py` | `fri_formulation` | elastic / stiff / soft SSPQuad and Quad-PIMY soil on the baseline model: latency over time, slowdowns |
 | `fig_fri_force.py` | `fri_interface_force` | hold-induced force transients vs the solitary-wave impact |
+| `fig_fri_disp.py` | `fri_interface_displacement` | slowdowns in the displacement history: lab-clock lag (moderate, CPU vs GPU) and GPU 1 vs 8 ranks on integration time |
+| `fig_fri_solitary.py` | `fri_solitary_mesh` | displacement across the four meshes (GPU); solitary-wave pulse and the free vibration it re-excites |
 
 Helper: `fri_runs.py` (run list with configuration, dry runs, timing loader; prints a stats table when run).
 

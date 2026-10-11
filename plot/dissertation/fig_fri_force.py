@@ -5,7 +5,7 @@ lambda_L^3 f_p = -lambda^3 * topLRaw (load cell, as fig_wed_force.py), resisting
 on the prototype-scaled laboratory clock sqrt(lambda_L) t.
 (a) slowdown lanes and force histories of the moderate model (F07 CPU ProfileSPD and F08 CPU MUMPS, both stopped
     early; F06 GPU) and of the large model with CPU integration and cuDSS solves (F15)
-(b.1) solitary-wave impact for GPU tests of increasing model size (F05, F06, F09, F13) and the CPU baseline (F03)
+(b.1) solitary-wave impact, aligned at each test's peak, for GPU tests of increasing model size (F05, F06, F09, F13) and the CPU baseline (F03)
 (b.2) an isolated slowdown of F11 (large model, GPU, 24 ranks) and the force transient it produced
 """
 import sys
@@ -85,11 +85,13 @@ fa.text(347, 100, "solitary\nwave", ha="center", va="bottom", fontsize=6.5, colo
 b1, b2 = sb.subplots(1, 2, gridspec_kw=dict(width_ratios=[1.4, 1.0]))
 for tid, c, name in SOL:
     t, f = F[tid]
-    k = (t > 335) & (t < 365)
-    b1.plot(t[k], f[k], color=c, lw=0.8, label=f"{tid} {name}")
+    w = (t > 335) & (t < 365)
+    tp_ = t[w][np.argmax(np.abs(f[w]))]
+    k = (t > tp_ - 1.5) & (t < tp_ + 3.0)
+    b1.plot(t[k] - tp_, f[k], color=c, lw=0.8, label=f"{tid} {name}")
 b1.legend(loc="lower right", frameon=False, fontsize=6, handlelength=1.0)
-b1.set_xlim(335, 365)
-b1.set_xlabel(r"$\sqrt{\lambda_L}\,t$ (s)")
+b1.set_xlim(-1.5, 3.0)
+b1.set_xlabel(r"Time from the peak, $\sqrt{\lambda_L}\,\tau$ (s)")
 b1.set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
 b1.set_title(r"\textbf{(b.1)}", loc="left")
 d = D["F11"]
