@@ -4,6 +4,7 @@
   python plot/dissertation/make_figures.py --copy-to <figdir>  # ... and copy the PDFs under their Ch. 6 names
   python plot/dissertation/make_figures.py --with-upstream --copy-to <figdir>
                                                                # also rerun the upstream paper scripts in plot/
+  python plot/dissertation/make_figures.py --main              # main-campaign (Friday) drafts -> out/friday
   python plot/dissertation/make_figures.py --list              # print the script -> figure map
 
 Preliminary-campaign scripts live in this folder. The other Ch. 6 figures are made by the paper scripts in plot/,
@@ -34,6 +35,15 @@ PRELIM = {
     "fig_wed_err_psd.py": "prelim_control_error",
     "fig_wed_energy2.py": "prelim_interface_energy",
 }
+# main campaign (Friday 2026-08-21), drafts not yet in the chapter: script -> figure name (written to out/friday)
+MAIN = {
+    "fig_fri_host.py": "fri_host_timing",
+    "fig_fri_capacity.py": "fri_capacity",
+    "fig_fri_lanes.py": "fri_slowdown_lanes",
+    "fig_fri_ranks.py": "fri_rank_sweep",
+    "fig_fri_formulation.py": "fri_formulation",
+    "fig_fri_force.py": "fri_interface_force",
+}
 # Ch. 6 figure name -> (script in plot/ with arguments, PDF it writes); checked byte-identical to the Ch. 6 PDFs
 UPSTREAM = {
     "numerical_subassembly_schematic": (["PlotModelSketchPaper.py"],
@@ -55,10 +65,21 @@ def main():
     ap.add_argument("--only", nargs="*", help="subset of Ch. 6 figure names")
     ap.add_argument("--with-upstream", action="store_true", help="also rerun the paper scripts in plot/")
     ap.add_argument("--list", action="store_true", help="print the script -> figure map and exit")
+    ap.add_argument("--main", action="store_true", help="make only the main-campaign (Friday) drafts in out/friday")
     args = ap.parse_args()
+    if args.main:
+        (OUT / "friday").mkdir(parents=True, exist_ok=True)
+        for script, name in MAIN.items():
+            if args.only and name not in args.only:
+                continue
+            print(f"--- {script} -> friday/{name}", flush=True)
+            subprocess.run([sys.executable, "-I", str(HERE / script), str(OUT / "friday" / name)], check=True, cwd=HERE)
+        return
     if args.list:
         for s, n in PRELIM.items():
             print(f"{n:34s} plot/dissertation/{s}")
+        for s, n in MAIN.items():
+            print(f"{n:34s} plot/dissertation/{s}  (draft, out/friday)")
         for n, (cmd, pdf) in UPSTREAM.items():
             print(f"{n:34s} plot/{cmd[0] if cmd else '(written with the entry above)'} -> {pdf.relative_to(REPO)}")
         return

@@ -31,6 +31,24 @@ Data: `LOCAL/mat_extract/*.npz` and `OSU_SSI_BRIDGE_DATA/Simulink/*.mat` (via `p
 `C:\Users\garaujor\OpenSees_Runs\OSU_SSI_Bridge_rankcheck\rankcheck\out_np{1,8}` (energy figure, panel b).
 Definitions are in each script's docstring (tracking cut of the 1-rank run, phases, latency, k_el, PSD windows).
 
+## Main campaign (Friday 2026-08-21; drafts, not yet in the chapter)
+
+Earthquake followed by the solitary wave; baseline/moderate/large/extra-large models (2028/3216/4620/5484 DOFs);
+CPU MKR-alpha (ProfileSPD, MUMPS, or cuDSS solves) vs GPU MKR-alpha (`CudaMKRAlpha`) + cuDSS. Timing comes from
+stateOS (`LOCAL/mat_extract`), force from the Simulink load cell. `python plot/dissertation/make_figures.py --main`
+writes them to `out/friday`.
+
+| Script | Draft figure | Content |
+|---|---|---|
+| `fig_fri_host.py` | `fri_host_timing` | host latency per window and rate-transition state shares for every wet test, grouped by model |
+| `fig_fri_capacity.py` | `fri_capacity` | mean latency and slowdown rate vs model size, by configuration |
+| `fig_fri_lanes.py` | `fri_slowdown_lanes` | slowdown episodes on integration time (Arias band, solitary wave); delay growth behind real time |
+| `fig_fri_ranks.py` | `fri_rank_sweep` | GPU rank sweeps of the moderate, large, and extra-large models, wet tests and lunch dry runs |
+| `fig_fri_formulation.py` | `fri_formulation` | elastic / stiff / soft SSPQuad and Quad-PIMY soil on the baseline model: latency over time, slowdowns |
+| `fig_fri_force.py` | `fri_interface_force` | hold-induced force transients vs the solitary-wave impact |
+
+Helper: `fri_runs.py` (run list with configuration, dry runs, timing loader; prints a stats table when run).
+
 ## Offline Newmark vs MKR-alpha (merged figure)
 
 `fig_offline_combined.py` -> `offline_integration_combined` (Ch. 6 figure `fig:case-study-offline`): the two paper
