@@ -157,7 +157,7 @@ ax_b.tick_params(labelleft=False)
 tag(ax_a, "(a)")
 tag(ax_b, "(b)")
 label(ax_a, "1 rank", (239.3, 99), (227.0, 170), ORANGE)
-label(ax_a, "4, 8, 16, 24", (230.2, -52), (226.8, -170), "0.25")
+label(ax_a, "4, 8, 16,\n24 ranks", (230.2, -52), (226.8, -160), "0.25")
 label(ax_b, "1 and 8 ranks", (230.2, -52), (226.8, -170), "0.25")
 
 for k in ORDER:  # (c) interface energy
@@ -172,7 +172,7 @@ sec = ax_c.secondary_yaxis("right", functions=(lambda e: e / E_Y, lambda r: r * 
 sec.set_ylabel(r"$E/(M_y\theta_y)$")
 tag(ax_c, "(c)")
 label(ax_c, "1 rank", (238.0, np.interp(238.0, H[1]["t"], H[1]["E"])), (195.0, -6.5), ORANGE)
-label(ax_c, "4, 8, 16, 24", (232.0, np.interp(232.0, H[8]["t"], H[8]["E"])), (160.0, 2.0), "0.25")
+label(ax_c, "4, 8, 16, 24 ranks", (232.0, np.interp(232.0, H[8]["t"], H[8]["E"])), (160.0, 2.0), "0.25")
 
 for ax, key, xl, yl, tg in ((ax_d, "hinge", r"$\theta$ (mrad)", r"$M$ (MN$\cdot$m)", "(d)"),
                             (ax_e, "pile", r"$\kappa$ ($10^{-3}$/m)", r"$M$ (MN$\cdot$m)", "(e)"),
@@ -205,7 +205,7 @@ th1, M1 = sorted_xy(H[1]["hinge"])
 loop_label(ax_d, "1 rank", (th1[-1], M1[-1]), (2.0, 5.0), ORANGE)
 k1, Mp1 = sorted_xy(H[1]["pile"])
 loop_label(ax_e, "1 rank", (k1[-1], Mp1[-1]), (4.0, -2.0), ORANGE)
-loop_label(ax_e, "4, 8, 16, 24", (-5.0, np.interp(-5.0, *sorted_xy(H[8]["pile"]))), (-7.5, 2.0), "0.25")
+loop_label(ax_e, "4, 8, 16,\n24 ranks",(-5.0, np.interp(-5.0, *sorted_xy(H[8]["pile"]))), (-7.5, 2.1), "0.25")
 
 fig.savefig(OUT.with_suffix(".png"), dpi=200)
 fig.savefig(OUT.with_suffix(".pdf"))
