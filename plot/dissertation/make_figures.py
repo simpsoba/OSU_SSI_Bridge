@@ -45,6 +45,8 @@ MAIN = {
     "fig_fri_force.py": "fri_interface_force",
     "fig_fri_disp.py": "fri_interface_displacement",
     "fig_fri_solitary.py": "fri_solitary_mesh",
+    "fig_fri_force_gpu.py": "fri_force_gpu_baseline",
+    "fig_fri_energy.py": "fri_energy",
 }
 # Ch. 6 figure name -> (script in plot/ with arguments, PDF it writes); checked byte-identical to the Ch. 6 PDFs
 UPSTREAM = {
