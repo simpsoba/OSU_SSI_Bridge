@@ -12,7 +12,7 @@ Stations and the pile-moment interpolation follow plot/PlotLumpedHoldHysteresisP
 M_y = F_y,eq H_pier (cantilever estimate, as in plot/PlotActuatorForce.py; the M-theta secant stiffness drops
 to 0.8 k_el at 2.9-3.4 MN m), theta_y = M_y / k_el with the model's initial base-hinge stiffness
 k_el = E_c I_uncr / L_s,I (structure/PierSection.tcl, L_s,I = 0.74 H_pier; the 150-190 s M-theta fit is 2% higher).
-Bold panel tags, no titles or legends (direct labels), uniform font, constrained layout.
+Bold panel tags, no titles; direct labels in (a)-(c), one legend below (d)-(f); uniform font, constrained layout.
 """
 import sys
 from pathlib import Path
@@ -189,11 +189,12 @@ for ax, key, xl, yl, tg in ((ax_d, "hinge", r"$\theta$ (mrad)", r"$M$ (MN$\cdot$
 ax_d.axhline(M_Y / 1e6, color="0.3", lw=0.6, ls=(0, (5, 3)), zorder=0)
 ax_d.axhline(-M_Y / 1e6, color="0.3", lw=0.6, ls=(0, (5, 3)), zorder=0)
 ax_d.text(ax_d.get_xlim()[0] + 0.5, M_Y / 1e6, r"$M_y$", ha="left", va="bottom", color="0.3")
-th1, M1 = sorted_xy(H[1]["hinge"])
-label(ax_d, "1 rank", (th1[-1], M1[-1]), (2.0, 5.0), ORANGE)
-k1, Mp1 = sorted_xy(H[1]["pile"])
-label(ax_e, "1 rank", (k1[-1], Mp1[-1]), (4.0, -2.0), ORANGE)
-label(ax_e, "4, 8, 16, 24", (-5.0, np.interp(-5.0, *sorted_xy(H[8]["pile"]))), (-7.5, 2.0), "0.25")
+ax_c.set_yticks([-8, -6, -4, -2, 0, 2])
+ax_d.set_yticks([-4, -2, 0, 2, 4])
+# (d)-(f): one legend below the figure instead of leader lines, which could be read as hysteresis branches
+fig.legend([plt.Line2D([], [], color=ORANGE, lw=1.2), plt.Line2D([], [], color=BLACK, lw=1.2),
+            plt.Line2D([], [], color=GRAY, lw=1.2)], ["1 rank", "8 ranks", "4, 16, 24 ranks"],
+           loc="outside lower center", ncol=3, frameon=False, handlelength=1.6, columnspacing=1.6)
 
 fig.savefig(OUT.with_suffix(".png"), dpi=200)
 fig.savefig(OUT.with_suffix(".pdf"))
