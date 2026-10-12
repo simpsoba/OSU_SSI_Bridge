@@ -41,6 +41,7 @@ RUNS = [("W04", "0819_GusBridge_Serial_H0p5_T7p746_reg_Trial02", 1, ORANGE),
         ("W07", "0819_GusBridge_Parallel24_H0p5_T7p746_reg", 24, GRAY)]
 ORDER = [1, 3, 4, 2, 0]  # grays, 8 ranks, serial on top
 COL = {r[2]: r[3] for r in RUNS}
+DASH8 = (0, (3, 1.5))  # 8 ranks dashed, so it stays distinct from the solid serial line
 SPRING_TAG, PILE_BEAM_TAG = 22021, 2120
 S_IP1 = 0.5 * (1.0 - np.sqrt(0.6))
 
@@ -142,9 +143,9 @@ for k in ORDER:  # (a) hybrid
     n = RUNS[k][2]
     d = H[n]
     m = (d["t"] >= WIN[0]) & (d["t"] <= WIN[1])
-    ax_a.plot(d["t"][m], d["u"][m], color=COL[n], lw=1.1 if n in (1, 8) else 0.8)
+    ax_a.plot(d["t"][m], d["u"][m], color=COL[n], lw=1.1 if n in (1, 8) else 0.8, ls=DASH8 if n == 8 else "-")
 ax_a.plot(H[1]["t"][-1], H[1]["u"][-1], marker="x", color=ORANGE, ms=5, mew=1.0, zorder=5)
-for n, ls in ((8, "-"), (1, (0, (4, 2)))):  # (b) offline
+for n, ls in ((1, "-"), (8, DASH8)):  # (b) offline: serial solid, 8 ranks dashed on top
     t, u = O[n]
     m = (t >= WIN[0]) & (t <= WIN[1])
     ax_b.plot(t[m], u[m], color=COL[n], ls=ls, lw=1.1)
@@ -162,7 +163,7 @@ label(ax_b, "serial and 8 ranks", (230.2, -52), (226.8, -170), "0.25")
 
 for k in ORDER:  # (c) interface energy
     n = RUNS[k][2]
-    ax_c.plot(H[n]["t"], H[n]["E"], color=COL[n], lw=1.1 if n in (1, 8) else 0.8)
+    ax_c.plot(H[n]["t"], H[n]["E"], color=COL[n], lw=1.1 if n in (1, 8) else 0.8, ls=DASH8 if n == 8 else "-")
 ax_c.axhline(0, color="0.5", lw=0.6)
 ax_c.set_xlim(T0, 250)
 ax_c.set_ylim(-9, 3)
@@ -181,7 +182,8 @@ for ax, key, xl, yl, tg in ((ax_d, "hinge", r"$\theta$ (mrad)", r"$M$ (MN$\cdot$
         n = RUNS[k][2]
         t, x, y = H[n][key]
         m = (t >= T0) & (t <= T1)
-        ax.plot(x[m], y[m], color=COL[n], lw=0.9 if n in (1, 8) else 0.6, alpha=1.0 if n in (1, 8) else 0.8)
+        ax.plot(x[m], y[m], color=COL[n], lw=0.9 if n in (1, 8) else 0.6, alpha=1.0 if n in (1, 8) else 0.8,
+                ls=DASH8 if n == 8 else "-")
     ax.axhline(0, color="0.8", lw=0.4, zorder=0)
     ax.axvline(0, color="0.8", lw=0.4, zorder=0)
     ax.set_xlabel(xl)
