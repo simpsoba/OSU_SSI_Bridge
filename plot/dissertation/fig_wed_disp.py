@@ -1,6 +1,6 @@
 """Interface displacement, Wednesday runs (dissertation Ch. 6; read-only on data).
 
-u = meaSigOS x lambda (prototype mm), Simulink at 2048 Hz model. Records end where the 1-rank actuator stops
+u = meaSigOS x lambda (prototype mm), Simulink at 2048 Hz model. Records end where the serial actuator stops
 tracking (0.25-s RMS of target - measured above 2 mm model). Integrator time from the received-target count:
 target k at t_int = (k + alpha_f) dt_int. Delay = laboratory time of each target minus k dt_sim (laboratory s).
 (a)         slowdown lane (one row per run, test ID in the free space) and u on real time, sqrt(lambda_L) t
@@ -27,13 +27,13 @@ from lab_paths import CYLINDER_LENGTH_SCALE as LAM, MAT_EXTRACT_DIR, TIME_SCALE_
 OUT = Path(sys.argv[1])
 DT_SIM = 10 / 2048
 ALPHA_F = 1 / (1 + np.sqrt(0.5))
-ORANGE, BLUE, GRAY = "#C0390B", "#000000", "#8C8C8C"  # 1 rank deep vermillion, 8 ranks black, others gray
+ORANGE, BLUE, GRAY = "#C0390B", "#000000", "#8C8C8C"  # serial deep vermillion, 8 ranks black, others gray
 RUNS = [("W04", "0819_GusBridge_Serial_H0p5_T7p746_reg_Trial02", 1, ORANGE),
         ("W06", "0819_GusBridge_Parallel4_H0p5_T7p746_reg_Trial02", 4, GRAY),
         ("W02", "0819_GusBridge_Parallel8_H0p5_T7p746_reg", 8, BLUE),
         ("W05", "0819_GusBridge_Parallel16_H0p5_T7p746_reg_Trial02", 16, GRAY),
         ("W07", "0819_GusBridge_Parallel24_H0p5_T7p746_reg", 24, GRAY)]
-ORDER = [1, 3, 4, 2, 0]  # grays, 8 ranks, then 1 rank on top
+ORDER = [1, 3, 4, 2, 0]  # grays, 8 ranks, then serial on top
 SEG = [(0, 170), (170, 420)]
 WR = [1, 3.4]
 ZOOMS = [(214, 222), (241, 249)]
@@ -118,8 +118,8 @@ for j in range(2):
         ax.spines["left"].set_visible(False)
         ax.tick_params(left=False, labelleft=False)
 LANE[0].set_yticks(range(5))
-LANE[0].set_yticklabels([str(RUNS[r][2]) for r in range(5)][::-1])
-LANE[0].set_ylabel("Slowdowns\n(MPI ranks)")
+LANE[0].set_yticklabels([("serial" if RUNS[r][2] == 1 else str(RUNS[r][2])) for r in range(5)][::-1])
+LANE[0].set_ylabel("Slowdowns")  # one line: with the wider "serial" tick label, the lanes stay aligned with (a)
 tag(LANE[0], "(a)")
 
 
@@ -137,7 +137,7 @@ def draw(ax_pair, key, lw):
 draw(A, "t", 0.8)
 A[0].set_ylabel(r"$u$ (mm)")
 A[1].set_xlabel(r"Laboratory time, $\sqrt{\lambda_L}\,t$ (s)")
-label(A[1], "1 rank", (271.5, -150), (290, -150), ORANGE)
+label(A[1], "serial", (271.5, -150), (290, -150), ORANGE)
 label(A[1], "8 ranks", (330, 85), (340, 165), BLUE)
 label(A[1], "4, 16, 24 ranks", (395, 62), (330, -120), GRAY)
 
@@ -150,7 +150,7 @@ tag(B[0], "(b)")
 for (z0, z1), nm in zip(ZOOMS, ("(b.1)", "(b.2)")):
     B[1].add_patch(Rectangle((z0, YLIM[0] * 0.95), z1 - z0, (YLIM[1] - YLIM[0]) * 0.95, fill=False, ec="0.2", lw=0.6))
     B[1].text((z0 + z1) / 2, YLIM[1] * 0.98, rf"\textbf{{{nm}}}", ha="center", va="bottom")
-label(B[1], "1 rank: test stopped", (data[0]["ti_end"], data[0]["u"][-1]), (300, -120), ORANGE)
+label(B[1], "serial: test stopped", (data[0]["ti_end"], data[0]["u"][-1]), (300, -120), ORANGE)
 
 # ---------------- (b.1), (b.2) zooms on integrator time ----------------
 gz = s_z.add_gridspec(2, 2, height_ratios=[0.16, 1.0], hspace=0.04)
@@ -181,10 +181,10 @@ for j, (z0, z1) in enumerate(ZOOMS):
     ax.set_xlabel(r"$t_{\mathrm{int}}$ (s)")
 Z[0].set_ylabel(r"$u$ (mm)")
 Z[1].tick_params(labelleft=False)
-label(Z[0], "1 rank", (219.3, 45), (219.8, 140), ORANGE)
+label(Z[0], "serial", (219.3, 45), (219.8, 140), ORANGE)
 label(Z[0], "8 ranks", (217.0, 38), (215.0, 140), BLUE)
 label(Z[0], "24 ranks", (216.8, 38), (215.0, -150), GRAY)
-label(Z[1], "1 rank", (242.1, 106), (243.3, 160), ORANGE)
+label(Z[1], "serial", (242.1, 106), (243.3, 160), ORANGE)
 label(Z[1], "4, 8, 16, 24 ranks", (245.4, 80), (245.9, 150), "0.25")
 
 # ---------------- (c) delay behind real time ----------------
@@ -197,7 +197,7 @@ C[0].set_ylim(-1, 22)
 C[0].set_ylabel("Delay,\nlaboratory (s)")
 C[1].set_xlabel(r"Laboratory time, $\sqrt{\lambda_L}\,t$ (s)")
 tag(C[0], "(c)")
-label(C[1], "1 rank", (250, np.interp(250, data[0]["tk"], data[0]["lag"])), (215, 19), ORANGE)
+label(C[1], "serial", (250, np.interp(250, data[0]["tk"], data[0]["lag"])), (215, 19), ORANGE)
 ins = C[1].inset_axes([0.52, 0.40, 0.31, 0.52])
 for k in (1, 3, 4, 2):
     d = data[k]

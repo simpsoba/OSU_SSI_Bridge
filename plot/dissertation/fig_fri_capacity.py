@@ -48,7 +48,7 @@ for tid in IDS:
     for ax, y in ((ax_a, lat), (ax_b, rate)):
         h = ax.plot(xi + dx + jit, y, marker=mk, ms=4.6, color=c, mfc=c if d["complete"] else "white", mew=0.9,
                     ls="none", zorder=4)[0]
-        ax.annotate(f"{r[7]}", (xi + dx + jit, y), xytext=(3, 0), textcoords="offset points", fontsize=6,
+        ax.annotate("serial" if r[7] == 1 else f"{r[7]}", (xi + dx + jit, y), xytext=(3, 0), textcoords="offset points", fontsize=6,
                     color=c, ha="left", va="center")
     if d["complete"]:
         seen.setdefault(lab, h)

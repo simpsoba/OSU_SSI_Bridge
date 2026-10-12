@@ -3,8 +3,8 @@
 E = int lambda_L^3 f_p du from the OpenSees recorders (Elmt101_ctrlDsp: commanded displacement; ServerSetup_daqFrc:
 force returned to the integrator), as fig_wed_energy2.py, from the start of the earthquake (t_int = 150 s on
 Wednesday, 0 s on Friday); tau = t_int - t_EQ.
-(a) E(tau) for runs with frequent slowdowns (W04 CPU 1 rank; F07 CPU ProfileSPD and F08 CPU MUMPS, moderate; F22 GPU
-    1 rank, baseline) and reference runs without them (W02, F03, F05)
+(a) E(tau) for runs with frequent slowdowns (W04 CPU serial; F07 CPU ProfileSPD and F08 CPU MUMPS, moderate; F22 GPU
+    serial, baseline) and reference runs without them (W02, F03, F05)
 (b) energy change within 0.3 s after each slowdown onset (summed over the record) against the number of held
     slowdowns (slowdown episodes longer than one stateOS sample, i.e., past 0.9 dt_sim); line through the origin
     fitted by least squares
@@ -28,10 +28,10 @@ from lab_paths import MAT_EXTRACT_DIR  # noqa: E402
 OUT = Path(sys.argv[1])
 W04 = ("W04", "0819_GusBridge_Serial_H0p5_T7p746_reg_Trial02", "0819_GusBridge_Serial_H0p5_T7p746_reg_Trial02", 150.0)
 W02 = ("W02", "0819_GusBridge_Parallel8_H0p5_T7p746_reg", "0819_GusBridge_Parallel8_H0p5_T7p746_reg", 150.0)
-CASES = [(W04, "#7f2704", "W04 CPU, 1 rank (Wed.)"),
+CASES = [(W04, "#7f2704", "W04 CPU, serial (Wed.)"),
          ((*R.BY_ID["F07"][:3], 0.0), "#C0390B", "F07 CPU ProfileSPD, moderate"),
          ((*R.BY_ID["F08"][:3], 0.0), "#E69F00", "F08 CPU MUMPS, moderate"),
-         ((*R.BY_ID["F22"][:3], 0.0), "#CC79A7", "F22 GPU, 1 rank, baseline"),
+         ((*R.BY_ID["F22"][:3], 0.0), "#CC79A7", "F22 GPU, serial, baseline"),
          (W02, "0.55", "W02, F03, F05 (no slowdowns)"),
          ((*R.BY_ID["F03"][:3], 0.0), "0.55", None),
          ((*R.BY_ID["F05"][:3], 0.0), "0.55", None)]

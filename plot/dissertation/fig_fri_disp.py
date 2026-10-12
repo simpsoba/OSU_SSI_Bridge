@@ -4,7 +4,7 @@ Measured interface displacement lambda_L * u_m (prototype mm). Comparisons stay 
 implementation, so that differences are due to the slowdowns (and run-to-run variability) only.
 (a) moderate model on the prototype-scaled laboratory clock: F07 (CPU MKR-alpha + ProfileSPD) and F08 (CPU MKR-alpha
     + MUMPS), both stopped early, against F06 (GPU MKR-alpha); slowdown lanes above; (a.1) zoom at the end of F07
-(b) baseline model on integration time: F22 (GPU MKR-alpha, 1 rank, 836 slowdowns, stopped) against F05 and F27
+(b) baseline model on integration time: F22 (GPU MKR-alpha, serial, 836 slowdowns, stopped) against F05 and F27
     (GPU MKR-alpha, 8 ranks, 0 and 1 slowdowns); (b.1) difference from F05
 (c) delay growth of the targets behind real time after start-up (as fig_fri_lanes.py)
 """
@@ -27,7 +27,7 @@ from lab_paths import MAT_EXTRACT_DIR  # noqa: E402
 OUT = Path(sys.argv[1])
 COL = {"F07": "#C0390B", "F08": "#E69F00", "F06": "#000000", "F22": "#C0390B", "F05": "#000000", "F27": "#8C8C8C"}
 NAME = {"F07": "F07 CPU + ProfileSPD, 8 ranks", "F08": "F08 CPU + MUMPS, 8 ranks", "F06": "F06 GPU, 8 ranks",
-        "F22": "F22 GPU, 1 rank", "F05": "F05 GPU, 8 ranks", "F27": "F27 GPU, 8 ranks (repeat)"}
+        "F22": "F22 GPU, serial", "F05": "F05 GPU, 8 ranks", "F27": "F27 GPU, 8 ranks (repeat)"}
 
 
 def disp(tid):

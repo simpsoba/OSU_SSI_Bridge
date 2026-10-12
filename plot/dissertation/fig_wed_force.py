@@ -6,7 +6,7 @@ gain -13.83, corr 0.9999 below 2 Hz), resisting-force convention, on the laborat
            time axis broken at 170 s, force axis broken at +-12 / +-15 kN
 (b.1)-(b.3) zooms with a slowdown lane each: waves only, 24-rank slowdowns, 8-rank slowdown;
            multi-cycle period measurements between successive crests of the 8-rank trace
-Records end where the 1-rank actuator stops tracking. Bold panel tags, no titles or legends, uniform font.
+Records end where the serial actuator stops tracking. Bold panel tags, no titles or legends, uniform font.
 """
 import sys
 from pathlib import Path
@@ -27,7 +27,7 @@ from lab_paths import CYLINDER_LENGTH_SCALE as LAM, TIME_SCALE_FROUDE as SQL  # 
 
 OUT = Path(sys.argv[1])
 MATD = ROOT / "OSU_SSI_BRIDGE_DATA" / "Simulink"
-ORANGE, BLUE, GRAY = "#C0390B", "#000000", "#8C8C8C"  # 1 rank deep vermillion, 8 ranks black, others gray
+ORANGE, BLUE, GRAY = "#C0390B", "#000000", "#8C8C8C"  # serial deep vermillion, 8 ranks black, others gray
 RUNS = [("W04", "0819_GusBridge_Serial_H0p5_T7p746_reg_Trial02", 1, ORANGE),
         ("W06", "0819_GusBridge_Parallel4_H0p5_T7p746_reg_Trial02", 4, GRAY),
         ("W02", "0819_GusBridge_Parallel8_H0p5_T7p746_reg", 8, BLUE),
@@ -140,10 +140,10 @@ for j, x in ((0, 1.0), (1, 0.0)):
     mark(AX[2][j], x, 0.0, 0.036 * (1 if j == 0 else WRX[0] / WRX[1]), 0.12)
 AX[1][0].set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
 AX[2][1].set_xlabel(r"Laboratory time, $\sqrt{\lambda_L}\,t$ (s)")
-label(AX[0][1], "1 rank", (250, 70), (290, 80), ORANGE)
+label(AX[0][1], "serial", (250, 70), (290, 80), ORANGE)
 label(AX[1][1], "8 ranks", (330, 3.0), (340, 9.5), BLUE)
 label(AX[1][1], "4, 16, 24 ranks", (395, -3.5), (355, -9.5), GRAY)
-label(AX[1][1], "1 rank: test stopped", (data[0]["t_end"], -1.0), (290, -7.5), ORANGE)
+label(AX[1][1], "serial: test stopped", (data[0]["t_end"], -1.0), (290, -7.5), ORANGE)
 for j in range(2):
     ax = LANE[j]
     lo, hi = SEGX[j]
@@ -166,8 +166,8 @@ for j in range(2):
         ax.spines["left"].set_visible(False)
         ax.tick_params(left=False, labelleft=False)
 LANE[0].set_yticks(range(5))
-LANE[0].set_yticklabels([str(RUNS[r][2]) for r in range(5)][::-1])
-LANE[0].set_ylabel("Slowdowns\n(MPI ranks)")
+LANE[0].set_yticklabels([("serial" if RUNS[r][2] == 1 else str(RUNS[r][2])) for r in range(5)][::-1])
+LANE[0].set_ylabel("Slowdowns")  # one line: with the wider "serial" tick label, the lanes stay aligned with (a)
 tag(LANE[0], "(a)")
 
 # ---------------- (b) zooms, real time ----------------

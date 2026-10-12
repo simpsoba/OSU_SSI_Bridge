@@ -3,7 +3,7 @@
 Simulink signals at 2048 Hz model, laboratory clock scaled to prototype (sqrt(lambda_L) t), so no aliasing:
   force        lambda_L^3 f_p = -lambda^3 * topLRaw (kN; verified against daqFrc: gain -13.83, corr 0.9999 < 2 Hz)
   displacement u = meaSigOS * lambda (mm)
-Records end where the actuator stops tracking (1 rank). One window for every run: from 0 to where the 1-rank actuator stops tracking (272.4 s, real time). PSD: Welch, Hann segments, 50% overlap, even segment length chosen so the
+Records end where the actuator stops tracking (serial). One window for every run: from 0 to where the serial actuator stops tracking (272.4 s, real time). PSD: Welch, Hann segments, 50% overlap, even segment length chosen so the
 segments tile the window (3 segments); one-sided; area = mean square.
 """
 import sys
@@ -24,7 +24,7 @@ from lab_paths import CYLINDER_LENGTH_SCALE as LAM, TIME_SCALE_FROUDE as SQL  # 
 
 OUT = Path(sys.argv[1])
 MATD = ROOT / "OSU_SSI_BRIDGE_DATA" / "Simulink"
-ORANGE, BLUE, GRAY = "#C0390B", "#000000", "#8C8C8C"  # 1 rank deep vermillion, 8 ranks black, others gray
+ORANGE, BLUE, GRAY = "#C0390B", "#000000", "#8C8C8C"  # serial deep vermillion, 8 ranks black, others gray
 RUNS = [("W04", "0819_GusBridge_Serial_H0p5_T7p746_reg_Trial02", 1, ORANGE),
         ("W06", "0819_GusBridge_Parallel4_H0p5_T7p746_reg_Trial02", 4, GRAY),
         ("W02", "0819_GusBridge_Parallel8_H0p5_T7p746_reg", 8, BLUE),
@@ -107,10 +107,10 @@ for row, (kt, kx, ylab, ylim) in enumerate((("tf", "F", r"PSD of $\lambda_L^3 f_
     ref_labels(ax)
 for ax in A:
     ax.set_xlabel("Real-time frequency, prototype (Hz)")
-label(A[0], "1 rank", (25, 3e-1), (1.2, 3e1), ORANGE)
+label(A[0], "serial", (25, 3e-1), (1.2, 3e1), ORANGE)
 label(A[0], "8 ranks", (40, 1e-5), (1.0, 1e-7), BLUE)
 label(A[0], "4, 16, 24 ranks", (0.04, 6e-3), (0.023, 1e-6), GRAY)
-label(A[1], "1 rank", (0.085, 0.08), (0.025, 3e-4), ORANGE)
+label(A[1], "serial", (0.085, 0.08), (0.025, 3e-4), ORANGE)
 label(A[1], "8 ranks", (0.75, 1.5), (1.5, 3e2), BLUE)
 label(A[1], "4, 16, 24 ranks", (40.0, 2e-7), (0.8, 1e-8), GRAY)
 fig.savefig(OUT.with_suffix(".png"), dpi=200)

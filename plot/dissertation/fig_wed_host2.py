@@ -1,7 +1,7 @@
 """Host timing in the rate transition, Wednesday runs (dissertation Ch. 6; read-only on data).
 
 stateOS at 2048 Hz, laboratory clock, model scale (dt_sim = 10/2048 s = 4.88 ms; one count tick = 0.49 ms).
-Records end where the 1-rank actuator stops tracking. The controller logs one new-target flag per integration step
+Records end where the serial actuator stops tracking. The controller logs one new-target flag per integration step
 plus two start-up handshake flags about 2 ms apart (in W05-W07 the first precedes the record); target intervals are
 counted from the second handshake flag. All panels include the whole record.
 (a) interval between consecutive targets; markers = the three start-up intervals: 1st (triangle) handshake to the
@@ -122,8 +122,8 @@ ax_c.spines["right"].set_visible(False)
 ax_c.set_ylabel(r"Share of record (\%)")
 
 for ax, tg in ((ax_a, "(a)"), (ax_b, "(b)"), (ax_c, "(c)")):
-    ax.set_xticklabels([str(r["nr"]) for r in R])
-    ax.set_xlabel("Ranks")
+    ax.set_xticklabels(["serial" if r["nr"] == 1 else str(r["nr"]) for r in R])
+    ax.set_xlabel("MPI ranks")
     ax.set_title(rf"\textbf{{{tg}}}", loc="left", pad=24)
 fig.savefig(OUT.with_suffix(".png"), dpi=200)
 fig.savefig(OUT.with_suffix(".pdf"))

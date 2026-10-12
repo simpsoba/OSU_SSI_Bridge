@@ -102,7 +102,8 @@ for xi, tid in zip(xs, ids):
 ax_b.set_ylim(0, 100)
 ax_b.set_ylabel(r"Share of record (\%)")
 ax_b.set_xticks(xs)
-ax_b.set_xticklabels([f"{tid}\n{FORM.get(tid, R.BY_ID[tid][7])}" for tid in ids], fontsize=6.5, linespacing=0.95)
+ranks = {tid: ("serial" if R.BY_ID[tid][7] == 1 else R.BY_ID[tid][7]) for tid in ids}
+ax_b.set_xticklabels([f"{tid}\n{FORM.get(tid, ranks[tid])}" for tid in ids], fontsize=6.5, linespacing=0.95)
 ax_b.set_xlim(xs[0] - 0.6, xs[-1] + 2.6)
 xr = xs[-1] + 0.45
 bot = 0.0
@@ -113,7 +114,7 @@ for c, name, col in STATES[:2]:
     bot += hl
 ax_b.text(xr + 0.2, 101.5, "slowdown\nepisodes", ha="left", va="bottom", color=SLOW_TXT, fontsize=7,
           linespacing=0.95)
-fig.text(0.01, 0.005, r"Tick labels: test ID and MPI ranks. $^\dagger$Run stopped early.", fontsize=6.5,
+fig.text(0.01, 0.005, r"Tick labels: test ID and MPI ranks (serial: sequential interpreter). $^\dagger$Run stopped early.", fontsize=6.5,
          color="0.35", ha="left", va="bottom")
 for ax, tg in ((ax_a, "(a)"), (ax_b, "(b)")):
     ax.set_title(rf"\textbf{{{tg}}}", loc="left", pad=22 if tg == "(a)" else 14)

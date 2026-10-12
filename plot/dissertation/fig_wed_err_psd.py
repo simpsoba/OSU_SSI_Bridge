@@ -2,7 +2,7 @@
 
 e = command - measured (comSigOS - meaSigOS; AFC-compensated command vs feedback), prototype mm (x lambda_L),
 laboratory clock scaled to prototype real time (sqrt(lambda_L) t). Simulink 2048 Hz model.
-(a) all runs, one window from 0 to where the 1-rank actuator stops tracking (272.4 s real time)
+(a) all runs, one window from 0 to where the serial actuator stops tracking (272.4 s real time)
 (b) 8 ranks by phase on integrator time: before EQ (< 150 s), during (150-289.1 s, to the Arias 95% time),
     after (> 289.1 s); each PSD of its own window (mean square per Hz, so durations are comparable)
 (c) measured vs command, all runs, same window as (a), with the 1:1 line
@@ -91,7 +91,7 @@ for ax, tg in ((ax_a, "(a)"), (ax_b, "(b)")):
     tag(ax, tg)
     ref_labels(ax)
 ax_a.set_ylabel(r"PSD of $u_{\mathrm{com}} - u_{\mathrm{mea}}$ (mm$^2$/Hz)")
-label(ax_a, "1 rank", (20.0, 2e-3), (6.0, 2e-1), ORANGE)
+label(ax_a, "serial", (20.0, 2e-3), (6.0, 2e-1), ORANGE)
 label(ax_a, "8 ranks", (25.0, 1e-6), (1.0, 3e-8), BLACK)
 label(ax_a, "4, 16, 24 ranks", (0.05, 1.5e-3), (0.023, 2e-6), GRAY)
 label(ax_b, "during", (0.6, 3e-1), (1.5, 3e1), BLACK)

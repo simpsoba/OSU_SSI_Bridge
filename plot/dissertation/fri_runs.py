@@ -64,7 +64,7 @@ BY_ID = {r[0]: r for r in RUNS + DRY}
 def label(r):
     tid, _, _, model, dofs, proc, solver, nr, _ = r
     integ = "GPU MKR" if proc == "GPU" else "CPU MKR"
-    return f"{integ} + {solver}, {nr} rank{'s' if nr > 1 else ''}"
+    return f"{integ} + {solver}, " + ("serial" if nr == 1 else f"{nr} ranks")
 
 
 def load(tid):

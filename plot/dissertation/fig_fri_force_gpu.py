@@ -1,4 +1,4 @@
-"""Interface force of the baseline GPU tests F05, F27 (8 ranks) and F22 (1 rank, stopped), Friday (dissertation Ch. 6;
+"""Interface force of the baseline GPU tests F05, F27 (8 ranks) and F22 (serial, stopped), Friday (dissertation Ch. 6;
 read-only on data). Check of whether the slowdowns of F22 produce force spikes as in the CPU tests.
 
 (a) slowdown lanes and force histories on the prototype-scaled laboratory clock (F22 drawn on top)
@@ -22,7 +22,7 @@ import PlotResponseSpectrum as prs  # noqa: E402
 
 OUT = Path(sys.argv[1])
 TESTS = [("F05", "#000000", "F05 GPU, 8 ranks"), ("F27", "#8C8C8C", "F27 GPU, 8 ranks (repeat)"),
-         ("F22", "#C0390B", "F22 GPU, 1 rank (stopped)")]
+         ("F22", "#C0390B", "F22 GPU, serial (stopped)")]
 
 
 def force(tid, t_end):

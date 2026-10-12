@@ -71,7 +71,7 @@ for g, (name, tl) in enumerate(GROUPS):
             ax.text(ti_end + 4, y, "stopped", ha="left", va="center", fontsize=6.5, color=c)
         ax.text(470, y, f"{d['n_slow']}", ha="right", va="center", fontsize=6.5, color="#B85C00")
         yt.append(y)
-        yl.append(f"{tid}  {FORM.get(tid, r[6].split()[0])}, {r[7]}")
+        yl.append(f"{tid}  {FORM.get(tid, r[6].split()[0])}, " + ("serial" if r[7] == 1 else f"{r[7]}"))
         y += 1
     ax.text(-82, 0.5 * (y0 + y - 1), name, ha="right", va="center", rotation=90, fontsize=7.5)
     if g < len(GROUPS) - 1:

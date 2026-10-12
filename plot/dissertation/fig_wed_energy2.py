@@ -1,13 +1,13 @@
 """Energy injected by the slowdowns and where it goes, Wednesday runs (dissertation Ch. 6; read-only on data).
 
 (a) hybrid commanded pier-top displacement (OpenSees EE control displacement), all runs, integrator time
-(b) offline pier-top displacement, 1 and 8 ranks (no physical subassembly; t_int = t + 150 s)
+(b) offline pier-top displacement, serial and 8 ranks (no physical subassembly; t_int = t + 150 s)
 (c) net energy transferred across the interface, E = int lambda_L^3 f_p du (f_p resisting-force convention,
     u commanded); right axis in units of M_y theta_y of the pier base hinge
 (d) pier base zero-length section: moment vs rotation
 (e) center-pile section below the cap (first segment, first integration point): moment vs curvature
 (f) p-y spring on the center pile at the cap soffit: force vs deformation
-(d)-(f) over t_int = 150-243.6 s for every run (the 1-rank record ends where its actuator stops tracking).
+(d)-(f) over t_int = 150-243.6 s for every run (the serial record ends where its actuator stops tracking).
 Stations and the pile-moment interpolation follow plot/PlotLumpedHoldHysteresisPaper.py.
 M_y = F_y,eq H_pier (cantilever estimate, as in plot/PlotActuatorForce.py; the M-theta secant stiffness drops
 to 0.8 k_el at 2.9-3.4 MN m), theta_y = M_y / k_el with the model's initial base-hinge stiffness
@@ -39,7 +39,7 @@ RUNS = [("W04", "0819_GusBridge_Serial_H0p5_T7p746_reg_Trial02", 1, ORANGE),
         ("W02", "0819_GusBridge_Parallel8_H0p5_T7p746_reg", 8, BLACK),
         ("W05", "0819_GusBridge_Parallel16_H0p5_T7p746_reg", 16, GRAY),
         ("W07", "0819_GusBridge_Parallel24_H0p5_T7p746_reg", 24, GRAY)]
-ORDER = [1, 3, 4, 2, 0]  # grays, 8 ranks, 1 rank on top
+ORDER = [1, 3, 4, 2, 0]  # grays, 8 ranks, serial on top
 COL = {r[2]: r[3] for r in RUNS}
 SPRING_TAG, PILE_BEAM_TAG = 22021, 2120
 S_IP1 = 0.5 * (1.0 - np.sqrt(0.6))
@@ -156,9 +156,9 @@ ax_a.set_ylabel(r"$u$ (mm)")
 ax_b.tick_params(labelleft=False)
 tag(ax_a, "(a)")
 tag(ax_b, "(b)")
-label(ax_a, "1 rank", (239.3, 99), (227.0, 170), ORANGE)
+label(ax_a, "serial", (239.3, 99), (227.0, 170), ORANGE)
 label(ax_a, "4, 8, 16,\n24 ranks", (230.2, -52), (226.8, -160), "0.25")
-label(ax_b, "1 and 8 ranks", (230.2, -52), (226.8, -170), "0.25")
+label(ax_b, "serial and 8 ranks", (230.2, -52), (226.8, -170), "0.25")
 
 for k in ORDER:  # (c) interface energy
     n = RUNS[k][2]
@@ -171,13 +171,13 @@ ax_c.set_ylabel(r"$E$ (kJ)")
 sec = ax_c.secondary_yaxis("right", functions=(lambda e: e / E_Y, lambda r: r * E_Y))
 sec.set_ylabel(r"$E/(M_y\theta_y)$")
 tag(ax_c, "(c)")
-label(ax_c, "1 rank", (238.0, np.interp(238.0, H[1]["t"], H[1]["E"])), (195.0, -6.5), ORANGE)
+label(ax_c, "serial", (238.0, np.interp(238.0, H[1]["t"], H[1]["E"])), (195.0, -6.5), ORANGE)
 label(ax_c, "4, 8, 16, 24 ranks", (232.0, np.interp(232.0, H[8]["t"], H[8]["E"])), (160.0, 2.0), "0.25")
 
 for ax, key, xl, yl, tg in ((ax_d, "hinge", r"$\theta$ (mrad)", r"$M$ (MN$\cdot$m)", "(d)"),
                             (ax_e, "pile", r"$\kappa$ ($10^{-3}$/m)", r"$M$ (MN$\cdot$m)", "(e)"),
                             (ax_f, "spring", r"$y$ (mm)", r"$p$ (kN)", "(f)")):
-    for k in [0, 1, 3, 4, 2]:  # loops: 1 rank underneath, so it shows only where it goes beyond the others
+    for k in [0, 1, 3, 4, 2]:  # loops: serial underneath, so it shows only where it goes beyond the others
         n = RUNS[k][2]
         t, x, y = H[n][key]
         m = (t >= T0) & (t <= T1)
@@ -202,9 +202,9 @@ def loop_label(ax, text, xy, xytext, color):
 
 
 th1, M1 = sorted_xy(H[1]["hinge"])
-loop_label(ax_d, "1 rank", (th1[-1], M1[-1]), (2.0, 5.0), ORANGE)
+loop_label(ax_d, "serial", (th1[-1], M1[-1]), (2.0, 5.0), ORANGE)
 k1, Mp1 = sorted_xy(H[1]["pile"])
-loop_label(ax_e, "1 rank", (k1[-1], Mp1[-1]), (4.0, -2.0), ORANGE)
+loop_label(ax_e, "serial", (k1[-1], Mp1[-1]), (4.0, -2.0), ORANGE)
 loop_label(ax_e, "4, 8, 16,\n24 ranks",(-5.0, np.interp(-5.0, *sorted_xy(H[8]["pile"]))), (-7.5, 2.1), "0.25")
 
 fig.savefig(OUT.with_suffix(".png"), dpi=200)
