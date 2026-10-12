@@ -605,7 +605,10 @@ foreach w $sprWork {
 			lassign $pair sEle1 sEle2
 		}
 		uniaxialMaterial PyLiq1 $mPy $pyType $pultS $y50 $Cd_py $c_dash_py $pRes $sEle1 $sEle2
-		uniaxialMaterial TzLiq1 $mTz $tzType $tultS $z50_tz $tRes $sEle1 $sEle2
+		# uniaxialMaterial TzLiq1 $matTag $tzType $tult $z50 $c $ele1 $ele2: the 5th argument is the
+		# dashpot c (same as TzSimple1). TzLiq1 has no residual-strength argument (ru is capped at 0.999
+		# internally), so tRes above is kept only for pileSpringPropsDump.
+		uniaxialMaterial TzLiq1 $mTz $tzType $tultS $z50_tz $c_dash_py $sEle1 $sEle2
 		lappend liqSpringMatTags $mPy $mTz
 		set latType "pyliq"
 		set axType "tzliq"
