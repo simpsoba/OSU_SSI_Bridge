@@ -39,7 +39,7 @@ RUNS = [("W04", "0819_GusBridge_Serial_H0p5_T7p746_reg_Trial02", 1, ORANGE),
         ("W02", "0819_GusBridge_Parallel8_H0p5_T7p746_reg", 8, BLACK),
         ("W05", "0819_GusBridge_Parallel16_H0p5_T7p746_reg", 16, GRAY),
         ("W07", "0819_GusBridge_Parallel24_H0p5_T7p746_reg", 24, GRAY)]
-ORDER = [1, 3, 4, 2, 0]  # grays, 8 ranks, serial on top
+ORDER = [1, 3, 4, 0, 2]  # every panel: grays at the bottom, then serial, then 8 ranks (dashed) on top
 COL = {r[2]: r[3] for r in RUNS}
 DASH8 = (0, (3, 1.5))  # 8 ranks dashed, so it stays distinct from the solid serial line
 SPRING_TAG, PILE_BEAM_TAG = 22021, 2120
@@ -178,7 +178,7 @@ label(ax_c, "4, 8, 16, 24 ranks", (232.0, np.interp(232.0, H[8]["t"], H[8]["E"])
 for ax, key, xl, yl, tg in ((ax_d, "hinge", r"$\theta$ (mrad)", r"$M$ (MN$\cdot$m)", "(d)"),
                             (ax_e, "pile", r"$\kappa$ ($10^{-3}$/m)", r"$M$ (MN$\cdot$m)", "(e)"),
                             (ax_f, "spring", r"$y$ (mm)", r"$p$ (kN)", "(f)")):
-    for k in [0, 1, 3, 4, 2]:  # loops: serial underneath, so it shows only where it goes beyond the others
+    for k in ORDER:  # same order as (a)-(c)
         n = RUNS[k][2]
         t, x, y = H[n][key]
         m = (t >= T0) & (t <= T1)
