@@ -6,6 +6,9 @@ cuDSS, 8 ranks, no slowdowns, earthquake then solitary wave), over the 5-95 % Ar
 Force: load cell, lambda_L^3 f_p = -lambda^3 * topLRaw (resisting-force convention, as fig_wed_force.py).
 Displacement: actuator meaSigOS. Velocity and acceleration: central differences of the measured displacement at
 2048 Hz after a zero-phase 4th-order Butterworth low-pass at F_CUT (model scale), applied to the displacement only.
+Zero phase so that the filter adds no lag between force and kinematics. Cutoff check (F05): unfiltered or 80 Hz, the
+differentiated noise dominates a and the fitted m collapses toward 0; 40 Hz gives 2.6 t; 5-20 Hz give 3.2 t.
+20 Hz removes the 25-28 Hz force oscillation from u, v, a (it remains in F).
 All quantities at prototype scale (Froude): u_p = lambda u_m, v_p = sqrt(lambda) v_m, a_p = a_m, F_p = lambda^3 F_m.
 Row 3 (printed and annotated): least-squares fit F = k u + c v + m a + F0 over the same window.
 """
@@ -28,7 +31,7 @@ import PlotResponseSpectrum as prs  # noqa: E402
 from lab_paths import MAT_EXTRACT_DIR  # noqa: E402
 
 OUT = Path(sys.argv[1])
-F_CUT = 40.0  # Hz, model scale
+F_CUT = 20.0  # Hz, model scale; the fitted m is stable for 5-20 Hz and biased low above (noise in a)
 # test, mat stem, integration time of the start of the ground motion (prototype s)
 CASES = [("W02", "0819_GusBridge_Parallel8_H0p5_T7p746_reg", 150.0, "W02 (Wed.), CPU, 8 ranks"),
          ("F05", "0821_GusBridge_rowNeg4", 0.0, "F05 (Fri.), GPU, 8 ranks")]
