@@ -34,7 +34,7 @@ PRELIM = {
     "fig_wed_waves.py": "prelim_wave_check",
     "fig_wed_err_psd.py": "prelim_control_error",
     "fig_wed_energy2.py": "prelim_interface_energy",
-    "fig_wed_force_kin.py": "prelim_force_kinematics",  # W05 + F05; not yet in the chapter
+    "fig_wed_force_kin.py": "prelim_force_kinematics",  # not yet in the chapter
 }
 # main campaign (Friday 2026-08-21), drafts not yet in the chapter: script -> figure name (written to out/friday)
 MAIN = {
@@ -48,6 +48,7 @@ MAIN = {
     "fig_fri_solitary.py": "fri_solitary_mesh",
     "fig_fri_force_gpu.py": "fri_force_gpu_baseline",
     "fig_fri_energy.py": "fri_energy",
+    "fig_fri_force_kin.py": "fri_force_kinematics",
 }
 # Ch. 6 figure name -> (script in plot/ with arguments, PDF it writes); checked byte-identical to the Ch. 6 PDFs
 UPSTREAM = {
