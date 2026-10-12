@@ -21,6 +21,7 @@ Wednesday 2026-08-19 runs W04 (1 rank), W06 (4), W02 (8), W05 (16), and W07 (24)
 | `fig_wed_psd.py` | `prelim_interface_psd` | PSDs of the interface force and displacement |
 | `fig_wed_waves.py` | `prelim_wave_check` | hybrid W02 vs offline (no waves) pier top; force and pier-top motion under waves before the earthquake |
 | `fig_wed_err_psd.py` | `prelim_control_error` | PSD of command - measured; measured vs command |
+| `fig_wed_force_kin.py` | `prelim_force_kinematics` (not yet in the chapter) | W05 interface force vs measured u, u-dot, u-ddot (20 Hz low-pass), with the inertia fit F = m u-ddot |
 | `fig_wed_energy2.py` | `prelim_interface_energy` | energy across the interface; offline 1 vs 8 ranks; hysteresis of pier base, pile, p-y spring |
 
 Helpers: `ctrl_error_wed.py` (run list, phases, loaders; prints NRMSE and delays by phase when run),
