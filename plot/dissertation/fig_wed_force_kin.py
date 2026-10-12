@@ -1,15 +1,19 @@
-"""Interface force against measured displacement, velocity, and acceleration, Wednesday test W05 (16 ranks, no
-slowdowns after start-up), dissertation Ch. 6; read-only on data.
+"""Interface force against measured displacement, velocity, and acceleration over the whole record, colored by phase
+(dissertation Ch. 6; read-only on data).
 
-Whole record after start-up (t_int > 2 s), colored by phase as in ctrl_error_wed.py: before the earthquake (periodic
-waves only, t_int < 150 s), during it (150 s to 95 % Arias intensity, 289.1 s; waves still acting), and after it.
+Row 1: W05 (Wednesday, CPU MKR-alpha + ProfileSPD, 16 ranks, no slowdowns after start-up): before the earthquake
+(periodic waves only, t_int < 150 s), during it (150 s to 95 % Arias intensity, 289.1 s; waves still acting), after it.
+Row 2: F05 (Friday, GPU MKR-alpha + cuDSS, 8 ranks, no slowdowns): during the earthquake (0 to 139.05 s, still water),
+after it (free vibration), and the solitary wave (from 5 s before to 30 s after the peak load-cell force, prototype
+laboratory clock). The solitary-wave peak (about -77 kN) is off scale and marked.
+Records start after start-up (t_int > 2 s) and end at the last new target.
 Force: load cell, lambda_L^3 f_p = -lambda^3 * topLRaw (resisting-force convention, as fig_wed_force.py).
 Displacement: actuator meaSigOS; velocity and acceleration by central differences at 2048 Hz after a zero-phase
 4th-order Butterworth low-pass at 20 Hz (model scale) on the displacement only (without it, differentiated sensor
 noise dominates the acceleration; the fitted mass is stable for cutoffs of 5-20 Hz, and the unfiltered command
 displacement gives nearly the same mass). Prototype scale (Froude).
-Line in (c): F = m a + F0, least squares on the acceleration alone over the whole record (per-phase values printed).
-One row; bold panel tags; uniform font; constrained layout.
+Line in (c), (f): F = m a + F0, least squares on the acceleration alone during the earthquake (per-phase values
+printed).
 """
 import sys
 from pathlib import Path
@@ -31,62 +35,87 @@ import PlotResponseSpectrum as prs  # noqa: E402
 from lab_paths import MAT_EXTRACT_DIR, CYLINDER_LENGTH_SCALE as LAM, TIME_SCALE_FROUDE as SQL  # noqa: E402
 
 OUT = Path(sys.argv[1])
-STEM = "0819_GusBridge_Parallel16_H0p5_T7p746_reg_Trial02"
-T_EQ, T_95 = 150.0, 150.0 + 139.05  # t_int, start of the ground motion and 95 % Arias
-PHASES = [("during the earthquake", lambda x: (x >= T_EQ) & (x < T_95), "0.35"),
-          ("after", lambda x: x >= T_95, "#E69F00"),
-          ("before (waves only)", lambda x: x < T_EQ, "#56B4E9")]  # drawing order: largest first
 F_CUT = 20.0
-ORANGE = "#C0390B"
+RED = "#C0390B"
+C_DUR, C_AFT, C_WAV, C_SOL = "0.35", "#E69F00", "#56B4E9", "#0072B2"
+YLIM = (-11.0, 11.0)
+CASES = [("W05", "0819_GusBridge_Parallel16_H0p5_T7p746_reg_Trial02", 150.0, "W05 (Wed.)"),
+         ("F05", "0821_GusBridge_rowNeg4", 0.0, "F05 (Fri.)")]
+T95 = 139.05  # s after the start of the ground motion
 
-z = np.load(MAT_EXTRACT_DIR / f"{STEM}.npz", allow_pickle=True)
-st, me = z["stateOS_data"], z["meaSigOS_data"]
-t, s1 = st[:, -1], np.rint(st[:, 2])
-tk = t[1:][(s1[1:] > 0) & (s1[:-1] <= 0)]
-tk = tk[1 if tk[1] - tk[0] < 3e-3 else 0:]
-tm = me[:, -1]
-ti = np.interp(tm, tk, np.arange(tk.size) * C.DT_SIM * SQL)
-dt = np.median(np.diff(tm))
-b, a = butter(4, F_CUT * 2 * dt, "low")
-uf = filtfilt(b, a, me[:, 0])
-vel = np.gradient(uf, dt)
-acc = np.gradient(vel, dt)
-raw = sio.loadmat(ROOT / "OSU_SSI_BRIDGE_DATA" / "Simulink" / f"{STEM}.mat", squeeze_me=True,
-                  struct_as_record=False)["data"].topLRaw.data
-F = -LAM ** 3 * np.interp(tm, raw[:, -1], raw[:, 0]) / 1e3
-k = (ti > 2.0) & (tm <= tk[-1])
-u, v, A, F, ti = me[k, 0] * LAM * 1e3, vel[k] * SQL * 1e3, acc[k], F[k], ti[k]
-m, f0 = np.linalg.lstsq(np.c_[A, np.ones(A.size)], F, rcond=None)[0]
-for name, sel, _ in PHASES:
-    s_ = sel(ti)
-    mp = np.linalg.lstsq(np.c_[A[s_], np.ones(s_.sum())], F[s_], rcond=None)[0][0]
-    print(f"  {name:22}: t_int {ti[s_].min():6.1f}-{ti[s_].max():6.1f} s, m = {mp:.2f} t, "
-          f"corr(F, a) = {np.corrcoef(A[s_], F[s_])[0, 1]:+.2f}, |u| max {np.abs(u[s_]).max():.0f} mm")
-r2 = 1 - np.sum((F - m * A - f0) ** 2) / np.sum((F - F.mean()) ** 2)
-print(f"W05: m = {m:.2f} t (prototype; {1e3 * m / LAM ** 3:.0f} kg model), F0 = {f0:.2f} kN, R^2 = {r2:.2f}; "
-      f"corr(F, u/v/a) = {[round(np.corrcoef(x, F)[0, 1], 2) for x in (u, v, A)]}")
+
+def load(stem):
+    z = np.load(MAT_EXTRACT_DIR / f"{stem}.npz", allow_pickle=True)
+    st, me = z["stateOS_data"], z["meaSigOS_data"]
+    t, s1 = st[:, -1], np.rint(st[:, 2])
+    tk = t[1:][(s1[1:] > 0) & (s1[:-1] <= 0)]
+    tk = tk[1 if tk[1] - tk[0] < 3e-3 else 0:]
+    tm = me[:, -1]
+    ti = np.interp(tm, tk, np.arange(tk.size) * C.DT_SIM * SQL)
+    dt = np.median(np.diff(tm))
+    b, a = butter(4, F_CUT * 2 * dt, "low")
+    uf = filtfilt(b, a, me[:, 0])
+    vel = np.gradient(uf, dt)
+    acc = np.gradient(vel, dt)
+    raw = sio.loadmat(ROOT / "OSU_SSI_BRIDGE_DATA" / "Simulink" / f"{stem}.mat", squeeze_me=True,
+                      struct_as_record=False)["data"].topLRaw.data
+    F = -LAM ** 3 * np.interp(tm, raw[:, -1], raw[:, 0]) / 1e3
+    k = (ti > 2.0) & (tm <= tk[-1])
+    return dict(tl=tm[k] * SQL, ti=ti[k], u=me[k, 0] * LAM * 1e3, v=vel[k] * SQL * 1e3, a=acc[k], F=F[k])
+
+
+def phases(tid, d, t_eq):
+    ti, tl = d["ti"], d["tl"]
+    dur = (ti >= t_eq) & (ti < t_eq + T95)
+    if tid.startswith("W"):
+        return [("during the earthquake", dur, C_DUR), ("after", ti >= t_eq + T95, C_AFT),
+                ("before (waves only)", ti < t_eq, C_WAV)]
+    w = (tl > 300) & (tl < 380)
+    t_imp = tl[w][np.argmin(d["F"][w])]
+    sol = (tl >= t_imp - 5.0) & (tl <= t_imp + 30.0)
+    return [("during the earthquake", dur, C_DUR), ("after", (ti >= t_eq + T95) & ~sol, C_AFT),
+            ("solitary wave", sol, C_SOL)]
+
 
 prs.configure_font()
-fig, axs = plt.subplots(1, 3, figsize=(6.0, 2.3), layout="constrained", sharey=True)
-for ax, x, xl, tg in zip(axs, (u, v, A), (r"$u$ (mm)", r"$\dot u$ (mm/s)", r"$\ddot u$ (m/s$^2$)"),
-                         ("(a)", "(b)", "(c)")):
-    for name, sel, col in PHASES:
-        s_ = sel(ti)
-        ax.plot(x[s_], F[s_], color=col, lw=0.35 if col == "#56B4E9" else 0.15, alpha=0.9 if col == "#56B4E9" else 0.6,
-                rasterized=True)
-    ax.axhline(0, color="0.85", lw=0.4, zorder=0)
-    ax.axvline(0, color="0.85", lw=0.4, zorder=0)
-    ax.set_xlabel(xl)
-    ax.set_title(rf"\textbf{{{tg}}}", loc="left")
-xx = np.array([A.min(), A.max()])
-axs[2].plot(xx, m * xx + f0, color=ORANGE, lw=1.4)
-axs[2].annotate(rf"$m\ddot u$, $m$ = {m:.1f} t", (0.85 * xx[1], m * 0.85 * xx[1] + f0), xytext=(0.15, 7.5),
-                color=ORANGE, ha="left", va="center",
-                arrowprops=dict(arrowstyle="-", color=ORANGE, lw=0.6, shrinkA=1, shrinkB=1))
-axs[0].set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
-fig.legend([plt.Line2D([], [], color=c, lw=1.5) for _, _, c in PHASES[::-1][:1] + PHASES[:2]],
-           [n for n, _, _ in PHASES[::-1][:1] + PHASES[:2]], loc="outside upper center", ncol=3, frameon=False,
-           handlelength=1.5)
+fig, A = plt.subplots(2, 3, figsize=(6.0, 4.4), layout="constrained", sharey=True)
+handles = {}
+for row, (tid, stem, t_eq, name) in enumerate(CASES):
+    d = load(stem)
+    P = phases(tid, d, t_eq)
+    dur = P[0][1]
+    m, f0 = np.linalg.lstsq(np.c_[d["a"][dur], np.ones(dur.sum())], d["F"][dur], rcond=None)[0]
+    print(f"{tid}: m (earthquake) = {m:.2f} t ({1e3 * m / LAM ** 3:.0f} kg model)")
+    for pname, s_, _ in P:
+        mp = np.linalg.lstsq(np.c_[d["a"][s_], np.ones(s_.sum())], d["F"][s_], rcond=None)[0][0]
+        print(f"  {pname:22}: t_int {d['ti'][s_].min():6.1f}-{d['ti'][s_].max():6.1f} s, m = {mp:5.2f} t, "
+              f"corr(F, a) = {np.corrcoef(d['a'][s_], d['F'][s_])[0, 1]:+.2f}, |F| max {np.abs(d['F'][s_]).max():5.1f} kN")
+    for j, (q, xl) in enumerate((("u", r"$u$ (mm)"), ("v", r"$\dot u$ (mm/s)"), ("a", r"$\ddot u$ (m/s$^2$)"))):
+        ax = A[row, j]
+        for pname, s_, col in P:
+            thin = col in (C_WAV, C_SOL)
+            ax.plot(d[q][s_], d["F"][s_], color=col, lw=0.4 if thin else 0.15, alpha=0.9 if thin else 0.6,
+                    rasterized=True)
+            handles.setdefault(pname, plt.Line2D([], [], color=col, lw=1.5))
+        ax.axhline(0, color="0.85", lw=0.4, zorder=0)
+        ax.axvline(0, color="0.85", lw=0.4, zorder=0)
+        ax.set_xlabel(xl)
+        ax.set_ylim(*YLIM)
+        ax.set_title(rf"\textbf{{({'abcdef'[3 * row + j]})}}" + (f" {name}" if j == 0 else ""), loc="left")
+        if tid.startswith("F"):
+            s_ = P[2][1]
+            ax.text(0.97, 0.04, f"solitary-wave peak\n{d['F'][s_].min():.0f} kN, off scale", transform=ax.transAxes,
+                    ha="right", va="bottom", fontsize=6, color=C_SOL)
+    ax = A[row, 2]
+    xx = np.array([d["a"][dur].min(), d["a"][dur].max()])
+    ax.plot(xx, m * xx + f0, color=RED, lw=1.4)
+    ax.annotate(rf"$m\ddot u$, $m$ = {m:.1f} t", (0.85 * xx[1], m * 0.85 * xx[1] + f0), xytext=(0.05, 0.93),
+                textcoords="axes fraction", color=RED, ha="left", va="top",
+                arrowprops=dict(arrowstyle="-", color=RED, lw=0.6, shrinkA=1, shrinkB=1))
+    A[row, 0].set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
+order = ["before (waves only)", "during the earthquake", "after", "solitary wave"]
+fig.legend([handles[n] for n in order], order, loc="outside upper center", ncol=4, frameon=False, handlelength=1.5,
+           columnspacing=1.2)
 fig.savefig(OUT.with_suffix(".png"), dpi=250)
 fig.savefig(OUT.with_suffix(".pdf"), dpi=300)
 print("wrote", OUT.with_suffix(".png"))
