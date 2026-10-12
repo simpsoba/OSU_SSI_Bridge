@@ -6,7 +6,7 @@ solitary wave.
 (b) close-up, video 2026-08-21-09h56m at 2:57.0, mirrored so that the wave travels in +x
 (e) pier-base zero-length section, moment against rotation (grey: before the wave; red: from the wave on),
     small panel between (c) and (d) with a leader to the pier base in (d)
-Layout 2 x 2: photos on top (cropped toward square), model panels below without axes (5 m scale bar).
+Layout 2 x 2: photos on top, model panels below without axes (5 m scale bar), cropped just below the pile tips.
 (c) deformed near-field model of Test F30 (r-17, all-node recorders) at the peak load-cell force of the solitary wave,
     displacements amplified AMP; undeformed mesh in light grey
 (d) post-earthquake state just before the wave (T_PRE before the peak force, amplified AMP) in light grey, and the
@@ -121,16 +121,18 @@ print(f"{TEST}: peak force {f_imp:.1f} kN at t_int = {t_imp:.2f} s; pre-wave sta
       f"pre-wave pier-top offset {1e3 * ux[k_pre, top]:.1f} mm")
 
 prs.configure_font()
-CROP = {"wide": (0.20, 0.76), "close": (0.02, 0.62)}  # kept fraction of the frame height (top, bottom)
-fig = plt.figure(figsize=(6.0, 8.3), layout="constrained")
-gs = fig.add_gridspec(2, 2, height_ratios=[1.0, 1.75])
+CROP = {"wide": (0.12, 0.86), "close": (0.0, 0.78)}  # kept fraction of the frame height (top, bottom)
+fig = plt.figure(figsize=(6.0, 8.0), layout="constrained")
+gs = fig.add_gridspec(2, 2, height_ratios=[1.35, 1.3])
 for j, (name, tf, flip, tag) in enumerate(FRAMES):
     ax = fig.add_subplot(gs[0, j])
     img = frame(name, tf, flip, tag)
     h0, h1 = (int(f * img.shape[0]) for f in CROP[tag])
     ax.imshow(img[h0:h1])
     ax.set_axis_off()
-    ax.set_title(rf"\textbf{{({'ab'[j]})}}", loc="left")
+    # tag inside the photo: white on a translucent dark box, readable over bright spray
+    ax.text(0.025, 0.975, rf"\textbf{{({'ab'[j]})}}", transform=ax.transAxes, ha="left", va="top", color="white",
+            bbox=dict(boxstyle="square,pad=0.25", fc="0.1", ec="none", alpha=0.55))
 ax_c = fig.add_subplot(gs[1, 0])
 ax_d = fig.add_subplot(gs[1, 1], sharex=ax_c, sharey=ax_c)
 zeros = np.zeros_like(ux[0])
@@ -140,19 +142,19 @@ draw(ax_d, mesh, ux[k_pre], uy[k_pre], AMP, grey=True, under=True)
 draw(ax_d, mesh, ux[k_pre] + (AMP_W / AMP) * du_x, uy[k_pre] + (AMP_W / AMP) * du_y, AMP, face=False)
 for ax in (ax_c, ax_d):
     ax.autoscale_view()
-    ax.set_ylim(top=13.0)  # room for the labels above the deck
+    ax.set_ylim(-21.0, 13.0)  # cropped just below the pile tips; room for the labels above the deck
     ax.set_aspect("equal")
     ax.set_axis_off()
 x0, x1 = ax_c.get_xlim()
 y0 = ax_c.get_ylim()[0]
-xb, yb = x0 + 0.3, y0 + 0.4
+xb, yb = x0 + 1.2, y0 + 0.8
 ax_c.plot([xb, xb + 5.0], [yb, yb], color="0.2", lw=1.2, solid_capstyle="butt")
 ax_c.text(xb + 2.5, yb + 0.5, "5 m", ha="center", va="bottom", fontsize=7, color="0.2")
 ax_c.set_title(r"\textbf{(c)}", loc="left")
 ax_d.set_title(r"\textbf{(d)}", loc="left")
 ax_c.text(0.02, 0.99, f"at the peak force\namplified {AMP:.0f}" + r"$\times$", transform=ax_c.transAxes,
           ha="left", va="top", fontsize=7, color="0.25")
-ax_d.text(0.02, 0.99, f"grey: before the wave ({AMP:.0f}" + r"$\times$" + ")\n"
+ax_d.text(0.10, 0.99, f"grey: before the wave ({AMP:.0f}" + r"$\times$" + ")\n"
           f"red: + change by the wave ({AMP_W:.0f}" + r"$\times$" + ")", transform=ax_d.transAxes,
           ha="left", va="top", fontsize=7, color="0.25")
 # (e) pier-base zero-length section, moment against rotation, placed after the layout is fixed
@@ -165,10 +167,10 @@ pre_h = tt < t[k_pre]
 fig.canvas.draw()
 fig.set_layout_engine("none")
 pc, pd = ax_c.get_position(), ax_d.get_position()
-w_e, h_e = 0.16, 0.085
-x_e = 0.5 * (pc.x1 + pd.x0) - 0.5 * w_e + 0.035
+w_e, h_e = 0.165, 0.125
+x_e = 0.5 * (pc.x1 + pd.x0) - 0.5 * w_e + 0.012
 yb = ax_d.transData.transform((0.0, 0.0))
-y_e = fig.transFigure.inverted().transform(yb)[1] + 0.03
+y_e = fig.transFigure.inverted().transform(yb)[1] - h_e - 0.02  # below the soil surface, in the gap between (c) and (d)
 ax_e = fig.add_axes([x_e, y_e, w_e, h_e])
 ax_e.plot(th[pre_h], Mh[pre_h], color="0.72", lw=0.4)
 ax_e.plot(th[~pre_h], Mh[~pre_h], color=RED, lw=1.1)
@@ -186,7 +188,7 @@ base = int(np.argmin(np.hypot(mesh["X0"], mesh["Y0"])))
 xd = mesh["X0"][base] + AMP * ux[k_pre][base] + AMP_W * du_x[base]
 yd = mesh["Y0"][base] + AMP * uy[k_pre][base] + AMP_W * du_y[base]
 from matplotlib.patches import ConnectionPatch  # noqa: E402
-fig.add_artist(ConnectionPatch(xyA=(1.0, 0.0), coordsA=ax_e.transAxes, xyB=(xd, yd), coordsB=ax_d.transData,
+fig.add_artist(ConnectionPatch(xyA=(1.0, 1.0), coordsA=ax_e.transAxes, xyB=(xd, yd), coordsB=ax_d.transData,
                                arrowstyle="-|>,head_length=0.35,head_width=0.18", color="0.35", lw=0.6,
                                ls=(0, (1, 1.5)), shrinkB=1.5))
 print(f"(e): pier-base node {base} at ({mesh['X0'][base]:.2f}, {mesh['Y0'][base]:.2f}) m")
