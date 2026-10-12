@@ -4,6 +4,7 @@ solitary wave.
 
 (a) wide view, video 2026-08-21-11h24m at 8.611 s (Test F10)
 (b) close-up, video 2026-08-21-09h56m at 2:57.0, mirrored so that the wave travels in +x
+Layout 2 x 2: photos on top (cropped toward square), model panels below without axes (5 m scale bar).
 (c) deformed near-field model of Test F30 (r-17, all-node recorders) at the peak load-cell force of the solitary wave,
     displacements amplified AMP; undeformed mesh in light grey
 (d) post-earthquake state just before the wave (T_PRE before the peak force, amplified AMP) in light grey, and the
@@ -118,15 +119,18 @@ print(f"{TEST}: peak force {f_imp:.1f} kN at t_int = {t_imp:.2f} s; pre-wave sta
       f"pre-wave pier-top offset {1e3 * ux[k_pre, top]:.1f} mm")
 
 prs.configure_font()
-fig = plt.figure(figsize=(6.0, 3.7), layout="constrained")
-gs = fig.add_gridspec(1, 4, width_ratios=[0.78, 0.78, 1.0, 1.0])
+CROP = {"wide": (0.20, 0.76), "close": (0.02, 0.62)}  # kept fraction of the frame height (top, bottom)
+fig = plt.figure(figsize=(6.0, 8.3), layout="constrained")
+gs = fig.add_gridspec(2, 2, height_ratios=[1.0, 1.75])
 for j, (name, tf, flip, tag) in enumerate(FRAMES):
-    ax = fig.add_subplot(gs[j])
-    ax.imshow(frame(name, tf, flip, tag))
+    ax = fig.add_subplot(gs[0, j])
+    img = frame(name, tf, flip, tag)
+    h0, h1 = (int(f * img.shape[0]) for f in CROP[tag])
+    ax.imshow(img[h0:h1])
     ax.set_axis_off()
     ax.set_title(rf"\textbf{{({'ab'[j]})}}", loc="left")
-ax_c = fig.add_subplot(gs[2])
-ax_d = fig.add_subplot(gs[3], sharex=ax_c, sharey=ax_c)
+ax_c = fig.add_subplot(gs[1, 0])
+ax_d = fig.add_subplot(gs[1, 1], sharex=ax_c, sharey=ax_c)
 zeros = np.zeros_like(ux[0])
 draw(ax_c, mesh, zeros, zeros, 0.0, grey=True, under=True)
 draw(ax_c, mesh, ux[k_imp], uy[k_imp], AMP)
@@ -134,18 +138,21 @@ draw(ax_d, mesh, ux[k_pre], uy[k_pre], AMP, grey=True, under=True)
 draw(ax_d, mesh, ux[k_pre] + (AMP_W / AMP) * du_x, uy[k_pre] + (AMP_W / AMP) * du_y, AMP, face=False)
 for ax in (ax_c, ax_d):
     ax.autoscale_view()
-    ax.set_ylim(top=17.0)  # room for the labels above the deck
+    ax.set_ylim(top=13.0)  # room for the labels above the deck
     ax.set_aspect("equal")
-    ax.set_xlabel(r"$x$ (m)")
-ax_c.set_ylabel(r"$y$ (m)")
-ax_d.tick_params(labelleft=False)
+    ax.set_axis_off()
+x0, x1 = ax_c.get_xlim()
+y0 = ax_c.get_ylim()[0]
+xb, yb = x0 + 0.3, y0 + 0.4
+ax_c.plot([xb, xb + 5.0], [yb, yb], color="0.2", lw=1.2, solid_capstyle="butt")
+ax_c.text(xb + 2.5, yb + 0.5, "5 m", ha="center", va="bottom", fontsize=7, color="0.2")
 ax_c.set_title(r"\textbf{(c)}", loc="left")
 ax_d.set_title(r"\textbf{(d)}", loc="left")
-ax_c.text(0.03, 0.98, f"at the peak force\namplified {AMP:.0f}" + r"$\times$", transform=ax_c.transAxes,
-          ha="left", va="top", fontsize=6.5, color="0.25")
-ax_d.text(0.03, 0.98, f"grey: before the wave ({AMP:.0f}" + r"$\times$" + ")\n"
+ax_c.text(0.02, 0.99, f"at the peak force\namplified {AMP:.0f}" + r"$\times$", transform=ax_c.transAxes,
+          ha="left", va="top", fontsize=7, color="0.25")
+ax_d.text(0.02, 0.99, f"grey: before the wave ({AMP:.0f}" + r"$\times$" + ")\n"
           f"red: + change by the wave ({AMP_W:.0f}" + r"$\times$" + ")", transform=ax_d.transAxes,
-          ha="left", va="top", fontsize=6.5, color="0.25")
+          ha="left", va="top", fontsize=7, color="0.25")
 fig.savefig(OUT.with_suffix(".png"), dpi=250)
 fig.savefig(OUT.with_suffix(".pdf"), dpi=300)
 print("wrote", OUT.with_suffix(".png"))
