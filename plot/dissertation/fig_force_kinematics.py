@@ -1,7 +1,7 @@
 """Physical-subassembly force versus measured displacement, velocity, and acceleration (dissertation Ch. 6 draft;
 read-only on data).
 
-W02 (Wednesday, CPU MKR-alpha + ProfileSPD, 8 ranks, periodic waves then earthquake) and F05 (Friday, GPU MKR-alpha +
+W05 (Wednesday, CPU MKR-alpha + ProfileSPD, 16 ranks, no slowdowns after start-up, periodic waves then earthquake) and F05 (Friday, GPU MKR-alpha +
 cuDSS, 8 ranks, no slowdowns, earthquake then solitary wave), over the 5-95 % Arias window of the ground motion.
 Force: load cell, lambda_L^3 f_p = -lambda^3 * topLRaw (resisting-force convention, as fig_wed_force.py).
 Displacement: actuator meaSigOS. Velocity and acceleration: central differences of the measured displacement at
@@ -33,7 +33,7 @@ from lab_paths import MAT_EXTRACT_DIR  # noqa: E402
 OUT = Path(sys.argv[1])
 F_CUT = 20.0  # Hz, model scale; the fitted m is stable for 5-20 Hz and biased low above (noise in a)
 # test, mat stem, integration time of the start of the ground motion (prototype s)
-CASES = [("W02", "0819_GusBridge_Parallel8_H0p5_T7p746_reg", 150.0, "W02 (Wed.), CPU, 8 ranks"),
+CASES = [("W05", "0819_GusBridge_Parallel16_H0p5_T7p746_reg_Trial02", 150.0, "W05 (Wed.), CPU, 16 ranks"),
          ("F05", "0821_GusBridge_rowNeg4", 0.0, "F05 (Fri.), GPU, 8 ranks")]
 
 
