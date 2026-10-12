@@ -1,11 +1,14 @@
 """Solitary-wave impact: laboratory frames and the deformed numerical model (dissertation Ch. 6 draft; read-only on
-data and videos). For visualization: the frames and the deformed shape come from different tests with the same
+data and videos). For visualization: the frames and the deformed shapes come from different tests with the same
 solitary wave.
 
 (a) wide view, video 2026-08-21-11h24m at 8.611 s (Test F10)
 (b) close-up, video 2026-08-21-09h56m at 2:57.0, mirrored so that the wave travels in +x
-(c) deformed near-field model of Test F30 (r-17, full-domain recorders) at the peak load-cell force of the solitary
-    wave, displacements amplified by AMP; undeformed mesh in light grey
+(c) deformed near-field model of Test F30 (r-17, all-node recorders) at the peak load-cell force of the solitary wave,
+    displacements amplified AMP; undeformed mesh in light grey
+(d) post-earthquake state just before the wave (T_PRE before the peak force, amplified AMP) in light grey, and the
+    change induced by the wave, u(t_w) - u(t_pre), added on top with amplification AMP_W, where t_w is the time of the
+    largest wave-induced pier-top displacement within WIN_W after the peak force
 Frames are extracted with the ffmpeg bundled with imageio-ffmpeg into out/friday/impact_frames (cached).
 """
 import shutil
@@ -19,6 +22,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.io as sio
 from matplotlib.collections import LineCollection, PolyCollection
 
 HERE = Path(__file__).resolve().parent
@@ -34,7 +38,9 @@ VID = Path(r"G:\Shared drives\Simpson team\Test Data\2026-OSU-SSI-Bridge\Videos"
 FRAMES = [("2026-08-21-11h24m.MOV", 8.611, False, "wide"), ("2026-08-21-09h56m.mov", 177.0, True, "close")]
 DUMP = R.DATA / "r-17_20260821_1649_Storm_Wave"
 TEST = "F30"
-AMP = 20.0
+AMP, AMP_W = 20.0, 400.0
+T_PRE, WIN_W = 2.0, 4.0  # s, prototype integration time
+RED, PURPLE = "#C0390B", "#6A3D9A"
 
 
 def frame(name, t, flip, tag):
@@ -51,16 +57,15 @@ def frame(name, t, flip, tag):
 
 def impact_t_int():
     d = R.load(TEST)
-    import scipy.io as sio
     m = sio.loadmat(R.DATA / "Simulink" / f"{R.BY_ID[TEST][1]}.mat", squeeze_me=True, struct_as_record=False)["data"]
     raw = m.topLRaw.data
     tl, F = raw[:, -1], -R.LAM ** 3 * raw[:, 0] / 1e3
     w = (tl > 200) & (tl < 240)
-    tp = tl[w][np.argmax(np.abs(F[w]))]
-    return float(d["to_int"](tp)), float(F[w][np.argmax(np.abs(F[w]))])
+    i = np.argmax(np.abs(F[w]))
+    return float(d["to_int"](tl[w][i])), float(F[w][i])
 
 
-def mesh_at(t_target):
+def model():
     np_run, metas = pep.load_np(DUMP)
     tmp = Path(tempfile.mkdtemp(prefix="eq_impact_"))
     try:
@@ -74,44 +79,73 @@ def mesh_at(t_target):
         mesh = peq._frame_mesh_parts(disp_tags, xy, lines, quads, js, meta)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    k = int(np.argmin(np.abs(t - t_target)))
-    return mesh, t[k], ux[k], uy[k]
+    return mesh, t, ux, uy
+
+
+def draw(ax, mesh, ux, uy, amp, face=True, grey=False, under=False):
+    """Mesh with displacements ux, uy (m) amplified by amp; grey=True draws a light-grey reference."""
+    X, Y = mesh["X0"] + amp * ux, mesh["Y0"] + amp * uy
+    q = mesh["q_idx"]
+    z = 0 if under else 2
+    if q.size:
+        polys = np.stack([np.c_[X[q[:, i]], Y[q[:, i]]] for i in range(4)], axis=1)
+        if grey:
+            pc = PolyCollection(polys, facecolors="none", edgecolors="0.8", linewidths=0.3, zorder=z)
+        else:
+            pc = PolyCollection(polys, facecolors=mesh["face"] if face else "none",
+                                edgecolors="0.35" if face else "0.55", linewidths=0.2, zorder=z)
+        ax.add_collection(pc)
+    for ij, col, lw in ((mesh["ij_s"], "0.72" if grey else RED, 1.0), (mesh["ij_z"], PURPLE, 0.5)):
+        if len(ij) and not (grey and col == PURPLE):
+            seg = np.stack([np.c_[X[ij[:, 0]], Y[ij[:, 0]]], np.c_[X[ij[:, 1]], Y[ij[:, 1]]]], axis=1)
+            ax.add_collection(LineCollection(seg, colors=col, linewidths=lw, zorder=z + 1))
 
 
 t_imp, f_imp = impact_t_int()
-mesh, t_k, ux, uy = mesh_at(t_imp)
-print(f"{TEST}: impact at t_int = {t_imp:.2f} s (peak force {f_imp:.1f} kN); recorder frame t = {t_k:.2f} s; "
-      f"max |ux| = {1e3 * np.abs(ux).max():.0f} mm")
+mesh, t, ux, uy = model()
+k_imp = int(np.argmin(np.abs(t - t_imp)))
+k_pre = int(np.argmin(np.abs(t - (t_imp - T_PRE))))
+# pier-top node: highest structural node at x ~ 0 (top of the pier, below the deck frame)
+ij = mesh["ij_s"]
+snodes = np.unique(ij) if len(ij) else np.arange(mesh["X0"].size)
+top = snodes[np.argmax(np.where(np.abs(mesh["X0"][snodes]) < 0.05, mesh["Y0"][snodes], -np.inf))]
+win = np.flatnonzero((t >= t_imp) & (t <= t_imp + WIN_W))
+k_w = win[np.argmax(np.abs(ux[win, top] - ux[k_pre, top]))]
+du_x, du_y = ux[k_w] - ux[k_pre], uy[k_w] - uy[k_pre]
+print(f"{TEST}: peak force {f_imp:.1f} kN at t_int = {t_imp:.2f} s; pre-wave state at {t[k_pre]:.2f} s; "
+      f"largest wave-induced pier-top change {1e3 * du_x[top]:+.2f} mm at {t[k_w]:.2f} s "
+      f"(node at y = {mesh['Y0'][top]:.2f} m); max |du| over the mesh {1e3 * np.abs(du_x).max():.2f} mm; "
+      f"pre-wave pier-top offset {1e3 * ux[k_pre, top]:.1f} mm")
 
 prs.configure_font()
-fig = plt.figure(figsize=(6.0, 3.9), layout="constrained")
-gs = fig.add_gridspec(1, 3, width_ratios=[0.95, 0.95, 1.5])
-for j, (name, t, flip, tag) in enumerate(FRAMES):
+fig = plt.figure(figsize=(6.0, 3.7), layout="constrained")
+gs = fig.add_gridspec(1, 4, width_ratios=[0.78, 0.78, 1.0, 1.0])
+for j, (name, tf, flip, tag) in enumerate(FRAMES):
     ax = fig.add_subplot(gs[j])
-    ax.imshow(frame(name, t, flip, tag))
+    ax.imshow(frame(name, tf, flip, tag))
     ax.set_axis_off()
     ax.set_title(rf"\textbf{{({'ab'[j]})}}", loc="left")
-ax = fig.add_subplot(gs[2])
-X0, Y0 = mesh["X0"], mesh["Y0"]
-X, Y = X0 + AMP * ux, Y0 + AMP * uy
-for xs, ys, alpha, z in ((X0, Y0, 0.0, 0), (X, Y, 1.0, 1)):
-    q = mesh["q_idx"]
-    if q.size:
-        polys = np.stack([np.c_[xs[q[:, i]], ys[q[:, i]]] for i in range(4)], axis=1)
-        if alpha:
-            ax.add_collection(PolyCollection(polys, facecolors=mesh["face"], edgecolors="0.35", linewidths=0.2,
-                                             zorder=z))
-        else:
-            ax.add_collection(PolyCollection(polys, facecolors="none", edgecolors="0.8", linewidths=0.3, zorder=z))
-    for ij, col, lw in ((mesh["ij_s"], "#C0390B" if alpha else "0.75", 1.0), (mesh["ij_z"], "#6A3D9A", 0.5)):
-        if len(ij) and (alpha or col != "#6A3D9A"):
-            seg = np.stack([np.c_[xs[ij[:, 0]], ys[ij[:, 0]]], np.c_[xs[ij[:, 1]], ys[ij[:, 1]]]], axis=1)
-            ax.add_collection(LineCollection(seg, colors=col, linewidths=lw, zorder=z + 1))
-ax.autoscale_view()
-ax.set_aspect("equal")
-ax.set_xlabel(r"$x$ (m)")
-ax.set_ylabel(r"$y$ (m)")
-ax.set_title(r"\textbf{(c)}" + f" deformed shape, amplified {AMP:.0f}" + r"$\times$", loc="left")
+ax_c = fig.add_subplot(gs[2])
+ax_d = fig.add_subplot(gs[3], sharex=ax_c, sharey=ax_c)
+zeros = np.zeros_like(ux[0])
+draw(ax_c, mesh, zeros, zeros, 0.0, grey=True, under=True)
+draw(ax_c, mesh, ux[k_imp], uy[k_imp], AMP)
+draw(ax_d, mesh, ux[k_pre], uy[k_pre], AMP, grey=True, under=True)
+draw(ax_d, mesh, ux[k_pre] + (AMP_W / AMP) * du_x, uy[k_pre] + (AMP_W / AMP) * du_y, AMP, face=False)
+for ax in (ax_c, ax_d):
+    ax.autoscale_view()
+    ax.set_ylim(top=17.0)  # room for the labels above the deck
+    ax.set_aspect("equal")
+    ax.set_xlabel(r"$x$ (m)")
+ax_c.set_ylabel(r"$y$ (m)")
+ax_d.tick_params(labelleft=False)
+ax_c.set_title(r"\textbf{(c)}", loc="left")
+ax_d.set_title(r"\textbf{(d)}", loc="left")
+ax_c.text(0.03, 0.98, f"at the peak force\namplified {AMP:.0f}" + r"$\times$", transform=ax_c.transAxes,
+          ha="left", va="top", fontsize=6.5, color="0.25")
+ax_d.text(0.03, 0.98, f"grey: before the wave ({AMP:.0f}" + r"$\times$" + ")\n"
+          f"red: + change by the wave ({AMP_W:.0f}" + r"$\times$" + ")", transform=ax_d.transAxes,
+          ha="left", va="top", fontsize=6.5, color="0.25")
 fig.savefig(OUT.with_suffix(".png"), dpi=250)
 fig.savefig(OUT.with_suffix(".pdf"), dpi=300)
 print("wrote", OUT.with_suffix(".png"))
