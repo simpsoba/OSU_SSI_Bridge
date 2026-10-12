@@ -4,6 +4,8 @@ solitary wave.
 
 (a) wide view, video 2026-08-21-11h24m at 8.611 s (Test F10)
 (b) close-up, video 2026-08-21-09h56m at 2:57.0, mirrored so that the wave travels in +x
+(e) pier-base zero-length section, moment against rotation (grey: before the wave; red: from the wave on),
+    small panel between (c) and (d) with a leader to the pier base in (d)
 Layout 2 x 2: photos on top (cropped toward square), model panels below without axes (5 m scale bar).
 (c) deformed near-field model of Test F30 (r-17, all-node recorders) at the peak load-cell force of the solitary wave,
     displacements amplified AMP; undeformed mesh in light grey
@@ -153,6 +155,41 @@ ax_c.text(0.02, 0.99, f"at the peak force\namplified {AMP:.0f}" + r"$\times$", t
 ax_d.text(0.02, 0.99, f"grey: before the wave ({AMP:.0f}" + r"$\times$" + ")\n"
           f"red: + change by the wave ({AMP_W:.0f}" + r"$\times$" + ")", transform=ax_d.transAxes,
           ha="left", va="top", fontsize=7, color="0.25")
+# (e) pier-base zero-length section, moment against rotation, placed after the layout is fixed
+hd = np.genfromtxt(DUMP / "pier_hinge_defo.out.0", invalid_raise=False)
+hf = np.genfromtxt(DUMP / "pier_hinge_force.out.0", invalid_raise=False)
+hd, hf = hd[np.isfinite(hd).all(1)], hf[np.isfinite(hf).all(1)]
+nh = min(len(hd), len(hf))
+th, Mh, tt = 1e3 * hd[:nh, 2], 1e-6 * hf[:nh, 2], hd[:nh, 0]
+pre_h = tt < t[k_pre]
+fig.canvas.draw()
+fig.set_layout_engine("none")
+pc, pd = ax_c.get_position(), ax_d.get_position()
+w_e, h_e = 0.16, 0.085
+x_e = 0.5 * (pc.x1 + pd.x0) - 0.5 * w_e + 0.035
+yb = ax_d.transData.transform((0.0, 0.0))
+y_e = fig.transFigure.inverted().transform(yb)[1] + 0.03
+ax_e = fig.add_axes([x_e, y_e, w_e, h_e])
+ax_e.plot(th[pre_h], Mh[pre_h], color="0.72", lw=0.4)
+ax_e.plot(th[~pre_h], Mh[~pre_h], color=RED, lw=1.1)
+ax_e.axhline(0, color="0.85", lw=0.3, zorder=0)
+ax_e.axvline(0, color="0.85", lw=0.3, zorder=0)
+ax_e.tick_params(labelsize=6, length=2, pad=1)
+ax_e.set_xticks([-10, 0, 10])
+ax_e.set_yticks([-5, 0, 5])
+ax_e.set_xlabel(r"$\theta$ (mrad)", fontsize=6.5, labelpad=1)
+ax_e.set_ylabel(r"$M$ (MN$\cdot$m)", fontsize=6.5, labelpad=2)
+ax_e.set_title(r"\textbf{(e)} pier base", loc="left", fontsize=7, pad=2)
+ax_e.patch.set_alpha(0.9)
+# leader from (e) to the pier base in (d) (deformed position as drawn there)
+base = int(np.argmin(np.hypot(mesh["X0"], mesh["Y0"])))
+xd = mesh["X0"][base] + AMP * ux[k_pre][base] + AMP_W * du_x[base]
+yd = mesh["Y0"][base] + AMP * uy[k_pre][base] + AMP_W * du_y[base]
+from matplotlib.patches import ConnectionPatch  # noqa: E402
+fig.add_artist(ConnectionPatch(xyA=(1.0, 0.0), coordsA=ax_e.transAxes, xyB=(xd, yd), coordsB=ax_d.transData,
+                               arrowstyle="-|>,head_length=0.35,head_width=0.18", color="0.35", lw=0.6,
+                               ls=(0, (1, 1.5)), shrinkB=1.5))
+print(f"(e): pier-base node {base} at ({mesh['X0'][base]:.2f}, {mesh['Y0'][base]:.2f}) m")
 fig.savefig(OUT.with_suffix(".png"), dpi=250)
 fig.savefig(OUT.with_suffix(".pdf"), dpi=300)
 print("wrote", OUT.with_suffix(".png"))
