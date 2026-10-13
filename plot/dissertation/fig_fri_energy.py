@@ -68,7 +68,8 @@ def slowdowns(stem):
 
 
 prs.configure_font()
-fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(6.0, 2.9), layout="constrained", gridspec_kw=dict(width_ratios=[1.5, 1]))
+fig, (ax_a, ax_b, ax_c) = plt.subplots(1, 3, figsize=(6.0, 2.9), layout="constrained",
+                                     gridspec_kw=dict(width_ratios=[1.45, 1, 0.75]))
 pts = []
 for (tid, stem, dump, t0), c, name in CASES:
     tau, E, dE = energy(dump, t0)
@@ -85,23 +86,64 @@ for (tid, stem, dump, t0), c, name in CASES:
           f"near slowdowns {dE[near].sum():.2f} kJ; elsewhere {dE[~near].sum():.2f} kJ")
 ax_a.axhline(0, color="0.5", lw=0.5)
 ax_a.set_xlim(0, TAU_MAX)
-ax_a.set_xlabel(r"Time from the start of the earthquake, $t_{\mathrm{int}} - t_{\mathrm{EQ}}$ (s)")
+ax_a.set_xlabel(r"Time from the earthquake start, $t_{\mathrm{int}} - t_{\mathrm{EQ}}$ (s)")
 ax_a.set_ylabel(r"$E$ (kJ)")
 ax_a.legend(loc="lower left", frameon=False, fontsize=6.5, handlelength=1.2)
 ax_a.set_title(r"\textbf{(a)}", loc="left")
-for tid, c, held, en, *_ in pts:
-    ax_b.plot(held, en, "o", color=c, ms=4.5)
-    if held > 0:
-        ax_b.annotate(tid, (held, en), xytext=(4, 2), textcoords="offset points", fontsize=6.5, color=c)
-ax_b.annotate("W02, F03, F05", (0, 0), xytext=(6, 4), textcoords="offset points", fontsize=6.5, color="0.45")
-x = np.array([p[2] for p in pts], float)
-y = np.array([p[3] for p in pts])
+# (b): every run, Friday and Wednesday, over the same window from the start of the earthquake; configuration markers
+CFG = {"pspd": ("#C0390B", "s"), "mumps": ("#8C510A", "D"), "cpucudss": ("#2166AC", "^"), "gpu": ("#000000", "o")}
+WED = [("W04", "0819_GusBridge_Serial_H0p5_T7p746_reg_Trial02"), ("W06", "0819_GusBridge_Parallel4_H0p5_T7p746_reg_Trial02"),
+       ("W02", "0819_GusBridge_Parallel8_H0p5_T7p746_reg"), ("W05", "0819_GusBridge_Parallel16_H0p5_T7p746_reg_Trial02"),
+       ("W07", "0819_GusBridge_Parallel24_H0p5_T7p746_reg")]
+ALL = [(tid, stem, stem, 150.0, "pspd", True, "Wed.") for tid, stem in WED]
+for r in R.RUNS:
+    cfg = "gpu" if r[5] == "GPU" else {"ProfileSPD": "pspd", "MUMPS": "mumps", "cuDSS": "cpucudss"}[r[6]]
+    ALL.append((r[0], r[1], r[2], 0.0, cfg, r[8] != "incomplete", "Fri."))
+pts_b = []
+for tid, stem, dump, t0, cfg, done, day in ALL:
+    if not (R.DATA / dump / "Elmt101_ctrlDsp.out").exists():
+        print(f"  (b) {tid}: no OpenSees dump {dump}, skipped")
+        continue
+    tau, E, dE = energy(dump, t0)
+    on, dur = slowdowns(stem)
+    m = (on >= t0) & (on <= t0 + tau[-1])
+    tm = 0.5 * (tau[1:] + tau[:-1]) + t0
+    near = np.zeros(tm.size, bool)
+    for i in np.searchsorted(tm, on[m]):
+        near[max(i - 2, 0):i + int(WIN / (R.DT_SIM * R.SQL))] = True
+    held = int(np.sum(dur[m] > 0.7e-3))
+    pts_b.append((tid, cfg, done, day, held, dE[near].sum()))
+    print(f"  (b) {tid} ({day}, {cfg}{'' if done else ', NC'}): {held} held, dE near slowdowns {dE[near].sum():.3f} kJ")
+for tid, cfg, done, day, held, en in pts_b:
+    c, mk = CFG[cfg]
+    ax_b.plot(held, en, marker=mk, ls="none", ms=4.6, color=c, mfc=c if done else "white", mew=0.9,
+              alpha=0.55 if day == "Wed." else 1.0)
+    if held >= 100:
+        ax_b.annotate(tid, (held, en), xytext=(4, 2), textcoords="offset points", color=c)
+ins = ax_c  # (c): zoom on the runs with few held slowdowns
+for tid, cfg, done, day, held, en in pts_b:
+    c, mk = CFG[cfg]
+    ins.plot(held, 1e3 * en, marker=mk, ls="none", ms=4.0, color=c, mfc=c if done else "white", mew=0.8,
+             alpha=0.55 if day == "Wed." else 1.0)
+    if 0 < held < 100 and abs(en) > 0.015:
+        ins.annotate(tid, (held, 1e3 * en), xytext=(3, 1), textcoords="offset points", color=c)
+ins.axhline(0, color="0.5", lw=0.5)
+ins.set_xlim(-1.5, 25)
+ins.set_ylim(-170, 110)
+ins.set_xlabel("Held slowdowns")
+ins.set_ylabel(r"$\Delta E$ (J)")
+ins.set_title(r"\textbf{(c)} few held", loc="left")
+ins.grid(True)
+ax_b.indicate_inset_zoom(ins, edgecolor="0.5", lw=0.5) if False else None
+x = np.array([p[4] for p in pts_b], float)
+y = np.array([p[5] for p in pts_b])
 k = np.sum(x * y) / np.sum(x * x)
+kf = np.sum(x[x < 1000] * y[x < 1000]) / np.sum(x[x < 1000] ** 2)
 xx = np.linspace(0, x.max() * 1.05, 10)
 ax_b.plot(xx, k * xx, color="0.5", lw=0.6, ls=(0, (4, 2)), zorder=0)
-ax_b.text(0.97 * xx[-1], k * xx[-1] * 0.85, f"{1e3 * k:.1f} J per held slowdown", ha="right", va="top", fontsize=6.5,
-          color="0.35")
-print(f"fit: {1e3 * k:.2f} J per held slowdown")
+ax_b.text(0.97, 0.62, f"{1e3 * k:.1f} J per\nheld slowdown", ha="right", va="top", color="0.35", transform=ax_b.transAxes,
+          linespacing=0.95)
+print(f"fit (all {x.size} runs): {1e3 * k:.2f} J per held slowdown; without W04: {1e3 * kf:.2f} J")
 ax_b.axhline(0, color="0.5", lw=0.5)
 ax_b.set_xlabel("Held slowdowns")
 ax_b.set_ylabel(r"$\Delta E$ within 0.3 s after slowdowns (kJ)")
