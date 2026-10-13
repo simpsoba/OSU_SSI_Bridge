@@ -58,7 +58,12 @@ def load(stem):
     st, me = z["stateOS_data"], z["meaSigOS_data"]
     t, s1, typ = st[:, -1], np.rint(st[:, 2]), np.rint(st[:, 0]).astype(int)
     tk = t[1:][(s1[1:] > 0) & (s1[:-1] <= 0)]
-    lag = (tk - tk[0]) - DT_SIM * np.arange(tk.size)
+    # delay behind real time from the rate-transition window starts (count = 1), which advance by exactly dt_sim
+    # unless a slowdown stretches a window: free of the host-latency jitter carried by the target arrivals
+    cnt = np.rint(st[:, 1]).astype(int)
+    win = t[1:][(cnt[1:] == 1) & (cnt[:-1] != 1)]
+    win = win[win >= tk[0]]
+    lag = (win - win[0]) - DT_SIM * np.arange(win.size)
     on = t[1:][(typ[1:] == 2) & (typ[:-1] != 2)]
     err = z["tarSigOS_data"][:, 0] - me[:, 0]
     rms = np.sqrt(np.convolve(err ** 2, np.ones(512) / 512, mode="same"))
@@ -67,8 +72,8 @@ def load(stem):
     t_end = me[-1, -1]
     to_int = lambda x: (np.interp(x, tk, np.arange(tk.size)) + ALPHA_F) * DT_SIM * SQL
     on = on[(on > 0.7) & (on <= t_end)]
-    kk = tk <= t_end
-    return dict(t=me[:, -1] * SQL, ti=to_int(me[:, -1]), u=me[:, 0] * LAM * 1e3, tk=tk[kk] * SQL, lag=lag[kk],
+    kk = win <= t_end
+    return dict(t=me[:, -1] * SQL, ti=to_int(me[:, -1]), u=me[:, 0] * LAM * 1e3, tk=win[kk] * SQL, lag=lag[kk],
                 on=on * SQL, on_i=to_int(on), t_end=t_end * SQL, ti_end=to_int(t_end))
 
 
