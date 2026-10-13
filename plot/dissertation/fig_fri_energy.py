@@ -1,4 +1,4 @@
-"""Energy exchanged at the interface during the earthquake, main campaign (dissertation Ch. 6; read-only on data).
+"""Energy exchanged at the interface over the whole record, main campaign (dissertation Ch. 6; read-only on data).
 
 E = int lambda_L^3 f_p du from the OpenSees recorders (Elmt101_ctrlDsp: commanded displacement; ServerSetup_daqFrc:
 force returned to the integrator), as fig_wed_energy2.py, from the start of the earthquake; tau = t_int - t_EQ.
@@ -28,7 +28,8 @@ OUT = Path(sys.argv[1])
 CFG = {"pspd": ("#C0390B", "s"), "mumps": ("#8C510A", "D"), "cpucudss": ("#2166AC", "^"), "gpu": ("#000000", "o")}
 CASES = [("F07", "pspd", "F07, 8, NC"), ("F08", "mumps", "F08, 8, NC"), ("F22", "gpu", "F22, serial, NC"),
          ("F15", "cpucudss", "F15, 20"), ("F03", None, None), ("F05", None, None)]
-TAU_MAX = 125.0
+TAU_MAX = 480.0  # whole record (the incomplete runs end near 125 s)
+T_SOL = 348.0  # solitary-wave peak, t_int (F03, F05: no slowdowns there)
 WIN = 0.3  # s of integration time after each slowdown onset
 
 
@@ -72,14 +73,22 @@ for tid, cfg, lab in CASES:
         ax.plot(tau[-1], E[-1], marker=mk, ms=4.6, color=c, mfc="white" if r[8] == "incomplete" else c, mew=0.9,
                 ls="none", zorder=4)
         ends.append((tau[-1], E[-1], c, lab))
-    print(f"{tid}: E at tau = {tau[-1]:.0f} s: {E[-1]:.2f} kJ")
+    else:
+        ref_end = (tau[-1], E[-1])
+    k125 = tau <= 125
+    if tau[-1] > T_SOL + 20:
+        e0, e1 = np.interp([T_SOL - 10, T_SOL + 20], tau, E)
+        print(f"   change across the solitary wave ({T_SOL - 10:.0f}-{T_SOL + 20:.0f} s): {1e3 * (e1 - e0):+.1f} J")
+    print(f"{tid}: E at 125 s {E[k125][-1]:.2f} kJ; at the end ({tau[-1]:.0f} s) {E[-1]:.2f} kJ")
 for x, y, c, lab in ends:
     ax.text(x + 3, y + (0.28 if lab.startswith("F15") else 0.0), lab, ha="left", va="center", color=c)
-ax.text(TAU_MAX + 3, 0.70, "F03, F05\n(0-1 slowdowns)", ha="left", va="center", color="0.45", linespacing=0.95)
+ax.text(ref_end[0] + 6, ref_end[1] - 0.45, "F03, F05\n(0-1 slowdowns)", ha="left", va="center", color="0.45", linespacing=0.95)
 ax.axhline(0, color="0.5", lw=0.5, zorder=1)
-ax.set_xlim(0, TAU_MAX + 30)
-ax.set_xticks(range(0, int(TAU_MAX) + 1, 25))
-ax.spines["bottom"].set_bounds(0, TAU_MAX)
+ax.axvline(T_SOL, color="0.35", lw=0.6, ls=(0, (4, 2)), zorder=1)
+ax.text(T_SOL + 4, 0.04, "solitary wave", transform=ax.get_xaxis_transform(), ha="left", va="bottom", color="0.35")
+ax.set_xlim(0, 540)
+ax.set_xticks(range(0, 451, 50))
+ax.spines["bottom"].set_bounds(0, 460)
 ax.set_xlabel(r"Time from the start of the earthquake, $t_{\mathrm{int}} - t_{\mathrm{EQ}}$ (s)")
 ax.set_ylabel(r"$E$ (kJ)")
 fig.savefig(OUT.with_suffix(".png"), dpi=200)
