@@ -69,6 +69,10 @@ ax.set_xticks(xs)
 ax.set_xticklabels([f"{tid}\n" + ("serial" if R.BY_ID[tid][7] == 1 else f"{R.BY_ID[tid][7]}") +
                     ("\nNC" if not D[tid]["complete"] else "\n") for tid, _ in info], linespacing=0.95)
 ax.tick_params(axis="x", length=0, pad=16)
+# row headers for the tick labels (two rows: test ID, MPI ranks), right-aligned left of the first column
+for k, txt in enumerate(("Test", "Ranks")):
+    ax.annotate(txt, xy=(xs[0] - 0.55, 0), xycoords=("data", "axes fraction"), xytext=(0, -20.0 - 8.9 * k),
+                textcoords="offset points", ha="right", va="top", color="0.35", annotation_clip=False)
 for name, a, b in gx:
     ax.annotate(name, xy=(0.5 * (a + b), 0), xycoords=("data", "axes fraction"), xytext=(0, -50),
                 textcoords="offset points", ha="center", va="top", fontweight="bold")
