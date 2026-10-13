@@ -50,7 +50,7 @@ ax.plot(uk[ip], Fk[ip], "o", ms=3.5, color=BLUE)
 ax.axhline(0, color="0.85", lw=0.4, zorder=0)
 ax.set_xlabel(r"$u$ (mm)")
 ax.set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
-ax.set_title(rf"\textbf{{(a)}} {TID}, solitary wave", loc="left")
+ax.set_title(r"\textbf{(a)}", loc="left")
 # arrows beside the curve at half the peak force, before and after the peak, pointing the way time advances
 half = 0.5 * Fk[ip]
 ib = np.flatnonzero(Fk[:ip] > half)[-1]
@@ -88,7 +88,7 @@ D.set_xlim(-40, 70)
 D.set_ylim(D.get_ylim()[0], D.get_ylim()[1] + 1.0)
 D.set_xlabel(r"Time from the peak force, $\sqrt{\lambda_L}\,\tau$ (s)")
 D.set_ylabel(r"$u$ (mm)")
-D.set_title(r"\textbf{(b)} free vibration before and after the wave", loc="left")
+D.set_title(r"\textbf{(b)}", loc="left")
 fig.savefig(OUT.with_suffix(".png"), dpi=200)
 fig.savefig(OUT.with_suffix(".pdf"))
 print("wrote", OUT.with_suffix(".png"))
