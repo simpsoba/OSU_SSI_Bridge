@@ -3,8 +3,9 @@
 F03: CPU MKR-alpha + ProfileSPD, baseline model, 8 ranks, one slowdown (laboratory time ~ integration time), so no
 GPU-integrator displacement enters. Signals as fig_wed_psd.py (prototype-scaled clock; lambda_L^3 f_p in kN, u in mm).
 Three contiguous 150-s windows: earthquake (0-150 s; 5-95 % Arias 56-139 s), long-period tail of the ground motion
-(150-300 s; the FKSH19 NS record ends at 300 s), free vibration and solitary wave (300-450 s; peak near 349 s). Welch with the same Hann segments (40 s, 75 % overlap, segment means
-removed) in every window, so the curves share resolution and averaging; whole record (faint) for reference.
+(150-300 s; the FKSH19 NS record ends at 300 s), free vibration and solitary wave (300-450 s; peak near 349 s); labels: earthquake, coda, solitary wave. Welch with the same Hann segments (40 s, 75 % overlap, segment means
+removed) in every window, so the curves share resolution and averaging; whole record (light grey) for reference.
+Direct labels instead of a legend; uniform 9 pt font.
 Reference lines as fig_wed_psd.py: f_1, f_2 (first two modes), f_osc (transfer-system oscillation), f_mains; dotted:
 first mode during strong shaking (0.336 Hz = 0.70 f_1, minimum of the 40-s sliding dominant frequency); shaded:
 0.1-0.3 Hz long-period content of the FKSH19 NS ground motion.
@@ -28,8 +29,11 @@ import PlotResponseSpectrum as prs  # noqa: E402
 OUT = Path(sys.argv[1])
 TID = "F03"
 TSEG = 40.0
-PH = [("earthquake", 0.0, 150.0, "0.0"), ("long-period tail of the ground motion", 150.0, 300.0, "#08519C"),
-      ("free vibration and solitary wave", 300.0, 450.0, "#C0390B")]
+PH = [("earthquake", 0.0, 150.0, "0.0"), ("coda", 150.0, 300.0, "#08519C"), ("solitary wave", 300.0, 450.0, "#C0390B")]
+# direct labels (panel, x in Hz, y, ha) per curve; the colours are the same in both panels
+LAB = {"earthquake": (1, 0.03, 4e4, "left"), "coda": (1, 0.03, 4.0, "left"), "solitary wave": (1, 0.03, 2.5e-3, "left"),
+       "whole record": (0, 0.35, 3e-8, "left")}  # with a leader to the curve at 1.5 Hz
+GREY = "0.72"
 
 
 def load(tid):
@@ -78,22 +82,30 @@ fig, A = plt.subplots(1, 2, figsize=(6.0, 2.9), layout="constrained")
 for c, (kt, kx, unit) in enumerate((("tf", "F", "kN"), ("tu", "u", "mm"))):
     ax = A[c]
     f, P = psd(d[kt], d[kx], 0.0, t_end)
-    ax.loglog(f[1:], P[1:], color="0.75", lw=1.6, label="whole record", zorder=1)
+    ax.loglog(f[1:], P[1:], color=GREY, lw=1.6, zorder=1)
+    f_all, P_all = f, P
     for name, a, b, col in PH:
         f, P = psd(d[kt], d[kx], a, b)
-        ax.loglog(f[1:], P[1:], color=col, lw=0.8, label=f"{name}, {a:.0f}-{b:.0f} s", zorder=3)
+        ax.loglog(f[1:], P[1:], color=col, lw=0.8, zorder=3)
         k = (f > 0.4) & (f < 0.6)
         print(f"{kx} {name:24s}: mean square {np.trapz(P, f):10.4g} {unit}^2, peak near f1 at {f[k][np.argmax(P[k])]:.3f} Hz")
     ax.set_xlim(0.025, 100)
     ref_labels(ax)
-    if kx == "u":  # the force panel carries the legend there
-        ax.text(np.sqrt(0.1 * 0.3), 0.03, "long-period\nground motion", transform=ax.get_xaxis_transform(), ha="center",
+    for name, (pc, x, y, ha) in LAB.items():
+        if pc == c:
+            col = GREY if name == "whole record" else next(cc for nn, _, _, cc in PH if nn == name)
+            if name == "whole record":
+                ax.annotate(name, (1.5, np.interp(1.5, f_all, P_all)), xytext=(x, y), ha=ha, va="center", color="0.45",
+                            arrowprops=dict(arrowstyle="-", color="0.55", lw=0.6, shrinkA=1, shrinkB=1))
+            else:
+                ax.text(x, y, name, ha=ha, va="center", color=col)
+    if kx == "u":
+        ax.text(np.sqrt(0.1 * 0.3), 0.03, "long-period\nband", transform=ax.get_xaxis_transform(), ha="center",
                 va="bottom", color="#3B5B7A", linespacing=0.95)
     ax.set_xlabel("Real-time frequency, prototype (Hz)")
     sym = r"$\lambda_L^3 f_p$" if kx == "F" else r"$u$"
     ax.set_ylabel(f"PSD of {sym} ({unit}$^2$/Hz)")
     ax.set_title(rf"\textbf{{({'ab'[c]})}} {'force' if kx == 'F' else 'displacement'}", loc="left", pad=42)
-A[0].legend(loc="lower left", frameon=False, fontsize=7)
 fig.savefig(OUT.with_suffix(".png"), dpi=200)
 fig.savefig(OUT.with_suffix(".pdf"))
 print("wrote", OUT.with_suffix(".png"))
