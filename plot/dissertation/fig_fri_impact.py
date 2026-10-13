@@ -4,8 +4,7 @@ solitary wave.
 
 (a) wide view, video 2026-08-21-11h24m at 8.611 s (Test F10)
 (b) close-up, video 2026-08-21-09h56m at 2:57.0, mirrored so that the wave travels in +x
-(e) pier-base zero-length section, moment against rotation (grey: before the wave; red: from the wave on),
-    small panel between (c) and (d) with a leader to the pier base in (d)
+(e) optional (SHOW_E): pier-base moment-rotation inset between (c) and (d); off by default
 Layout 2 x 2: photos on top, model panels below without axes (5 m scale bar), cropped just below the pile tips.
 (c) deformed near-field model of Test F30 (r-17, all-node recorders) at the peak load-cell force of the solitary wave,
     displacements amplified AMP; undeformed mesh in light grey
@@ -180,46 +179,49 @@ ax_c.text(0.0, 0.955, f"at the peak force, amplified {AMP:.0f}" + r"$\times$", t
 ax_d.text(0.0, 0.955, f"grey: before the wave ({AMP:.0f}" + r"$\times$" + ")\n"
           f"red: + change by the wave ({AMP_W:.0f}" + r"$\times$" + ")", transform=ax_d.transAxes,
           ha="left", va="top", fontsize=7, color="0.3", linespacing=1.15)
-# (e) pier-base zero-length section, moment against rotation, placed after the layout is fixed
-hd = np.genfromtxt(DUMP / "pier_hinge_defo.out.0", invalid_raise=False)
-hf = np.genfromtxt(DUMP / "pier_hinge_force.out.0", invalid_raise=False)
-hd, hf = hd[np.isfinite(hd).all(1)], hf[np.isfinite(hf).all(1)]
-nh = min(len(hd), len(hf))
-th, Mh, tt = 1e3 * hd[:nh, 2], 1e-6 * hf[:nh, 2], hd[:nh, 0]
-pre_h = tt < t[k_pre]
-fig.canvas.draw()
-fig.set_layout_engine("none")
-pc, pd = ax_c.get_position(), ax_d.get_position()
-w_e, h_e = 0.27, 0.19
-x_e = 0.5 * (pc.x1 + pd.x0) - 0.5 * w_e
-y_mid = fig.transFigure.inverted().transform(ax_d.transData.transform((0.0, -9.0)))[1]
-y_e = y_mid - 0.5 * h_e
-ax_e = fig.add_axes([x_e, y_e, w_e, h_e], zorder=20)
-ax_e.set_facecolor("white")
-ax_e.patch.set_alpha(1.0)
-fig.add_artist(plt.Rectangle((x_e - 0.062, y_e - 0.045), w_e + 0.072, h_e + 0.072, transform=fig.transFigure,
-                             fc="white", ec="0.75", lw=0.6, zorder=19))  # white card behind (e), with its labels
-ax_e.plot(th[pre_h], Mh[pre_h], color="0.68", lw=0.5)
-ax_e.plot(th[~pre_h], Mh[~pre_h], color=RED, lw=1.6, solid_capstyle="round")
-ax_e.axhline(0, color="0.88", lw=0.4, zorder=0)
-ax_e.axvline(0, color="0.88", lw=0.4, zorder=0)
-ax_e.tick_params(labelsize=7, length=2.5, pad=1.5)
-ax_e.set_xticks([-10, 0, 10])
-ax_e.set_yticks([-5, 0, 5])
-ax_e.set_xlabel(r"$\theta$ (mrad)", fontsize=7, labelpad=1)
-ax_e.set_ylabel(r"$M$ (MN$\cdot$m)", fontsize=7, labelpad=1)
-ax_e.text(-0.2, 1.08, r"\textbf{(e)} pier-base section", transform=ax_e.transAxes, ha="left", va="bottom", fontsize=7)
-ax_e.text(0.97, 0.05, "grey: earthquake\nred: wave", transform=ax_e.transAxes, ha="right", va="bottom",
-          fontsize=6.5, color="0.3", linespacing=1.1)
-# leader from (e) to the pier base in (d) (deformed position as drawn there)
-base = int(np.argmin(np.hypot(mesh["X0"], mesh["Y0"])))
-xd = mesh["X0"][base] + AMP * ux[k_pre][base] + AMP_W * du_x[base]
-yd = mesh["Y0"][base] + AMP * uy[k_pre][base] + AMP_W * du_y[base]
-from matplotlib.patches import ConnectionPatch  # noqa: E402
-fig.add_artist(ConnectionPatch(xyA=(1.0, 1.0), coordsA=ax_e.transAxes, xyB=(xd, yd), coordsB=ax_d.transData,
-                               arrowstyle="-|>,head_length=0.4,head_width=0.2", color="0.3", lw=0.7,
-                               ls=(0, (1, 1.5)), shrinkB=1.5, zorder=21))
-print(f"(e): pier-base node {base} at ({mesh['X0'][base]:.2f}, {mesh['Y0'][base]:.2f}) m")
+SHOW_E = False  # (e) pier-base moment-rotation inset; off: it competed with (c) and (d) (see fig_fri_hinge.py)
+if SHOW_E:
+    # (e) pier-base zero-length section, moment against rotation, placed after the layout is fixed
+    hd = np.genfromtxt(DUMP / "pier_hinge_defo.out.0", invalid_raise=False)
+    hf = np.genfromtxt(DUMP / "pier_hinge_force.out.0", invalid_raise=False)
+    hd, hf = hd[np.isfinite(hd).all(1)], hf[np.isfinite(hf).all(1)]
+    nh = min(len(hd), len(hf))
+    th, Mh, tt = 1e3 * hd[:nh, 2], 1e-6 * hf[:nh, 2], hd[:nh, 0]
+    pre_h = tt < t[k_pre]
+    fig.canvas.draw()
+    fig.set_layout_engine("none")
+    pc, pd = ax_c.get_position(), ax_d.get_position()
+    w_e, h_e = 0.27, 0.19
+    x_e = 0.5 * (pc.x1 + pd.x0) - 0.5 * w_e
+    y_mid = fig.transFigure.inverted().transform(ax_d.transData.transform((0.0, -9.0)))[1]
+    y_e = y_mid - 0.5 * h_e
+    ax_e = fig.add_axes([x_e, y_e, w_e, h_e], zorder=20)
+    ax_e.set_facecolor("white")
+    ax_e.patch.set_alpha(1.0)
+    fig.add_artist(plt.Rectangle((x_e - 0.062, y_e - 0.045), w_e + 0.072, h_e + 0.072, transform=fig.transFigure,
+                                 fc="white", ec="0.75", lw=0.6, zorder=19))  # white card behind (e), with its labels
+    ax_e.plot(th[pre_h], Mh[pre_h], color="0.68", lw=0.5)
+    ax_e.plot(th[~pre_h], Mh[~pre_h], color=RED, lw=1.6, solid_capstyle="round")
+    ax_e.axhline(0, color="0.88", lw=0.4, zorder=0)
+    ax_e.axvline(0, color="0.88", lw=0.4, zorder=0)
+    ax_e.tick_params(labelsize=7, length=2.5, pad=1.5)
+    ax_e.set_xticks([-10, 0, 10])
+    ax_e.set_yticks([-5, 0, 5])
+    ax_e.set_xlabel(r"$\theta$ (mrad)", fontsize=7, labelpad=1)
+    ax_e.set_ylabel(r"$M$ (MN$\cdot$m)", fontsize=7, labelpad=1)
+    ax_e.text(-0.2, 1.08, r"\textbf{(e)} pier-base section", transform=ax_e.transAxes, ha="left", va="bottom", fontsize=7)
+    ax_e.text(0.97, 0.05, "grey: earthquake\nred: wave", transform=ax_e.transAxes, ha="right", va="bottom",
+              fontsize=6.5, color="0.3", linespacing=1.1)
+    # leader from (e) to the pier base in (d) (deformed position as drawn there)
+    base = int(np.argmin(np.hypot(mesh["X0"], mesh["Y0"])))
+    xd = mesh["X0"][base] + AMP * ux[k_pre][base] + AMP_W * du_x[base]
+    yd = mesh["Y0"][base] + AMP * uy[k_pre][base] + AMP_W * du_y[base]
+    from matplotlib.patches import ConnectionPatch  # noqa: E402
+    fig.add_artist(ConnectionPatch(xyA=(1.0, 1.0), coordsA=ax_e.transAxes, xyB=(xd, yd), coordsB=ax_d.transData,
+                                   arrowstyle="-|>,head_length=0.4,head_width=0.2", color="0.3", lw=0.7,
+                                   ls=(0, (1, 1.5)), shrinkB=1.5, zorder=21))
+    print(f"(e): pier-base node {base} at ({mesh['X0'][base]:.2f}, {mesh['Y0'][base]:.2f}) m")
+
 fig.savefig(OUT.with_suffix(".png"), dpi=250)
 fig.savefig(OUT.with_suffix(".pdf"), dpi=300)
 print("wrote", OUT.with_suffix(".png"))
