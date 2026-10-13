@@ -95,10 +95,14 @@ def draw(ax, mesh, ux, uy, amp, face=True, grey=False, under=False):
         if grey:
             pc = PolyCollection(polys, facecolors="none", edgecolors="0.8", linewidths=0.3, zorder=z)
         else:
-            pc = PolyCollection(polys, facecolors=mesh["face"] if face else "none",
-                                edgecolors="0.35" if face else "0.55", linewidths=0.2, zorder=z)
+            if face == "light":
+                fc = [(r, g, b, 0.22) for r, g, b, _ in mesh["face"]]
+                pc = PolyCollection(polys, facecolors=fc, edgecolors="0.62", linewidths=0.2, zorder=z)
+            else:
+                pc = PolyCollection(polys, facecolors=mesh["face"] if face else "none",
+                                    edgecolors="0.35" if face else "0.55", linewidths=0.2, zorder=z)
         ax.add_collection(pc)
-    for ij, col, lw in ((mesh["ij_s"], "0.72" if grey else RED, 1.0), (mesh["ij_z"], PURPLE, 0.5)):
+    for ij, col, lw in ((mesh["ij_s"], "0.72" if grey else RED, 1.0 if grey else 1.25), (mesh["ij_z"], PURPLE, 0.5)):
         if len(ij) and not (grey and col == PURPLE):
             seg = np.stack([np.c_[X[ij[:, 0]], Y[ij[:, 0]]], np.c_[X[ij[:, 1]], Y[ij[:, 1]]]], axis=1)
             ax.add_collection(LineCollection(seg, colors=col, linewidths=lw, zorder=z + 1))
@@ -122,41 +126,60 @@ print(f"{TEST}: peak force {f_imp:.1f} kN at t_int = {t_imp:.2f} s; pre-wave sta
 
 prs.configure_font()
 CROP = {"wide": (0.12, 0.86), "close": (0.0, 0.78)}  # kept fraction of the frame height (top, bottom)
+BLUE = "#0072B2"
+H_WATER = 2.4  # m, prototype water depth above the mudline
 fig = plt.figure(figsize=(6.0, 8.0), layout="constrained")
-gs = fig.add_gridspec(2, 2, height_ratios=[1.35, 1.3])
+gs = fig.add_gridspec(2, 2, height_ratios=[1.3, 1.35])
+
+
+def tag_in(ax, text, dark=True):
+    """Panel tag inside the axes: white on a translucent dark box (photos) or bold black (model panels)."""
+    if dark:
+        ax.text(0.025, 0.975, text, transform=ax.transAxes, ha="left", va="top", color="white", zorder=10,
+                bbox=dict(boxstyle="square,pad=0.25", fc="0.1", ec="none", alpha=0.55))
+    else:
+        ax.text(0.0, 1.0, text, transform=ax.transAxes, ha="left", va="top", color="black", zorder=10)
+
+
 for j, (name, tf, flip, tag) in enumerate(FRAMES):
     ax = fig.add_subplot(gs[0, j])
     img = frame(name, tf, flip, tag)
     h0, h1 = (int(f * img.shape[0]) for f in CROP[tag])
     ax.imshow(img[h0:h1])
     ax.set_axis_off()
-    # tag inside the photo: white on a translucent dark box, readable over bright spray
-    ax.text(0.025, 0.975, rf"\textbf{{({'ab'[j]})}}", transform=ax.transAxes, ha="left", va="top", color="white",
-            bbox=dict(boxstyle="square,pad=0.25", fc="0.1", ec="none", alpha=0.55))
+    tag_in(ax, rf"\textbf{{({'ab'[j]})}}")
 ax_c = fig.add_subplot(gs[1, 0])
 ax_d = fig.add_subplot(gs[1, 1], sharex=ax_c, sharey=ax_c)
 zeros = np.zeros_like(ux[0])
 draw(ax_c, mesh, zeros, zeros, 0.0, grey=True, under=True)
 draw(ax_c, mesh, ux[k_imp], uy[k_imp], AMP)
 draw(ax_d, mesh, ux[k_pre], uy[k_pre], AMP, grey=True, under=True)
-draw(ax_d, mesh, ux[k_pre] + (AMP_W / AMP) * du_x, uy[k_pre] + (AMP_W / AMP) * du_y, AMP, face=False)
+draw(ax_d, mesh, ux[k_pre] + (AMP_W / AMP) * du_x, uy[k_pre] + (AMP_W / AMP) * du_y, AMP, face="light")
 for ax in (ax_c, ax_d):
     ax.autoscale_view()
-    ax.set_ylim(-21.0, 13.0)  # cropped just below the pile tips; room for the labels above the deck
+    ax.set_ylim(-21.0, 15.5)  # cropped just below the pile tips; room for the labels above the deck
     ax.set_aspect("equal")
     ax.set_axis_off()
 x0, x1 = ax_c.get_xlim()
+qs = mesh["q_idx"].ravel()
+xs0, xs1 = float(mesh["X0"][qs].min()), float(mesh["X0"][qs].max())  # soil block extent
+for ax in (ax_c, ax_d):  # water above the mudline, and the direction of the wave
+    ax.add_patch(plt.Rectangle((xs0, 0.0), xs1 - xs0, H_WATER, fc=BLUE, ec="none", alpha=0.10, zorder=-1))
+    ax.plot([xs0, xs1], [H_WATER, H_WATER], color=BLUE, lw=0.6, alpha=0.6, zorder=-1)
+    ax.annotate("", (xs0 + 3.4, H_WATER + 1.0), (xs0, H_WATER + 1.0),
+                arrowprops=dict(arrowstyle="-|>,head_length=0.5,head_width=0.25", color=BLUE, lw=1.2))
+    ax.text(xs0, H_WATER + 1.6, "wave", color=BLUE, fontsize=7, ha="left", va="bottom")
 y0 = ax_c.get_ylim()[0]
 xb, yb = x0 + 1.2, y0 + 0.8
-ax_c.plot([xb, xb + 5.0], [yb, yb], color="0.2", lw=1.2, solid_capstyle="butt")
-ax_c.text(xb + 2.5, yb + 0.5, "5 m", ha="center", va="bottom", fontsize=7, color="0.2")
-ax_c.set_title(r"\textbf{(c)}", loc="left")
-ax_d.set_title(r"\textbf{(d)}", loc="left")
-ax_c.text(0.02, 0.99, f"at the peak force\namplified {AMP:.0f}" + r"$\times$", transform=ax_c.transAxes,
-          ha="left", va="top", fontsize=7, color="0.25")
-ax_d.text(0.10, 0.99, f"grey: before the wave ({AMP:.0f}" + r"$\times$" + ")\n"
+ax_c.plot([xb, xb + 5.0], [yb, yb], color="0.15", lw=1.4, solid_capstyle="butt", zorder=6)
+ax_c.text(xb + 2.5, yb + 0.5, "5 m", ha="center", va="bottom", fontsize=7, color="0.15", zorder=6)
+tag_in(ax_c, r"\textbf{(c)}", dark=False)
+tag_in(ax_d, r"\textbf{(d)}", dark=False)
+ax_c.text(0.0, 0.955, f"at the peak force, amplified {AMP:.0f}" + r"$\times$", transform=ax_c.transAxes,
+          ha="left", va="top", fontsize=7, color="0.3")
+ax_d.text(0.0, 0.955, f"grey: before the wave ({AMP:.0f}" + r"$\times$" + ")\n"
           f"red: + change by the wave ({AMP_W:.0f}" + r"$\times$" + ")", transform=ax_d.transAxes,
-          ha="left", va="top", fontsize=7, color="0.25")
+          ha="left", va="top", fontsize=7, color="0.3", linespacing=1.15)
 # (e) pier-base zero-length section, moment against rotation, placed after the layout is fixed
 hd = np.genfromtxt(DUMP / "pier_hinge_defo.out.0", invalid_raise=False)
 hf = np.genfromtxt(DUMP / "pier_hinge_force.out.0", invalid_raise=False)
@@ -167,30 +190,35 @@ pre_h = tt < t[k_pre]
 fig.canvas.draw()
 fig.set_layout_engine("none")
 pc, pd = ax_c.get_position(), ax_d.get_position()
-w_e, h_e = 0.165, 0.125
-x_e = 0.5 * (pc.x1 + pd.x0) - 0.5 * w_e + 0.012
-yb = ax_d.transData.transform((0.0, 0.0))
-y_e = fig.transFigure.inverted().transform(yb)[1] - h_e - 0.02  # below the soil surface, in the gap between (c) and (d)
-ax_e = fig.add_axes([x_e, y_e, w_e, h_e])
-ax_e.plot(th[pre_h], Mh[pre_h], color="0.72", lw=0.4)
-ax_e.plot(th[~pre_h], Mh[~pre_h], color=RED, lw=1.1)
-ax_e.axhline(0, color="0.85", lw=0.3, zorder=0)
-ax_e.axvline(0, color="0.85", lw=0.3, zorder=0)
-ax_e.tick_params(labelsize=6, length=2, pad=1)
+w_e, h_e = 0.27, 0.19
+x_e = 0.5 * (pc.x1 + pd.x0) - 0.5 * w_e
+y_mid = fig.transFigure.inverted().transform(ax_d.transData.transform((0.0, -9.0)))[1]
+y_e = y_mid - 0.5 * h_e
+ax_e = fig.add_axes([x_e, y_e, w_e, h_e], zorder=20)
+ax_e.set_facecolor("white")
+ax_e.patch.set_alpha(1.0)
+fig.add_artist(plt.Rectangle((x_e - 0.062, y_e - 0.045), w_e + 0.072, h_e + 0.072, transform=fig.transFigure,
+                             fc="white", ec="0.75", lw=0.6, zorder=19))  # white card behind (e), with its labels
+ax_e.plot(th[pre_h], Mh[pre_h], color="0.68", lw=0.5)
+ax_e.plot(th[~pre_h], Mh[~pre_h], color=RED, lw=1.6, solid_capstyle="round")
+ax_e.axhline(0, color="0.88", lw=0.4, zorder=0)
+ax_e.axvline(0, color="0.88", lw=0.4, zorder=0)
+ax_e.tick_params(labelsize=7, length=2.5, pad=1.5)
 ax_e.set_xticks([-10, 0, 10])
 ax_e.set_yticks([-5, 0, 5])
-ax_e.set_xlabel(r"$\theta$ (mrad)", fontsize=6.5, labelpad=1)
-ax_e.set_ylabel(r"$M$ (MN$\cdot$m)", fontsize=6.5, labelpad=2)
-ax_e.set_title(r"\textbf{(e)} pier base", loc="left", fontsize=7, pad=2)
-ax_e.patch.set_alpha(0.9)
+ax_e.set_xlabel(r"$\theta$ (mrad)", fontsize=7, labelpad=1)
+ax_e.set_ylabel(r"$M$ (MN$\cdot$m)", fontsize=7, labelpad=1)
+ax_e.text(-0.2, 1.08, r"\textbf{(e)} pier-base section", transform=ax_e.transAxes, ha="left", va="bottom", fontsize=7)
+ax_e.text(0.97, 0.05, "grey: earthquake\nred: wave", transform=ax_e.transAxes, ha="right", va="bottom",
+          fontsize=6.5, color="0.3", linespacing=1.1)
 # leader from (e) to the pier base in (d) (deformed position as drawn there)
 base = int(np.argmin(np.hypot(mesh["X0"], mesh["Y0"])))
 xd = mesh["X0"][base] + AMP * ux[k_pre][base] + AMP_W * du_x[base]
 yd = mesh["Y0"][base] + AMP * uy[k_pre][base] + AMP_W * du_y[base]
 from matplotlib.patches import ConnectionPatch  # noqa: E402
 fig.add_artist(ConnectionPatch(xyA=(1.0, 1.0), coordsA=ax_e.transAxes, xyB=(xd, yd), coordsB=ax_d.transData,
-                               arrowstyle="-|>,head_length=0.35,head_width=0.18", color="0.35", lw=0.6,
-                               ls=(0, (1, 1.5)), shrinkB=1.5))
+                               arrowstyle="-|>,head_length=0.4,head_width=0.2", color="0.3", lw=0.7,
+                               ls=(0, (1, 1.5)), shrinkB=1.5, zorder=21))
 print(f"(e): pier-base node {base} at ({mesh['X0'][base]:.2f}, {mesh['Y0'][base]:.2f}) m")
 fig.savefig(OUT.with_suffix(".png"), dpi=250)
 fig.savefig(OUT.with_suffix(".pdf"), dpi=300)
