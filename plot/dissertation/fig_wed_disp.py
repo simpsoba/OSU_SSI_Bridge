@@ -4,7 +4,7 @@ u = meaSigOS x lambda (prototype mm), Simulink at 2048 Hz model. Records end whe
 tracking (0.25-s RMS of target - measured above 2 mm model). Integration time from the received-target count:
 target k at t_int = (k + alpha_f) dt_int. Delay = laboratory time of each target minus k dt_sim (laboratory s).
 (a)         slowdown lane (one row per run, test ID in the free space) and u on real time, sqrt(lambda_L) t
-(b)         u on integrator time; (b.1), (b.2) zooms with a slowdown lane each
+(b)         u on integration time; (b.1) zoom from strong shaking to the serial stop, with a slowdown lane
 (c)         delay of the received targets behind hard real time; inset for the parallel runs
 Bold panel tags, no titles or legends (direct labels), uniform font, constrained layout.
 """
@@ -36,7 +36,7 @@ RUNS = [("W04", "0819_GusBridge_Serial_H0p5_T7p746_reg_Trial02", 1, ORANGE),
 ORDER = [1, 3, 4, 2, 0]  # grays, 8 ranks, then serial on top
 SEG = [(0, 170), (170, 420)]
 WR = [1, 3.4]
-ZOOMS = [(214, 222), (241, 249)]
+ZOOMS = [(212, 246)]
 YLIM = (-200, 200)
 
 
@@ -154,15 +154,15 @@ draw(B, "ti", 0.8)
 B[0].set_ylabel(r"$u$ (mm)")
 B[1].set_xlabel(r"Integration time, $t_{\mathrm{int}}$ (s)")
 tag(B[0], "(b)")
-for (z0, z1), nm in zip(ZOOMS, ("(b.1)", "(b.2)")):
+for (z0, z1), nm in zip(ZOOMS, ("(b.1)",)):
     B[1].add_patch(Rectangle((z0, YLIM[0] * 0.95), z1 - z0, (YLIM[1] - YLIM[0]) * 0.95, fill=False, ec="0.2", lw=0.6))
     B[1].text((z0 + z1) / 2, YLIM[1] * 0.98, rf"\textbf{{{nm}}}", ha="center", va="bottom")
 label(B[1], "serial: test stopped", (data[0]["ti_end"], data[0]["u"][-1]), (300, -120), ORANGE)
 
-# ---------------- (b.1), (b.2) zooms on integrator time ----------------
-gz = s_z.add_gridspec(2, 2, height_ratios=[0.16, 1.0], hspace=0.04)
-Z = [s_z.add_subplot(gz[1, j]) for j in range(2)]
-ZL = [s_z.add_subplot(gz[0, j], sharex=Z[j]) for j in range(2)]
+# ---------------- (b.1) zoom on integration time ----------------
+gz = s_z.add_gridspec(2, 1, height_ratios=[0.16, 1.0], hspace=0.04)
+Z = [s_z.add_subplot(gz[1, 0])]
+ZL = [s_z.add_subplot(gz[0, 0], sharex=Z[0])]
 for j, (z0, z1) in enumerate(ZOOMS):
     ax, lz = Z[j], ZL[j]
     hits = []
@@ -192,12 +192,11 @@ for j, (z0, z1) in enumerate(ZOOMS):
     ax.set_ylim(*YLIM)
     ax.set_xlabel(r"$t_{\mathrm{int}}$ (s)")
 Z[0].set_ylabel(r"$u$ (mm)")
-Z[1].tick_params(labelleft=False)
-label(Z[0], "serial", (219.3, 45), (219.8, 140), ORANGE)
-label(Z[0], "8 ranks", (217.0, 38), (215.0, 140), BLUE)
-label(Z[0], "24 ranks", (216.8, 38), (215.0, -150), GRAY)
-label(Z[1], "serial", (242.1, 106), (243.3, 160), ORANGE)
-label(Z[1], "4, 8, 16, 24 ranks", (245.4, 80), (245.9, 150), "0.25")
+LABELS = True
+if LABELS:
+    label(Z[0], "serial", (242.1, 106), (238.5, 165), ORANGE)
+    label(Z[0], "8 ranks", (217.0, 38), (214.5, 150), BLUE)
+    label(Z[0], "4, 16, 24 ranks", (226.8, -40), (221.5, -165), GRAY)
 
 # ---------------- (c) delay behind real time ----------------
 C = broken_pair(s_c, s_c.add_gridspec(1, 1)[0])
