@@ -24,8 +24,8 @@ sys.path.insert(0, str(R.ROOT / "plot"))
 import PlotResponseSpectrum as prs  # noqa: E402
 
 OUT = Path(sys.argv[1])
-V = [("F05", "SSPquad, nonlinear", "#000000", "-", 1.0), ("F20", "quad + PIMY", "0.55", (0, (4, 1.5)), 0.9),
-     ("F23", "stiff soil", "#2166AC", "-", 0.9), ("F24", "elastic soil", "#C0390B", "-", 0.9)]
+V = [("F05", "SSPquad, nonlinear", "#000000", "-", 1.0), ("F20", "quad + PIMY", "0.5", (0, (3, 1.5)), 1.2),
+     ("F23", "stiff soil", "#2166AC", (0, (6, 1.5, 1.5, 1.5)), 1.0), ("F24", "elastic soil", "#C0390B", (0, (1, 1.2)), 1.3)]
 tg = np.arange(2, 420, 0.01)
 D = {}
 for tid, *_ in V:
@@ -42,15 +42,16 @@ prs.configure_font()
 fig = plt.figure(figsize=(6.0, 3.9), layout="constrained")
 gs = fig.add_gridspec(2, 2, height_ratios=[1.0, 0.8])
 ax = fig.add_subplot(gs[0, :])
-for tid, lab, c, ls, lw in V[::-1]:
-    ax.plot(tg, D[tid]["u"], color=c, ls=ls, lw=lw)
+for z, (tid, lab, c, ls, lw) in enumerate(V):  # F05 first, so the dashed F20 shows on top of it
+    ax.plot(tg, D[tid]["u"], color=c, ls=ls, lw=lw, zorder=2 + z, label=f"{tid}, {lab}")
 ax.set_xlim(40, 160)
-ax.set_ylim(-180, 290)
+ax.set_ylim(-300, 215)
 ax.set_xlabel(r"Integration time, $t_{\mathrm{int}}$ (s)")
 ax.set_ylabel(r"$u$ (mm)")
 ax.set_title(r"\textbf{(a)} interface displacement during the earthquake", loc="left")
-for i, (tid, lab, c, ls, lw) in enumerate(V):
-    ax.text(0.02, 0.97 - 0.11 * i, f"{tid}, {lab}", transform=ax.transAxes, ha="left", va="top", color=c)
+lg = ax.legend(loc="lower right", ncol=2, frameon=False, handlelength=2.6, columnspacing=1.2, borderaxespad=0.2)
+for t_, (tid, lab, c, *_) in zip(lg.get_texts(), V):
+    t_.set_color(c)
 bx = fig.add_subplot(gs[1, 0])
 cx = fig.add_subplot(gs[1, 1])
 y = np.arange(len(V))[::-1]
