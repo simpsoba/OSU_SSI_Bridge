@@ -172,6 +172,18 @@ y0 = ax_c.get_ylim()[0]
 xb, yb = x0 + 1.2, y0 + 0.8
 ax_c.plot([xb, xb + 5.0], [yb, yb], color="0.15", lw=1.4, solid_capstyle="butt", zorder=6)
 ax_c.text(xb + 2.5, yb + 0.5, "5 m", ha="center", va="bottom", fontsize=7, color="0.15", zorder=6)
+# (d): dimension at the deck between the grey (before the wave) and red (with the wave) positions, true size in mm
+xg = mesh["X0"][top] + AMP * ux[k_pre][top]
+yg = mesh["Y0"][top] + AMP * uy[k_pre][top]
+xr = xg + AMP_W * du_x[top]
+yr = yg + AMP_W * du_y[top]
+ydim = max(yg, yr) + 1.6
+for xx, yy in ((xg, yg), (xr, yr)):
+    ax_d.plot([xx, xx], [yy + 0.25, ydim + 0.4], color="0.35", lw=0.5, zorder=7)
+ax_d.annotate("", (xr, ydim), (xg, ydim), arrowprops=dict(arrowstyle="<|-|>,head_length=0.3,head_width=0.15",
+                                                          color="0.2", lw=0.7, shrinkA=0, shrinkB=0), zorder=7)
+ax_d.text(0.5 * (xg + xr), ydim + 0.35, f"+{1e3 * du_x[top]:.1f} mm (wave)", ha="center", va="bottom", fontsize=7,
+          color="0.15", zorder=7, bbox=dict(fc="white", ec="none", alpha=0.8, pad=0.4))
 tag_in(ax_c, r"\textbf{(c)}", dark=False)
 tag_in(ax_d, r"\textbf{(d)}", dark=False)
 ax_c.text(0.0, 0.955, f"at the peak force, amplified {AMP:.0f}" + r"$\times$", transform=ax_c.transAxes,
