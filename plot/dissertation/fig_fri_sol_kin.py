@@ -78,7 +78,7 @@ for ax, x in zip(A, (u[k], v[k], acc[k])):
             n = -n  # no room outside: use the inner side
         c = c + 9 * n
         tail, head = ax.transData.inverted().transform(c - 8 * d), ax.transData.inverted().transform(c + 8 * d)
-        ax.annotate("", xy=head, xytext=tail, arrowprops=dict(arrowstyle="-|>", color="#E08214", lw=1.0,
+        ax.annotate("", xy=head, xytext=tail, arrowprops=dict(arrowstyle="-|>", color="#000000", lw=1.0,
                                                               mutation_scale=9, shrinkA=0, shrinkB=0))
 A[0].set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
 for ax, s in zip(A, ("(a)", "(b)", "(c)")):
@@ -107,8 +107,8 @@ for nm, (w0, w1) in (("before", (-12, -2)), ("after", (2, 12))):
     am, mu = np.abs(ub[kw]).max(), u[kw].mean()
     amp[nm] = am
     for yv in (mu - am, mu + am):
-        D.plot([w0, w1], [yv, yv], color="#E08214", lw=0.9, ls=(0, (4, 1.5)))
-    D.text(0.5 * (w0 + w1), mu + am + 0.3, rf"$\pm${am:.1f} mm", ha="center", va="bottom", color="#B85C00")
+        D.plot([w0, w1], [yv, yv], color="#000000", lw=0.9, ls=(0, (4, 1.5)))
+    D.text(0.5 * (w0 + w1), mu + am + 0.3, rf"$\pm${am:.1f} mm", ha="center", va="bottom", color="#000000")
 print(f"amplitude at f1: before {amp['before']:.2f} mm, after {amp['after']:.2f} mm, ratio {amp['after'] / amp['before']:.1f}")
 D.set_xlim(-40, 70)
 D.set_ylim(D.get_ylim()[0], D.get_ylim()[1] + 1.0)
