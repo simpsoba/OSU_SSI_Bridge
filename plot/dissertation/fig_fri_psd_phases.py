@@ -5,7 +5,8 @@ GPU-integrator displacement enters. Signals as fig_wed_psd.py (prototype-scaled 
 Three contiguous 150-s windows: earthquake (0-150 s; 5-95 % Arias 56-139 s), long-period tail of the ground motion
 (150-300 s; the FKSH19 NS record ends at 300 s), free vibration and solitary wave (300-450 s; peak near 349 s); labels: earthquake, coda, solitary wave. Welch with the same Hann segments (40 s, 75 % overlap, segment means
 removed) in every window, so the curves share resolution and averaging; whole record (light grey) for reference.
-Direct labels instead of a legend; uniform 9 pt font.
+Direct labels instead of a legend; uniform 9 pt font. Dotted in (a), to 3 Hz: impulse model of the solitary-wave
+force (net impulse I ~ 13 kN s, sharp rise and exponential decay with tau = 0.40 s), same window and Welch settings.
 Reference lines as fig_wed_psd.py: f_1, f_2 (first two modes), f_osc (transfer-system oscillation), f_mains; dotted:
 first mode during strong shaking (0.336 Hz = 0.70 f_1, minimum of the 40-s sliding dominant frequency); shaded:
 0.1-0.3 Hz long-period content of the FKSH19 NS ground motion.
@@ -78,12 +79,29 @@ def ref_labels(ax):
 prs.configure_font()
 d = load(TID)
 t_end = min(d["tf"][-1], d["tu"][-1])
+# impulse model of the solitary-wave force: net impulse I (330-370 s, still-water mean of 300-330 s removed) applied as
+# a sharp rise with exponential decay, time constant TAU (fitted to the direct spectrum of the pulse up to 3 Hz);
+# synthesized on the force clock inside the 300-450 s window and processed with the same Welch settings
+TAU = 0.40
+tF, FF = d["tf"], d["F"]
+dtF = np.median(np.diff(tF))
+I_SOL = np.sum(FF[(tF >= 330) & (tF < 370)] - FF[(tF >= 300) & (tF < 330)].mean()) * dtF
+t_pk = tF[(tF >= 330) & (tF < 370)][np.argmin(FF[(tF >= 330) & (tF < 370)])]
+syn = np.where(tF >= t_pk, I_SOL / TAU * np.exp(-np.clip(tF - t_pk, 0, None) / TAU), 0.0)
+print(f"impulse model: I = {I_SOL:.1f} kN s, tau = {TAU} s, onset at {t_pk:.1f} s")
 fig, A = plt.subplots(1, 2, figsize=(6.0, 2.9), layout="constrained")
 for c, (kt, kx, unit) in enumerate((("tf", "F", "kN"), ("tu", "u", "mm"))):
     ax = A[c]
     f, P = psd(d[kt], d[kx], 0.0, t_end)
     ax.loglog(f[1:], P[1:], color=GREY, lw=1.6, zorder=1)
     f_all, P_all = f, P
+    if kx == "F":
+        fm, Pm = psd(tF, syn, 300.0, 450.0)
+        km = (fm > 0) & (fm <= 3.0)
+        ax.loglog(fm[km], Pm[km], color="#6A3D9A", lw=1.4, ls=(0, (1, 1.2)), zorder=4)
+        ax.annotate("impulse model", (1.0, np.interp(1.0, fm[km], Pm[km])), xytext=(1.6, 2.5), ha="left",
+                    va="center", color="#6A3D9A", arrowprops=dict(arrowstyle="-", color="#6A3D9A", lw=0.6, shrinkA=1,
+                                                                 shrinkB=1))
     for name, a, b, col in PH:
         f, P = psd(d[kt], d[kx], a, b)
         ax.loglog(f[1:], P[1:], color=col, lw=0.8, zorder=3)
