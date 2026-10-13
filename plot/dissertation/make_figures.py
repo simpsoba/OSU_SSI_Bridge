@@ -40,6 +40,7 @@ PRELIM = {
 MAIN = {
     "fig_fri_host.py": "fri_host_timing",
     "fig_fri_capacity.py": "fri_capacity",
+    "fig_fri_states.py": "fri_states",
     "fig_fri_lanes.py": "fri_slowdown_lanes",
     "fig_fri_ranks.py": "fri_rank_sweep",
     "fig_fri_formulation.py": "fri_formulation",
