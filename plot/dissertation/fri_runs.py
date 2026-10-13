@@ -59,6 +59,19 @@ DRY = [
     ("Fd09", "0821_GusBridge_rowNeg10_28Core", "", "Extra-large", 5484, "GPU", "cuDSS", 28, "dry"),
 ]
 BY_ID = {r[0]: r for r in RUNS + DRY}
+FORCE_CACHE = Path(__file__).resolve().parent / "cache"
+
+
+def load_force(stem):
+    """Load-cell force record of one Simulink file: laboratory time (model s) and topLRaw column 0 (as recorded).
+    Reads cache/force_<stem>.npz written by cache_force.py; falls back to the (large) .mat file."""
+    c = FORCE_CACHE / f"force_{stem}.npz"
+    if c.exists():
+        z = np.load(c)
+        return z["t"], z["f"]
+    import scipy.io as sio
+    raw = sio.loadmat(DATA / "Simulink" / f"{stem}.mat", squeeze_me=True, struct_as_record=False)["data"].topLRaw.data
+    return raw[:, -1], raw[:, 0]
 
 
 def label(r):

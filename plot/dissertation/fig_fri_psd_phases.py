@@ -2,10 +2,12 @@
 
 F03: CPU MKR-alpha + ProfileSPD, baseline model, 8 ranks, one slowdown (laboratory time ~ integration time), so no
 GPU-integrator displacement enters. Signals as fig_wed_psd.py (prototype-scaled clock; lambda_L^3 f_p in kN, u in mm).
-Three 120-s windows: earthquake (20-140 s; 5-95 % Arias 56-139 s), free vibration in still water (200-320 s), solitary
-wave and after (330-450 s; peak near 349 s). Welch with the same Hann segments (40 s, 75 % overlap, segment means
+Three contiguous 150-s windows: earthquake (0-150 s; 5-95 % Arias 56-139 s), long-period tail of the ground motion
+(150-300 s; the FKSH19 NS record ends at 300 s), free vibration and solitary wave (300-450 s; peak near 349 s). Welch with the same Hann segments (40 s, 75 % overlap, segment means
 removed) in every window, so the curves share resolution and averaging; whole record (faint) for reference.
-Reference lines as fig_wed_psd.py: f_1, f_2 (first two modes), f_osc (transfer-system oscillation), f_mains.
+Reference lines as fig_wed_psd.py: f_1, f_2 (first two modes), f_osc (transfer-system oscillation), f_mains; dotted:
+first mode during strong shaking (0.336 Hz = 0.70 f_1, minimum of the 40-s sliding dominant frequency); shaded:
+0.1-0.3 Hz long-period content of the FKSH19 NS ground motion.
 """
 import sys
 from pathlib import Path
@@ -15,7 +17,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy.io as sio
 from scipy.signal import welch
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -27,14 +28,15 @@ import PlotResponseSpectrum as prs  # noqa: E402
 OUT = Path(sys.argv[1])
 TID = "F03"
 TSEG = 40.0
-PH = [("earthquake", 20.0, 140.0, "0.0"), ("free vibration", 200.0, 320.0, "#08519C"),
-      ("solitary wave and after", 330.0, 450.0, "#C0390B")]
+PH = [("earthquake", 0.0, 150.0, "0.0"), ("long-period tail of the ground motion", 150.0, 300.0, "#08519C"),
+      ("free vibration and solitary wave", 300.0, 450.0, "#C0390B")]
 
 
 def load(tid):
-    m = sio.loadmat(R.DATA / "Simulink" / f"{R.BY_ID[tid][1]}.mat", squeeze_me=True, struct_as_record=False)["data"]
-    me, raw = m.meaSigOS.data, m.topLRaw.data
-    return dict(tu=me[:, -1] * R.SQL, u=me[:, 0] * R.LAM * 1e3, tf=raw[:, -1] * R.SQL, F=-R.LAM ** 3 * raw[:, 0] / 1e3)
+    stem = R.BY_ID[tid][1]
+    me = np.load(R.MAT_EXTRACT_DIR / f"{stem}.npz", allow_pickle=True)["meaSigOS_data"]
+    tf, fr = R.load_force(stem)  # cached load-cell force (cache_force.py)
+    return dict(tu=me[:, -1] * R.SQL, u=me[:, 0] * R.LAM * 1e3, tf=tf * R.SQL, F=-R.LAM ** 3 * fr / 1e3)
 
 
 def psd(t, x, w0, w1):
@@ -44,12 +46,14 @@ def psd(t, x, w0, w1):
     n -= n % 4
     return welch(x[m], fs=fs, window="hann", nperseg=n, noverlap=3 * n // 4, detrend="constant")
 
-REFS = [(0.477, r"$f_1$"), (2.870, r"$f_2$"), (12.0, r"$f_{\mathrm{osc}}$"), (60.0 / R.SQL, r"$f_{\mathrm{mains}}$")]
+F1_SOFT = 0.336 / 0.477  # dominant frequency during strong shaking (40-s windows, 80-120 s) over f_1
+REFS = [(0.336, rf"${F1_SOFT:.2f}f_1$"), (0.477, r"$f_1$"), (2.870, r"$f_2$"), (12.0, r"$f_{\mathrm{osc}}$"), (60.0 / R.SQL, r"$f_{\mathrm{mains}}$")]
 
 
 def ref_labels(ax):
-    for x0, _ in REFS:
-        ax.axvline(x0, color="0.35", lw=0.5, ls=(0, (3, 2)), zorder=0)
+    for x0, _ in REFS:  # dotted: the softened first mode during strong shaking; dashed: nominal frequencies
+        ax.axvline(x0, color="0.35", lw=0.6 if x0 < 0.4 else 0.5, ls=(0, (1, 1.5)) if x0 < 0.4 else (0, (3, 2)), zorder=0)
+    ax.axvspan(0.1, 0.3, color="#DCE6F0", lw=0, zorder=-1)  # long-period ground motion (FKSH19 NS record coda)
     items = sorted(REFS, key=lambda it: it[0])
     lx0, lx1 = np.log10(ax.get_xlim())
     xf = [(np.log10(x) - lx0) / (lx1 - lx0) for x, _ in items]
@@ -82,10 +86,13 @@ for c, (kt, kx, unit) in enumerate((("tf", "F", "kN"), ("tu", "u", "mm"))):
         print(f"{kx} {name:24s}: mean square {np.trapz(P, f):10.4g} {unit}^2, peak near f1 at {f[k][np.argmax(P[k])]:.3f} Hz")
     ax.set_xlim(0.025, 100)
     ref_labels(ax)
+    if kx == "u":  # the force panel carries the legend there
+        ax.text(np.sqrt(0.1 * 0.3), 0.03, "long-period\nground motion", transform=ax.get_xaxis_transform(), ha="center",
+                va="bottom", color="#3B5B7A", linespacing=0.95)
     ax.set_xlabel("Real-time frequency, prototype (Hz)")
     sym = r"$\lambda_L^3 f_p$" if kx == "F" else r"$u$"
     ax.set_ylabel(f"PSD of {sym} ({unit}$^2$/Hz)")
-    ax.set_title(rf"\textbf{{({'ab'[c]})}} {'force' if kx == 'F' else 'displacement'}", loc="left", pad=30)
+    ax.set_title(rf"\textbf{{({'ab'[c]})}} {'force' if kx == 'F' else 'displacement'}", loc="left", pad=42)
 A[0].legend(loc="lower left", frameon=False, fontsize=7)
 fig.savefig(OUT.with_suffix(".png"), dpi=200)
 fig.savefig(OUT.with_suffix(".pdf"))
