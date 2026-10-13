@@ -41,8 +41,8 @@ print(f"{TID}: peak {F[k].min():.1f} kN at {t_imp:.2f} s; u range {u[k].min():.1
       f"m a at the largest |a|: {M_EQ * np.abs(acc[k]).max():.1f} kN")
 
 prs.configure_font()
-fig = plt.figure(figsize=(6.0, 5.6), layout="constrained")
-gs = fig.add_gridspec(3, 3, height_ratios=[1.0, 0.62, 0.48])
+fig = plt.figure(figsize=(6.0, 4.4), layout="constrained")
+gs = fig.add_gridspec(3, 3, height_ratios=[1.0, 0.58, 0.42])
 A = [fig.add_subplot(gs[0, 0])]
 A += [fig.add_subplot(gs[0, j], sharey=A[0]) for j in (1, 2)]
 for ax in A[1:]:
