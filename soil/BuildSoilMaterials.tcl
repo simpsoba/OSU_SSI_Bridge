@@ -23,6 +23,9 @@ if {![info exists H_cap] || ![info exists dy_soil] || ![info exists nSeg_below_t
 if {$soilConstitutive ne "elastic" && $soilConstitutive ne "inelastic"} {
 	error "BuildSoilMaterials.tcl: soilConstitutive must be elastic|inelastic (got '$soilConstitutive')"
 }
+# fspFluidInitialTangent 1: FluidSolidPorous -fluidInitialTangent (pore-fluid bulk modulus in the
+# initial tangent, needed by MKR-alpha). Only OpenSees builds with that option accept it; default 0.
+if {![info exists fspFluidInitialTangent]} { set fspFluidInitialTangent 0 }
 
 set nd_soil 2
 set gam_max 0.1
@@ -365,7 +368,11 @@ for {set iy 0} {$iy < $nSoilRows} {incr iy} {
 				$PTA $c1 $c3 $d1 $d3 $nYS \
 				$pdmy_contr2 $pdmy_dilat2 $pdmy_liq1 $pdmy_liq2 $e
 		}
-		nDMaterial FluidSolidPorous $fspTag $nd_soil $solidTag $B_fsp
+		if {$fspFluidInitialTangent} {
+			nDMaterial FluidSolidPorous $fspTag $nd_soil $solidTag $B_fsp -fluidInitialTangent
+		} else {
+			nDMaterial FluidSolidPorous $fspTag $nd_soil $solidTag $B_fsp
+		}
 		soilStoreSand $iy $fspTag $rho $Gr $Br $phi $PTA $c1 $c3 $d1 $d3 $Dr $kpci $e
 		set soilMatRow($iy) $fspTag
 		set soilRhoByMat($fspTag) $rho
