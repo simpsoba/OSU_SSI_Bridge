@@ -86,7 +86,19 @@ for ax, s in zip(A, ("(a)", "(b)", "(c)")):
 # (d) the free vibration before and after the wave: displacement history and the amplitude at f_1 (band 0.3-0.7 Hz)
 from scipy.signal import sosfiltfilt
 kd = (tl >= t_imp - 40) & (tl <= t_imp + 70)
-D.plot(tl[kd] - t_imp, u[kd], color="#0072B2", lw=0.5)
+D.plot(tl[kd] - t_imp, u[kd], color="#0072B2", lw=0.5, zorder=3)
+DF = D.twinx()  # interface force on the right axis
+DF.plot(tl[kd] - t_imp, F[kd], color="0.45", lw=0.6, zorder=1)
+DF.set_ylim(-85, 25)
+DF.set_ylabel(r"$\lambda_L^3 f_p$ (kN)", color="0.4")
+DF.tick_params(axis="y", colors="0.4")
+DF.spines["right"].set_visible(True)
+DF.spines["right"].set_color("0.55")
+DF.grid(False)
+D.set_zorder(DF.get_zorder() + 1)
+D.patch.set_visible(False)
+D.text(0.99, 0.06, "force (right axis)", transform=D.transAxes, ha="right", va="bottom", color="0.4")
+D.text(0.99, 0.94, "displacement (left axis)", transform=D.transAxes, ha="right", va="top", color="#0072B2")
 sos = butter(4, [0.3, 0.7], btype="band", fs=1 / (dt * R.SQL), output="sos")
 ub = sosfiltfilt(sos, u)
 amp = {}
@@ -98,7 +110,6 @@ for nm, (w0, w1) in (("before", (-12, -2)), ("after", (2, 12))):
         D.plot([w0, w1], [yv, yv], color="#E08214", lw=0.9, ls=(0, (4, 1.5)))
     D.text(0.5 * (w0 + w1), mu + am + 0.3, rf"$\pm${am:.1f} mm", ha="center", va="bottom", color="#B85C00")
 print(f"amplitude at f1: before {amp['before']:.2f} mm, after {amp['after']:.2f} mm, ratio {amp['after'] / amp['before']:.1f}")
-D.axvline(0, color="0.35", lw=0.6, ls=(0, (4, 2)), zorder=0)
 D.set_xlim(-40, 70)
 D.set_ylim(D.get_ylim()[0], D.get_ylim()[1] + 1.0)
 D.set_xlabel(r"Time from the peak force, $\sqrt{\lambda_L}\,\tau$ (s)")
