@@ -69,10 +69,7 @@ ax.set_xticks(xs)
 ax.set_xticklabels([f"{tid}\n" + ("serial" if R.BY_ID[tid][7] == 1 else f"{R.BY_ID[tid][7]}") +
                     ("\nNC" if not D[tid]["complete"] else "\n") for tid, _ in info], linespacing=0.95)
 ax.tick_params(axis="x", length=0, pad=16)
-# row headers for the tick labels (two rows: test ID, MPI ranks), right-aligned left of the first column
-for k, txt in enumerate(("Test", "Ranks")):
-    ax.annotate(txt, xy=(xs[0] - 0.55, 0), xycoords=("data", "axes fraction"), xytext=(0, -20.0 - 8.9 * k),
-                textcoords="offset points", ha="right", va="top", color="0.35", annotation_clip=False)
+ROW_HEADERS = True  # "Test" / "Ranks" left of the first tick label, aligned to it after the layout is fixed
 for name, a, b in gx:
     ax.annotate(name, xy=(0.5 * (a + b), 0), xycoords=("data", "axes fraction"), xytext=(0, -50),
                 textcoords="offset points", ha="center", va="top", fontweight="bold")
@@ -90,6 +87,14 @@ ax.set_ylabel(r"Share of record (\%)")
 fig.legend([plt.Line2D([], [], marker=CFG[k][1], color=CFG[k][0], ls="none", ms=4.6) for k in CFG],
            [CFG[k][2] for k in CFG], loc="outside upper center", ncol=2, frameon=False, handletextpad=0.3,
            columnspacing=1.5)
+if ROW_HEADERS:
+    fig.canvas.draw()
+    fig.set_layout_engine("none")
+    t0 = ax.get_xticklabels()[0]
+    bb = t0.get_window_extent()
+    xf, yf = fig.transFigure.inverted().transform((bb.x0 - 6, bb.y1))
+    fig.text(xf, yf, "Test\nRanks", ha="right", va="top", color="0.35", linespacing=0.95,
+             multialignment="right")
 fig.savefig(OUT.with_suffix(".png"), dpi=250)
 fig.savefig(OUT.with_suffix(".pdf"))
 print("wrote", OUT.with_suffix(".png"))
