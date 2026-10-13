@@ -43,15 +43,21 @@ fig = plt.figure(figsize=(6.0, 3.9), layout="constrained")
 gs = fig.add_gridspec(2, 2, height_ratios=[1.0, 0.8])
 ax = fig.add_subplot(gs[0, :])
 for z, (tid, lab, c, ls, lw) in enumerate(V):  # F05 first, so the dashed F20 shows on top of it
-    ax.plot(tg, D[tid]["u"], color=c, ls=ls, lw=lw, zorder=2 + z, label=f"{tid}, {lab}")
+    ax.plot(tg, D[tid]["u"], color=c, ls=ls, lw=lw, zorder=2 + z)
 ax.set_xlim(40, 160)
-ax.set_ylim(-300, 215)
+ax.set_ylim(-250, 215)
 ax.set_xlabel(r"Integration time, $t_{\mathrm{int}}$ (s)")
 ax.set_ylabel(r"$u$ (mm)")
 ax.set_title(r"\textbf{(a)} interface displacement during the earthquake", loc="left")
-lg = ax.legend(loc="lower right", ncol=2, frameon=False, handlelength=2.6, columnspacing=1.2, borderaxespad=0.2)
-for t_, (tid, lab, c, *_) in zip(lg.get_texts(), V):
-    t_.set_color(c)
+# direct labels with leaders: (time of the point on the curve, text position)
+LEAD = {"F05": ((107.0, 107.6), (78, 175)), "F20": ((93.0, 94.2), (62, -215)), "F24": ((143.0, 147.0), (150, -130))}
+for tid, lab, c, *_ in V:
+    (a0, a1), xy_t = LEAD[tid]
+    kk = (tg >= a0) & (tg <= a1)
+    j = np.argmax(np.abs(D[tid]["u"][kk]))
+    xy = (tg[kk][j], D[tid]["u"][kk][j])
+    ax.annotate(f"{tid}, {lab}", xy, xytext=xy_t, ha="center", va="center", color=c,
+                arrowprops=dict(arrowstyle="-", color=c, lw=0.6, shrinkA=1, shrinkB=1))
 bx = fig.add_subplot(gs[1, 0])
 cx = fig.add_subplot(gs[1, 1])
 y = np.arange(len(V))[::-1]
@@ -68,15 +74,18 @@ for yi, (tid, lab, c, *_) in zip(y, V):
     cx.text(1.17, yi, f"{D[tid]['nsl']}", ha="right", va="center", color="#B85C00")
 for a_ in (bx, cx):
     a_.set_yticks(y)
-    a_.set_ylim(-0.6, len(V) - 0.4)
+    a_.set_ylim(-0.6, len(V) - 0.1)
 bx.set_yticklabels([tid for tid, *_ in V])
 cx.set_yticklabels([])
 bx.set_xlabel(r"$u$ (mm)")
 bx.set_xlim(0, 210)
-bx.text(0.98, 1.02, "filled: peak; open: residual", transform=bx.transAxes, ha="right", va="bottom", color="0.3")
+y0 = y[0]  # leaders on the top row (F05)
+for key, xt, txt in (("res", 95, "residual"), ("peak", 160, "peak")):
+    bx.annotate(txt, (D[V[0][0]][key], y0 + 0.12), xytext=(xt, y0 + 0.62), ha="center", va="center", color="0.3",
+                arrowprops=dict(arrowstyle="-", color="0.5", lw=0.6, shrinkA=1, shrinkB=2))
 bx.set_title(r"\textbf{(b)}", loc="left")
 cx.axvline(0.8, color="0.35", lw=0.6, ls=(0, (4, 2)), zorder=0)
-cx.text(0.79, len(V) - 0.5, r"$0.8\,\Delta t_{\mathrm{sim}}$", ha="right", va="bottom", color="0.35")
+cx.text(0.79, len(V) - 0.35, r"$0.8\,\Delta t_{\mathrm{sim}}$", ha="right", va="bottom", color="0.35")
 cx.set_xlabel(r"Host latency / $\Delta t_{\mathrm{sim}}$")
 cx.set_xlim(0, 1.2)
 cx.set_title(r"\textbf{(c)}", loc="left")
