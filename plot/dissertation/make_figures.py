@@ -1,6 +1,6 @@
 """Regenerate the Ch. 6 figures of the dissertation that come from OSU_SSI_Bridge.
 
-  python plot/dissertation/make_figures.py                     # preliminary campaign -> plot/dissertation/out
+  python plot/dissertation/make_figures.py                     # Ch. 6 campaign figures -> plot/dissertation/out
   python plot/dissertation/make_figures.py --copy-to <figdir>  # ... and copy the PDFs under their Ch. 6 names
   python plot/dissertation/make_figures.py --with-upstream --copy-to <figdir>
                                                                # also rerun the upstream paper scripts in plot/
@@ -35,6 +35,19 @@ PRELIM = {
     "fig_wed_err_psd.py": "prelim_control_error",
     "fig_wed_energy2.py": "prelim_interface_energy",
     "fig_wed_force_kin.py": "prelim_force_kinematics",  # standalone; same row as prelim_wave_check (d)-(f)
+}
+# main campaign (Friday 2026-08-21) figures in the chapter: script -> Ch. 6 figure name (made with the preliminary ones)
+MAIN_CH6 = {
+    "fig_fri_capacity.py": "main_capacity",
+    "fig_fri_states.py": "main_states",
+    "fig_fri_lanes.py": "main_slowdown_lanes",
+    "fig_fri_ranks.py": "main_rank_sweep",
+    "fig_fri_force2.py": "main_interface_force",
+    "fig_fri_energy.py": "main_interface_energy",
+    "fig_fri_soil_variants.py": "main_soil_variants",
+    "fig_fri_impact.py": "main_wave_impact",
+    "fig_fri_psd_phases.py": "main_interface_psd",
+    "fig_fri_sol_kin.py": "main_solitary_wave",
 }
 # main campaign (Friday 2026-08-21), drafts not yet in the chapter: script -> figure name (written to out/friday)
 MAIN = {
@@ -84,7 +97,7 @@ def main():
             subprocess.run([sys.executable, "-I", str(HERE / script), str(OUT / "friday" / name)], check=True, cwd=HERE)
         return
     if args.list:
-        for s, n in PRELIM.items():
+        for s, n in {**PRELIM, **MAIN_CH6}.items():
             print(f"{n:34s} plot/dissertation/{s}")
         for s, n in MAIN.items():
             print(f"{n:34s} plot/dissertation/{s}  (draft, out/friday)")
@@ -93,7 +106,7 @@ def main():
         return
     want = lambda n: not args.only or n in args.only  # noqa: E731
     OUT.mkdir(exist_ok=True)
-    for script, name in PRELIM.items():
+    for script, name in {**PRELIM, **MAIN_CH6}.items():
         if not want(name):
             continue
         print(f"--- {script} -> {name}", flush=True)
