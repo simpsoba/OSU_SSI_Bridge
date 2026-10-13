@@ -126,7 +126,7 @@ for j in range(2):
         ax.tick_params(left=False, labelleft=False)
 LANE[0].set_yticks(range(5))
 LANE[0].set_yticklabels([("serial" if RUNS[r][2] == 1 else str(RUNS[r][2])) for r in range(5)][::-1])
-LANE[0].set_ylabel("Slowdowns")  # one line: with the wider "serial" tick label, the lanes stay aligned with (a)
+LANE[0].set_ylabel("Ranks")
 tag(LANE[0], "(a)")
 
 
@@ -165,6 +165,7 @@ Z = [s_z.add_subplot(gz[1, j]) for j in range(2)]
 ZL = [s_z.add_subplot(gz[0, j], sharex=Z[j]) for j in range(2)]
 for j, (z0, z1) in enumerate(ZOOMS):
     ax, lz = Z[j], ZL[j]
+    hits = []
     for k in ORDER:
         n, c = RUNS[k][2], RUNS[k][3]
         d = data[k]
@@ -175,6 +176,8 @@ for j, (z0, z1) in enumerate(ZOOMS):
         on = d["on_i"][(d["on_i"] >= z0) & (d["on_i"] <= z1)]
         if n != 1:
             lz.vlines(on, 0, 1, color=BLUE if n == 8 else "0.15", lw=1.0)
+            if on.size:
+                hits.append(str(n))
     lz.add_patch(Rectangle((z0, 0.1), z1 - z0, 0.8, fc="0.9", ec="none", zorder=0))
     lz.set_ylim(0, 1)
     lz.grid(False)
@@ -182,7 +185,9 @@ for j, (z0, z1) in enumerate(ZOOMS):
     for s in ("left", "bottom"):
         lz.spines[s].set_visible(False)
     lz.tick_params(bottom=False, labelbottom=False)
-    tag(lz, f"(b.{j + 1})")
+    # which runs slowed down in this window, next to the tag (at 9 pt the note does not fit between the ticks)
+    note = f" slowdowns ({', '.join(sorted(set(hits), key=int))} ranks)" if hits else ""
+    lz.set_title(rf"\textbf{{(b.{j + 1})}}{note}", loc="left")
     ax.set_xlim(z0, z1)
     ax.set_ylim(*YLIM)
     ax.set_xlabel(r"$t_{\mathrm{int}}$ (s)")
@@ -221,6 +226,13 @@ ins.grid(True)
 for s in ("top", "right"):
     ins.spines[s].set_visible(True)
 
+# "Slowdowns" centred over both lane segments, on the baseline of the (a) tag
+fig.canvas.draw()
+fig.set_layout_engine("none")
+p0, p1 = LANE[0].get_position(), LANE[1].get_position()
+ttl = LANE[0].title
+_, yb = fig.transFigure.inverted().transform(ttl.get_transform().transform(ttl.get_position()))
+fig.text(0.5 * (p0.x0 + p1.x1), yb, "Slowdowns", ha="center", va="baseline")
 fig.savefig(OUT.with_suffix(".png"), dpi=200)
 fig.savefig(OUT.with_suffix(".pdf"))
 print("wrote", OUT.with_suffix(".png"))
