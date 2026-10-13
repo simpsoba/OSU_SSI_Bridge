@@ -45,6 +45,7 @@ MAIN = {
     "fig_fri_ranks.py": "fri_rank_sweep",
     "fig_fri_formulation.py": "fri_formulation",
     "fig_fri_force.py": "fri_interface_force",
+    "fig_fri_force2.py": "fri_force2",
     "fig_fri_disp.py": "fri_interface_displacement",
     "fig_fri_solitary.py": "fri_solitary_mesh",
     "fig_fri_force_gpu.py": "fri_force_gpu_baseline",
