@@ -125,12 +125,12 @@ t, f = F["F11"]
 tp = t[np.argmax(np.abs(f))] / R.SQL  # strongest transient (model-scale laboratory clock)
 x0 = d["on"][d["on"] <= tp][-1]  # onset of the slowdown that produced it
 ti0 = d["to_int"](x0)  # integration time carried by that step
-for tid, c, lw, lab in (("F12", "0.6", 1.1, "F12, 20, no slowdown"), ("F11", "0.0", 0.8, "F11, 24, slowdown")):
+for tid, c, lw, ls, z in (("F12", "0.5", 1.0, (0, (3, 1.5)), 3), ("F11", "0.0", 0.8, "-", 2)):
     t, f = F[tid]
     xs = x0 if tid == "F11" else np.interp(ti0, D[tid]["ti_k"], D[tid]["tk"])  # same step in the other test
     x = t - xs * R.SQL
     k = (x > -0.5) & (x < 1.0)
-    bc.plot(x[k], f[k], color=c, lw=lw, label=lab)
+    bc.plot(x[k], f[k], color=c, lw=lw, ls=ls, zorder=z)
 bc.set_xlim(-0.5, 1.0)
 bc.set_xlabel(r"Time from the slowdown onset, $\sqrt{\lambda_L}\,\tau$ (s)")
 bc.set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
