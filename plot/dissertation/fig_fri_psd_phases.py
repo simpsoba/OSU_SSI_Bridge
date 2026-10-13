@@ -32,7 +32,7 @@ TSEG = 40.0
 PH = [("earthquake", 0.0, 150.0, "0.0"), ("coda", 150.0, 300.0, "#08519C"), ("solitary wave", 300.0, 450.0, "#C0390B")]
 # direct labels (panel, x in Hz, y, ha) per curve; the colours are the same in both panels
 LAB = {"earthquake": (1, 0.03, 4e4, "left"), "coda": (1, 0.03, 4.0, "left"), "solitary wave": (1, 0.03, 2.5e-3, "left"),
-       "whole record": (0, 0.35, 3e-8, "left")}  # with a leader to the curve at 1.5 Hz
+       "whole record": (1, 3.5, 3.0, "left")}  # with a leader to the curve at 1.3 Hz
 GREY = "0.72"
 
 
@@ -95,7 +95,7 @@ for c, (kt, kx, unit) in enumerate((("tf", "F", "kN"), ("tu", "u", "mm"))):
         if pc == c:
             col = GREY if name == "whole record" else next(cc for nn, _, _, cc in PH if nn == name)
             if name == "whole record":
-                ax.annotate(name, (1.5, np.interp(1.5, f_all, P_all)), xytext=(x, y), ha=ha, va="center", color="0.45",
+                ax.annotate(name, (1.3, np.interp(1.3, f_all, P_all)), xytext=(x, y), ha=ha, va="center", color="0.45",
                             arrowprops=dict(arrowstyle="-", color="0.55", lw=0.6, shrinkA=1, shrinkB=1))
             else:
                 ax.text(x, y, name, ha=ha, va="center", color=col)
