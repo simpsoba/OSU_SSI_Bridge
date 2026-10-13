@@ -1,8 +1,8 @@
 """Soil-model variants on the baseline model, main campaign (dissertation Ch. 6 draft; read-only on data).
 
-All GPU MKR-alpha + cuDSS, 8 ranks, baseline mesh: F05 (SSPquad, nonlinear soil), F20 (quad + PIMY), F23 (stiff
-soil), F24 (elastic soil), F30 (2 % Rayleigh damping). Measured interface displacement u = meaSigOS * lambda (mm) on
-integration time (slowdowns removed through the received-target count, as fri_runs.load). F30 (2 % Rayleigh) not shown.
+All GPU MKR-alpha + cuDSS, 8 ranks, baseline mesh: F05 (SSPquad + PIMY, the baseline), F20 (quad + PIMY),
+F24 (SSPquad + elastic soil); PIMY = PressureIndependMultiYield (clay profile). Measured interface displacement u = meaSigOS * lambda (mm) on
+integration time (slowdowns removed through the received-target count, as fri_runs.load). F23 (stiff soil) and F30 (2 % Rayleigh) not shown.
 (a) u(t_int) during the earthquake; (b) peak |u| during the earthquake and the residual u (mean over 250-300 s);
 (c) host latency per dt_sim window after start-up, relative to dt_sim, as fig_fri_capacity.py (marker = mean,
     faint box = interquartile range, capped bar = 1st to 99th percentiles; dashed = 0.8 dt_sim), and the slowdown
@@ -24,8 +24,8 @@ sys.path.insert(0, str(R.ROOT / "plot"))
 import PlotResponseSpectrum as prs  # noqa: E402
 
 OUT = Path(sys.argv[1])
-V = [("F05", "SSPquad, nonlinear", "#000000", "-", 1.0), ("F20", "quad + PIMY", "0.5", (0, (3, 1.5)), 1.2),
-     ("F23", "stiff soil", "#2166AC", (0, (6, 1.5, 1.5, 1.5)), 1.0), ("F24", "elastic soil", "#C0390B", (0, (1, 1.2)), 1.3)]
+V = [("F05", "SSPquad + PIMY", "#000000", "-", 1.0), ("F20", "quad + PIMY", "0.5", (0, (3, 1.5)), 1.2),
+     ("F24", "SSPquad + elastic", "#C0390B", (0, (1, 1.2)), 1.3)]
 tg = np.arange(2, 420, 0.01)
 D = {}
 for tid, *_ in V:
@@ -69,7 +69,7 @@ for yi, (tid, lab, c, *_) in zip(y, V):
 for a_ in (bx, cx):
     a_.set_yticks(y)
     a_.set_ylim(-0.6, len(V) - 0.4)
-bx.set_yticklabels([f"{tid}, {lab}" for tid, lab, *_ in V])
+bx.set_yticklabels([tid for tid, *_ in V])
 cx.set_yticklabels([])
 bx.set_xlabel(r"$u$ (mm)")
 bx.set_xlim(0, 210)
