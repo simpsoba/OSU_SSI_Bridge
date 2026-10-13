@@ -184,6 +184,16 @@ ax_d.annotate("", (xr, ydim), (xg, ydim), arrowprops=dict(arrowstyle="<|-|>,head
                                                           color="0.2", lw=0.7, shrinkA=0, shrinkB=0), zorder=7)
 ax_d.text(0.5 * (xg + xr), ydim + 0.35, f"+{1e3 * du_x[top]:.1f} mm (wave)", ha="center", va="bottom", fontsize=7,
           color="0.15", zorder=7, bbox=dict(fc="white", ec="none", alpha=0.8, pad=0.4))
+# (c): same dimension, undeformed (grey) to deformed at the peak force (red), true size in mm
+xg0, yg0 = mesh["X0"][top], mesh["Y0"][top]
+xc, yc = xg0 + AMP * ux[k_imp][top], yg0 + AMP * uy[k_imp][top]
+ydim_c = max(yg0, yc) + 1.6
+for xx, yy in ((xg0, yg0), (xc, yc)):
+    ax_c.plot([xx, xx], [yy + 0.25, ydim_c + 0.4], color="0.35", lw=0.5, zorder=7)
+ax_c.annotate("", (xc, ydim_c), (xg0, ydim_c), arrowprops=dict(arrowstyle="<|-|>,head_length=0.3,head_width=0.15",
+                                                               color="0.2", lw=0.7, shrinkA=0, shrinkB=0), zorder=7)
+ax_c.text(0.5 * (xg0 + xc), ydim_c + 0.35, f"+{1e3 * ux[k_imp][top]:.0f} mm", ha="center", va="bottom", fontsize=7,
+          color="0.15", zorder=7, bbox=dict(fc="white", ec="none", alpha=0.8, pad=0.4))
 tag_in(ax_c, r"\textbf{(c)}", dark=False)
 tag_in(ax_d, r"\textbf{(d)}", dark=False)
 ax_c.text(0.0, 0.955, f"at the peak force, amplified {AMP:.0f}" + r"$\times$", transform=ax_c.transAxes,
