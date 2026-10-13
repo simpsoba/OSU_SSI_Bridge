@@ -112,7 +112,7 @@ for j in range(2):
         on = data[r]["on"]
         on = on[(on >= lo) & (on <= hi)]
         ax.vlines(on, y - 0.36, y + 0.36, color={1: ORANGE, 8: BLUE}.get(n, "0.15"), lw=1.0 if n != 1 else 0.4, zorder=2)
-        if on.size == 0 and data[r]["t_end"] > lo:
+        if j == 1 and data[r]["on"].size == 0:  # only runs with no slowdowns at all, once, after the break
             ax.text(0.5 * (lo + min(hi, data[r]["t_end"])), y, "no slowdowns", ha="center", va="center", color="0.45", zorder=3)
         if j == 1:
             ax.text(hi - 3, y, RUNS[r][0], ha="right", va="center", color="0.3", zorder=3)
@@ -165,7 +165,6 @@ Z = [s_z.add_subplot(gz[1, j]) for j in range(2)]
 ZL = [s_z.add_subplot(gz[0, j], sharex=Z[j]) for j in range(2)]
 for j, (z0, z1) in enumerate(ZOOMS):
     ax, lz = Z[j], ZL[j]
-    n_on = 0
     for k in ORDER:
         n, c = RUNS[k][2], RUNS[k][3]
         d = data[k]
@@ -176,10 +175,6 @@ for j, (z0, z1) in enumerate(ZOOMS):
         on = d["on_i"][(d["on_i"] >= z0) & (d["on_i"] <= z1)]
         if n != 1:
             lz.vlines(on, 0, 1, color=BLUE if n == 8 else "0.15", lw=1.0)
-            n_on += on.size
-    if n_on == 0:  # the serial run is not drawn in the zoom lanes
-        lz.text(0.5 * (z0 + z1), 0.5, "no slowdowns in the parallel runs", ha="center", va="center", color="0.45",
-                zorder=3)
     lz.add_patch(Rectangle((z0, 0.1), z1 - z0, 0.8, fc="0.9", ec="none", zorder=0))
     lz.set_ylim(0, 1)
     lz.grid(False)
