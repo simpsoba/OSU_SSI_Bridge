@@ -131,12 +131,12 @@ for tid, c, lw, ls, z in (("F12", "0.5", 1.0, (0, (3, 1.5)), 3), ("F11", "0.0", 
     x = t - xs * R.SQL
     k = (x > -0.5) & (x < 1.0)
     bc.plot(x[k], f[k], color=c, lw=lw, ls=ls, zorder=z)
-bc.set_xlim(-0.5, 1.0)
+bc.set_xlim(-0.5, 0.5)
 bc.set_xlabel(r"Time from the slowdown onset, $\sqrt{\lambda_L}\,\tau$ (s)")
 bc.set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
 bc.set_title(r"\textbf{(e)} isolated slowdown, F11 in (c)", loc="left")
 bc.text(0.05, 104, "F11, 24 (slowdown)", ha="left", va="center", color="0.0")
-bc.text(0.55, -16, "F12, 20 (no slowdown)", ha="left", va="top", color="0.45")
+bc.text(-0.46, -18, "F12, 20 (no slowdown)", ha="left", va="top", color="0.45")
 print(f"F11 slowdown onset t_int {ti0:.2f} s")
 for tid, name, c in SOL:
     t, f = F[tid]
@@ -145,12 +145,12 @@ for tid, name, c in SOL:
     kk = (t > t0 - 1.0) & (t < t0 + 1.0)
     bd.plot(t[kk] - t0, f[kk], color=c, lw=0.8, label=f"{tid}, {name}")
     print(f"{tid} solitary peak {f[w][np.argmax(np.abs(f[w]))]:.1f} kN")
-bd.set_xlim(-1.0, 1.0)
+bd.set_xlim(-0.5, 0.5)
 bd.sharey(bc)
 bc.set_ylim(-100, 120)
 bd.tick_params(labelleft=False)
 bd.set_xlabel(r"Time from the peak force, $\sqrt{\lambda_L}\,\tau$ (s)")
-bd.text(0.08, -62, "F05, F06, F09, F13\n(four models)", ha="left", va="center", color="0.35", linespacing=0.95)
+bd.text(0.06, -62, "F05, F06, F09, F13\n(four models)", ha="left", va="center", color="0.35", linespacing=0.95)
 bd.set_title(r"\textbf{(f)} solitary wave", loc="left")
 for ax in (bc, bd):
     ax.axhline(0, color="0.85", lw=0.4, zorder=0)
