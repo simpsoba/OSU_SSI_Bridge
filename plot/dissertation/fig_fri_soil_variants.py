@@ -48,7 +48,7 @@ ax.set_xlim(40, 160)
 ax.set_ylim(-250, 215)
 ax.set_xlabel(r"Integration time, $t_{\mathrm{int}}$ (s)")
 ax.set_ylabel(r"$u$ (mm)")
-ax.set_title(r"\textbf{(a)} interface displacement during the earthquake", loc="left")
+ax.set_title(r"\textbf{(a)}", loc="left")
 # direct labels with leaders: (time of the point on the curve, text position)
 LEAD = {"F05": ((107.0, 107.6), (78, 175)), "F20": ((93.0, 94.2), (62, -215)), "F24": ((143.0, 147.0), (150, -130))}
 for tid, lab, c, *_ in V:
