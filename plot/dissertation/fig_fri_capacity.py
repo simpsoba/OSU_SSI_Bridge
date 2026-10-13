@@ -3,7 +3,7 @@
 x = model (baseline, moderate, large, extra-large: 2,028, 3,216, 4,620, 5,484 DOFs); tests offset within each model by
 configuration and rank count. Configurations: CPU MKR-alpha with ProfileSPD, with MUMPS, or with cuDSS solves
 (integration on the CPU, linear solves on the GPU), and GPU MKR-alpha with cuDSS.
-(a) host latency per dt_sim window after start-up, relative to dt_sim: marker = mean, thin line = 1st to 99th
+(a) host latency per dt_sim window after start-up, relative to dt_sim: marker = mean, capped bar = 1st to 99th
     percentiles; dashed line = slowdown threshold 0.8 dt_sim
 (b) slowdown episodes after start-up per minute of laboratory time (model scale), symlog axis with zero at the bottom
 Filled markers: completed tests; open markers and NC: not completed (stopped early). Labels in (b): MPI ranks (spelled out once, on the 24-rank large-model test).
@@ -61,7 +61,8 @@ for tid, (cfg, dx) in TESTS.items():
     p1, p99 = np.percentile(lat, [1, 99])
     pts[tid] = (x, lat.mean(), rate, p99)
     mfc = c if d["complete"] else "white"
-    ax_a.vlines(x, p1, p99, color=c, lw=0.6, alpha=0.55, zorder=2)
+    ax_a.errorbar(x, 0.5 * (p1 + p99), yerr=0.5 * (p99 - p1), fmt="none", ecolor=c, elinewidth=0.6, capsize=2.2,
+                  capthick=0.6, alpha=0.6, zorder=2)
     for ax, y in ((ax_a, lat.mean()), (ax_b, rate)):
         ax.plot(x, y, marker=mk, ms=4.6, color=c, mfc=mfc, mew=0.9, ls="none", zorder=4)
     rk = "serial" if r[7] == 1 else f"{r[7]}"
@@ -78,13 +79,11 @@ fig.legend(handles=handles, loc="outside upper center", ncol=2, frameon=False, h
            columnspacing=1.5)
 # leaders in (a): what the marker and the thin line mean (on the extra-large test)
 x13, m13, _, p13 = pts["F13"]
-ax_a.annotate("mean", (x13, m13), xytext=(3.25, 0.30), ha="center", va="top", color="0.25",
-              arrowprops=dict(arrowstyle="-", color="0.4", lw=0.6, shrinkA=1, shrinkB=3))
-ax_a.annotate("1st--99th\npercentiles", (x13, p13), xytext=(2.85, 0.93), ha="center", va="bottom", color="0.25",
-              linespacing=0.95, arrowprops=dict(arrowstyle="-", color="0.4", lw=0.6, shrinkA=1, shrinkB=1))
+ax_a.annotate("mean", (x13, m13), xytext=(x13 + 0.35, m13 - 0.14), ha="center", va="top", color="0.35",
+              arrowprops=dict(arrowstyle="-", color="0.65", lw=0.5, ls=(0, (1, 1.5)), shrinkA=1, shrinkB=3))
 ax_a.axhline(0.8, color="0.35", lw=0.6, ls=(0, (4, 2)), zorder=0)
-ax_a.text(-0.55, 0.82, r"$0.8\,\Delta t_{\mathrm{sim}}$", ha="left", va="bottom", color="0.35")
-ax_a.set_ylim(0, 1.12)
+ax_a.text(3.7, 0.82, r"$0.8\,\Delta t_{\mathrm{sim}}$", ha="right", va="bottom", color="0.35")
+ax_a.set_ylim(0, 1.25)
 ax_a.set_ylabel(r"Host latency / $\Delta t_{\mathrm{sim}}$")
 ax_b.set_yscale("symlog", linthresh=0.1, linscale=0.4)
 ax_b.set_ylim(-0.03, 12000)
