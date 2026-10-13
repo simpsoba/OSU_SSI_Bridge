@@ -155,6 +155,8 @@ for j in range(2):
         on = data[r]["on"]
         on = on[(on >= lo) & (on <= min(hi, tend))]
         ax.vlines(on, y - 0.36, y + 0.36, color={1: ORANGE, 8: BLUE}.get(n, "0.15"), lw=1.0 if n != 1 else 0.4, zorder=2)
+        if on.size == 0 and tend > lo:
+            ax.text(0.5 * (lo + min(hi, tend)), y, "no slowdowns", ha="center", va="center", color="0.45", zorder=3)
         if j == 1:
             ax.text(hi - 3, y, RUNS[r][0], ha="right", va="center", color="0.3", zorder=3)
     ax.set_xlim(lo, hi)

@@ -1,7 +1,7 @@
 """Interface displacement, Wednesday runs (dissertation Ch. 6; read-only on data).
 
 u = meaSigOS x lambda (prototype mm), Simulink at 2048 Hz model. Records end where the serial actuator stops
-tracking (0.25-s RMS of target - measured above 2 mm model). Integrator time from the received-target count:
+tracking (0.25-s RMS of target - measured above 2 mm model). Integration time from the received-target count:
 target k at t_int = (k + alpha_f) dt_int. Delay = laboratory time of each target minus k dt_sim (laboratory s).
 (a)         slowdown lane (one row per run, test ID in the free space) and u on real time, sqrt(lambda_L) t
 (b)         u on integrator time; (b.1), (b.2) zooms with a slowdown lane each
@@ -112,6 +112,8 @@ for j in range(2):
         on = data[r]["on"]
         on = on[(on >= lo) & (on <= hi)]
         ax.vlines(on, y - 0.36, y + 0.36, color={1: ORANGE, 8: BLUE}.get(n, "0.15"), lw=1.0 if n != 1 else 0.4, zorder=2)
+        if on.size == 0 and data[r]["t_end"] > lo:
+            ax.text(0.5 * (lo + min(hi, data[r]["t_end"])), y, "no slowdowns", ha="center", va="center", color="0.45", zorder=3)
         if j == 1:
             ax.text(hi - 3, y, RUNS[r][0], ha="right", va="center", color="0.3", zorder=3)
     ax.set_xlim(lo, hi)
@@ -150,7 +152,7 @@ label(A[1], "4, 16, 24 ranks", (395, 62), (330, -120), GRAY)
 B = broken_pair(s_b, s_b.add_gridspec(1, 1)[0])
 draw(B, "ti", 0.8)
 B[0].set_ylabel(r"$u$ (mm)")
-B[1].set_xlabel(r"Integrator time, $t_{\mathrm{int}}$ (s)")
+B[1].set_xlabel(r"Integration time, $t_{\mathrm{int}}$ (s)")
 tag(B[0], "(b)")
 for (z0, z1), nm in zip(ZOOMS, ("(b.1)", "(b.2)")):
     B[1].add_patch(Rectangle((z0, YLIM[0] * 0.95), z1 - z0, (YLIM[1] - YLIM[0]) * 0.95, fill=False, ec="0.2", lw=0.6))
@@ -163,6 +165,7 @@ Z = [s_z.add_subplot(gz[1, j]) for j in range(2)]
 ZL = [s_z.add_subplot(gz[0, j], sharex=Z[j]) for j in range(2)]
 for j, (z0, z1) in enumerate(ZOOMS):
     ax, lz = Z[j], ZL[j]
+    n_on = 0
     for k in ORDER:
         n, c = RUNS[k][2], RUNS[k][3]
         d = data[k]
@@ -173,6 +176,10 @@ for j, (z0, z1) in enumerate(ZOOMS):
         on = d["on_i"][(d["on_i"] >= z0) & (d["on_i"] <= z1)]
         if n != 1:
             lz.vlines(on, 0, 1, color=BLUE if n == 8 else "0.15", lw=1.0)
+            n_on += on.size
+    if n_on == 0:  # the serial run is not drawn in the zoom lanes
+        lz.text(0.5 * (z0 + z1), 0.5, "no slowdowns in the parallel runs", ha="center", va="center", color="0.45",
+                zorder=3)
     lz.add_patch(Rectangle((z0, 0.1), z1 - z0, 0.8, fc="0.9", ec="none", zorder=0))
     lz.set_ylim(0, 1)
     lz.grid(False)

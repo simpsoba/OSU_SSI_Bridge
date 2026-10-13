@@ -99,6 +99,8 @@ for g, (name, tl) in enumerate(GROUPS):
         ax.add_patch(plt.Rectangle((0, y - 0.36), ti_end, 0.72, fc="0.93", ec="none", zorder=0))
         on = d["on"][d["on"] > d["t_su"]]
         ax.vlines(d["to_int"](on), y - 0.34, y + 0.34, color=c, lw=0.45 if on.size > 200 else 0.9, zorder=2)
+        if on.size == 0:
+            ax.text(0.5 * ti_end, y, "no slowdowns", ha="center", va="center", color="0.45", zorder=3)
         ax.plot(ti_end, y, marker=CFG[cfg][2], ms=4.2, color=c, mfc=c if d["complete"] else "white", mew=0.9,
                 ls="none", zorder=3)
         if not d["complete"]:

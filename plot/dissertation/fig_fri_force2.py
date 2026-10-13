@@ -7,7 +7,7 @@ laboratory clock, as fig_wed_force.py; dashed lines at +-0.1 F_y,eq (47.7 kN).
     (b) moderate, F06 (GPU, 8), F08 (CPU + MUMPS, NC), F07 (CPU + ProfileSPD, NC); (c) large, F11 (GPU, 24) and F15
     (CPU MKR-alpha + cuDSS solves, 20); (d) extra-large, F13 (GPU, 24)
 (e) the isolated slowdown of F11 at the strongest pulse against F12 (same model, no slowdown), each aligned at the
-    arrival of the same integration step (t_s = slowdown onset in F11)
+    arrival of the same integration step (tau = 0 at the slowdown onset in F11)
 (f) solitary-wave pulse of the completed GPU tests on the four models, aligned at each peak (tau = 0)
 No per-row legends: lane labels = test and ranks, configuration from the marker key (open = NC), as
 fig_fri_capacity.py; uniform 9 pt font; bold panel tags; constrained layout.
@@ -81,6 +81,8 @@ for r_, (title, rows) in enumerate(ROWS):
         on = d["on"][d["on"] > d["t_su"]] * R.SQL
         la.add_patch(plt.Rectangle((0, j - 0.36), d["t"][-1] * R.SQL, 0.72, fc="0.93", ec="none", zorder=0))
         la.vlines(on, j - 0.34, j + 0.34, color=c, lw=0.4 if on.size > 200 else 0.9)
+        if on.size == 0:
+            la.text(0.5 * d["t"][-1] * R.SQL, j, "no slowdowns", ha="center", va="center", color="0.45", zorder=3)
         la.plot(d["t"][-1] * R.SQL, j, marker=CFG[cfg][1], ms=3.8, color=c, mfc=c if d["complete"] else "white",
                 mew=0.8, ls="none", clip_on=False)
         t, f = F[tid]
@@ -130,7 +132,7 @@ for tid, c, lw, lab in (("F12", "0.6", 1.1, "F12, 20, no slowdown"), ("F11", "0.
     k = (x > -0.5) & (x < 1.0)
     bc.plot(x[k], f[k], color=c, lw=lw, label=lab)
 bc.set_xlim(-0.5, 1.0)
-bc.set_xlabel(r"$\sqrt{\lambda_L}\,(t - t_{\mathrm{s}})$ (s)")
+bc.set_xlabel(r"Time from the slowdown onset, $\sqrt{\lambda_L}\,\tau$ (s)")
 bc.set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
 bc.set_title(r"\textbf{(e)} isolated slowdown, F11 in (c)", loc="left")
 bc.text(0.05, 104, "F11, 24 (slowdown)", ha="left", va="center", color="0.0")
@@ -147,7 +149,7 @@ bd.set_xlim(-1.0, 1.0)
 bd.sharey(bc)
 bc.set_ylim(-100, 120)
 bd.tick_params(labelleft=False)
-bd.set_xlabel(r"$\sqrt{\lambda_L}\,(t - t_{\mathrm{peak}})$ (s)")
+bd.set_xlabel(r"Time from the peak force, $\sqrt{\lambda_L}\,\tau$ (s)")
 bd.text(0.08, -62, "F05, F06, F09, F13\n(four models)", ha="left", va="center", color="0.35", linespacing=0.95)
 bd.set_title(r"\textbf{(f)} solitary wave", loc="left")
 for ax in (bc, bd):
