@@ -87,6 +87,7 @@ for ax, s in zip(A, ("(a)", "(b)", "(c)")):
 from scipy.signal import sosfiltfilt
 kd = (tl >= t_imp - 40) & (tl <= t_imp + 70)
 D.plot(tl[kd] - t_imp, u[kd], color="#0072B2", lw=0.5, zorder=3)
+D.plot(0.0, u[k][ip], "o", ms=3.5, color="#0072B2", zorder=4)  # the peak force, as in (a)-(c)
 sos = butter(4, [0.3, 0.7], btype="band", fs=1 / (dt * R.SQL), output="sos")
 ub = sosfiltfilt(sos, u)
 amp = {}
