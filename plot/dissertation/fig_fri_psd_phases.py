@@ -5,6 +5,7 @@ GPU-integrator displacement enters. Signals as fig_wed_psd.py (prototype-scaled 
 Three 120-s windows: earthquake (20-140 s; 5-95 % Arias 56-139 s), free vibration in still water (200-320 s), solitary
 wave and after (330-450 s; peak near 349 s). Welch with the same Hann segments (40 s, 75 % overlap, segment means
 removed) in every window, so the curves share resolution and averaging; whole record (faint) for reference.
+Reference lines as fig_wed_psd.py: f_1, f_2 (first two modes), f_osc (transfer-system oscillation), f_mains.
 """
 import sys
 from pathlib import Path
@@ -43,6 +44,28 @@ def psd(t, x, w0, w1):
     n -= n % 4
     return welch(x[m], fs=fs, window="hann", nperseg=n, noverlap=3 * n // 4, detrend="constant")
 
+REFS = [(0.477, r"$f_1$"), (2.870, r"$f_2$"), (12.0, r"$f_{\mathrm{osc}}$"), (60.0 / R.SQL, r"$f_{\mathrm{mains}}$")]
+
+
+def ref_labels(ax):
+    for x0, _ in REFS:
+        ax.axvline(x0, color="0.35", lw=0.5, ls=(0, (3, 2)), zorder=0)
+    items = sorted(REFS, key=lambda it: it[0])
+    lx0, lx1 = np.log10(ax.get_xlim())
+    xf = [(np.log10(x) - lx0) / (lx1 - lx0) for x, _ in items]
+    gap, xl = 0.062, list(xf)
+    for i in range(1, len(xl)):
+        xl[i] = max(xl[i], xl[i - 1] + gap)
+    over = xl[-1] - 0.99
+    if over > 0:
+        xl = [v - over for v in xl]
+        for i in range(len(xl) - 2, -1, -1):
+            xl[i] = min(xl[i], xl[i + 1] - gap)
+    for (x, lab), a_, b_ in zip(items, xf, xl):
+        ax.plot([a_, a_, b_], [1.0, 1.025, 1.07], transform=ax.transAxes, color="0.45", lw=0.5, clip_on=False)
+        ax.text(b_, 1.085, lab, transform=ax.transAxes, rotation=90, ha="center", va="bottom", color="0.25")
+
+
 
 prs.configure_font()
 d = load(TID)
@@ -58,12 +81,11 @@ for c, (kt, kx, unit) in enumerate((("tf", "F", "kN"), ("tu", "u", "mm"))):
         k = (f > 0.4) & (f < 0.6)
         print(f"{kx} {name:24s}: mean square {np.trapz(P, f):10.4g} {unit}^2, peak near f1 at {f[k][np.argmax(P[k])]:.3f} Hz")
     ax.set_xlim(0.025, 100)
-    for x0 in (1 / 12.0, 0.477, 2.870, 12.0, 60.0 / R.SQL):
-        ax.axvline(x0, color="0.35", lw=0.5, ls=(0, (3, 2)), zorder=0)
+    ref_labels(ax)
     ax.set_xlabel("Real-time frequency, prototype (Hz)")
     sym = r"$\lambda_L^3 f_p$" if kx == "F" else r"$u$"
     ax.set_ylabel(f"PSD of {sym} ({unit}$^2$/Hz)")
-    ax.set_title(rf"\textbf{{({'ab'[c]})}} {'force' if kx == 'F' else 'displacement'}", loc="left")
+    ax.set_title(rf"\textbf{{({'ab'[c]})}} {'force' if kx == 'F' else 'displacement'}", loc="left", pad=30)
 A[0].legend(loc="lower left", frameon=False, fontsize=7)
 fig.savefig(OUT.with_suffix(".png"), dpi=200)
 fig.savefig(OUT.with_suffix(".pdf"))
