@@ -29,6 +29,7 @@ from scipy.signal import butter, filtfilt
 
 sys.path.insert(0, str(Path(__file__).parent))
 import ctrl_error_wed as C  # noqa: E402
+from fri_runs import load_force  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "plot"))
@@ -57,9 +58,8 @@ def load(stem):
     uf = filtfilt(b, a, me[:, 0])
     vel = np.gradient(uf, dt)
     acc = np.gradient(vel, dt)
-    raw = sio.loadmat(ROOT / "OSU_SSI_BRIDGE_DATA" / "Simulink" / f"{stem}.mat", squeeze_me=True,
-                      struct_as_record=False)["data"].topLRaw.data
-    F = -LAM ** 3 * np.interp(tm, raw[:, -1], raw[:, 0]) / 1e3
+    t_raw, f_raw = load_force(stem)  # cached load-cell force (cache_force.py)
+    F = -LAM ** 3 * np.interp(tm, t_raw, f_raw) / 1e3
     k = (ti > 2.0) & (tm <= tk[-1])
     return dict(tl=tm[k] * SQL, ti=ti[k], u=me[k, 0] * LAM * 1e3, v=vel[k] * SQL * 1e3, a=acc[k], F=F[k])
 
