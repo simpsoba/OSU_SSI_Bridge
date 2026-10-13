@@ -6,7 +6,7 @@ OpenSees, OpenFresco, and the rate transition running, actuator disconnected).
     percentiles; dashed line = slowdown threshold 0.8 dt_sim
 (b) slowdown episodes after start-up per minute of laboratory time (model scale), symlog axis
 Dotted vertical line: 24 physical cores (8 performance + 16 efficiency) of the host processor.
-Direct model labels in (b); uniform 9 pt font; bold panel tags; constrained layout (style of fig_fri_capacity.py).
+Key above both panels (models; RTHS test vs dry run); uniform 9 pt font; bold panel tags; constrained layout (style of fig_fri_capacity.py).
 """
 import sys
 from pathlib import Path
@@ -52,7 +52,6 @@ for name, c, mk, ids in SER:
     pts.sort()
     for ax, k in ((ax_a, 1), (ax_b, 2)):
         ax.plot([p[0] for p in pts], [p[k] for p in pts], color=c, lw=0.6, alpha=0.5, zorder=1)
-    ax_b.text(*LAB_B[name], name, color=c, ha="left", va="center")
 ax_a.axhline(0.8, color="0.35", lw=0.6, ls=(0, (4, 2)), zorder=0)
 ax_a.text(5.4, 0.82, r"$0.8\,\Delta t_{\mathrm{sim}}$", ha="left", va="bottom", color="0.35")
 ax_a.set_ylim(0, 1.0)
@@ -62,9 +61,14 @@ ax_b.set_ylim(-0.02, 400)
 ax_b.set_yticks([0, 0.1, 1, 10, 100])
 ax_b.set_yticklabels(["0", "0.1", "1", "10", "100"])
 ax_b.set_ylabel("Slowdown episodes per minute")
-ax_b.plot([], [], marker="o", color="0.3", mfc="0.3", ls="none", ms=4.6, label="RTHS test")
-ax_b.plot([], [], marker="o", color="0.3", mfc="white", ls="none", ms=4.6, label="dry run")
-ax_b.legend(loc="upper left", frameon=False, handletextpad=0.3, borderaxespad=0.2)
+hs = [plt.Line2D([], [], marker=mk, color=c, mfc=c, ls="-", lw=0.6, ms=4.6) for _, c, mk, _ in SER]
+hs += [plt.Line2D([], [], marker="o", color="0.3", mfc="0.3", ls="none", ms=4.6),
+       plt.Line2D([], [], marker="o", color="0.3", mfc="white", ls="none", ms=4.6)]
+blank = plt.Line2D([], [], ls="none")
+order = [(hs[0], SER[0][0]), (hs[3], "RTHS test"), (hs[1], SER[1][0]), (hs[4], "dry run"), (hs[2], SER[2][0]),
+         (blank, "")]  # legend fills column-wise: models on the first row, test type on the second
+fig.legend([h for h, _ in order], [l for _, l in order], loc="outside upper center", ncol=3, frameon=False,
+           handletextpad=0.3, columnspacing=1.4)
 for ax, tg in ((ax_a, "(a)"), (ax_b, "(b)")):
     ax.axvline(24, color="0.55", lw=0.6, ls=":", zorder=0)
     ax.set_xlim(5, 30)
