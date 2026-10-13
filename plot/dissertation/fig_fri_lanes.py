@@ -1,14 +1,14 @@
 """When the slowdowns occurred in the main campaign, and how far the tests fell behind real time (dissertation Ch. 6;
 read-only on data).
 
-(a) slowdown episodes after start-up (ticks), one lane per test, on integration time t_int (prototype); lanes grouped
+(a) representative measured interface displacement (F05) on integration time
+(b) slowdown episodes after start-up (ticks), one lane per test, on integration time t_int (prototype); lanes grouped
     by model and ordered by configuration; shaded band = D5-95 (5-95 % Arias intensity); dashed line =
     solitary-wave impact (median t_int of the peak load-cell force over the completed tests); lanes end where the
     test ended; numbers at the right = slowdown episodes after start-up; NC = not completed (stopped early)
-(b) delay behind real time after start-up, from the rate-transition window starts (count = 1): windows start every
+(c) delay behind real time after start-up, from the rate-transition window starts (count = 1): windows start every
     dt_sim unless a slowdown stretches one, so the delay accumulates without the host-latency jitter of the target
     arrivals; start-up offset removed; prototype-scaled laboratory clock, symlog axis; marker at the end of each test
-Top strip: representative measured interface displacement (F05) on integration time, aligned with (a).
 Configurations, colors, and markers as fig_fri_capacity.py. Uniform 9 pt font; bold panel tags; constrained layout.
 Soil-formulation variants are not shown.
 """
@@ -126,6 +126,7 @@ ax.set_ylim(y - 0.4, -1.6)
 ax.set_xlim(0, T_END + 32)
 ax.set_xticks(range(0, 451, 50))
 ax.set_xlabel(r"Integration time, $t_{\mathrm{int}}$ (s)")
+ax.set_title(r"\textbf{(b)}", loc="left")
 ax.tick_params(axis="y", length=0)
 for s in ("left", "right", "top"):
     ax.spines[s].set_visible(False)
@@ -152,7 +153,7 @@ bx.set_ylim(-0.003, 12)
 bx.set_xlim(0, 520)
 bx.set_xlabel(r"Laboratory time, $\sqrt{\lambda_L}\,t$ (s)")
 bx.set_ylabel("Delay behind\nreal time (s)")
-bx.set_title(r"\textbf{(b)}", loc="left")
+bx.set_title(r"\textbf{(c)}", loc="left")
 fig.savefig(OUT.with_suffix(".png"), dpi=250)
 fig.savefig(OUT.with_suffix(".pdf"))
 print("wrote", OUT.with_suffix(".png"))
