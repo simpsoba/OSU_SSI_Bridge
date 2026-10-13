@@ -4,7 +4,7 @@ u = meaSigOS x lambda (prototype mm), Simulink at 2048 Hz model. Records end whe
 tracking (0.25-s RMS of target - measured above 2 mm model). Integration time from the received-target count:
 target k at t_int = (k + alpha_f) dt_int. Delay = laboratory time of each target minus k dt_sim (laboratory s).
 (a)         slowdown lane (one row per run, test ID in the free space) and u on real time, sqrt(lambda_L) t
-(b)         u on integration time; (b.1) zoom from strong shaking to the serial stop, with a slowdown lane
+(b)         u on integration time; (b.1) zoom on the last cycles before the serial stop
 (c)         delay of the received targets behind hard real time; inset for the parallel runs
 Bold panel tags, no titles or legends (direct labels), uniform font, constrained layout.
 """
@@ -36,7 +36,7 @@ RUNS = [("W04", "0819_GusBridge_Serial_H0p5_T7p746_reg_Trial02", 1, ORANGE),
 ORDER = [1, 3, 4, 2, 0]  # grays, 8 ranks, then serial on top
 SEG = [(0, 170), (170, 420)]
 WR = [1, 3.4]
-ZOOMS = [(212, 246)]
+ZOOMS = [(234, 245)]
 YLIM = (-200, 200)
 
 
@@ -160,43 +160,28 @@ for (z0, z1), nm in zip(ZOOMS, ("(b.1)",)):
 label(B[1], "serial: test stopped", (data[0]["ti_end"], data[0]["u"][-1]), (300, -120), ORANGE)
 
 # ---------------- (b.1) zoom on integration time ----------------
-gz = s_z.add_gridspec(2, 1, height_ratios=[0.16, 1.0], hspace=0.04)
-Z = [s_z.add_subplot(gz[1, 0])]
-ZL = [s_z.add_subplot(gz[0, 0], sharex=Z[0])]
-for j, (z0, z1) in enumerate(ZOOMS):
-    ax, lz = Z[j], ZL[j]
-    hits = []
-    for k in ORDER:
-        n, c = RUNS[k][2], RUNS[k][3]
-        d = data[k]
-        m = (d["ti"] >= z0 - 1) & (d["ti"] <= z1 + 1)
-        ax.plot(d["ti"][m], d["u"][m], color=c, lw=1.1 if n in (1, 8) else 0.9)
-        if n == 1 and d["ti"][-1] <= z1:
-            ax.plot(d["ti"][-1], d["u"][-1], marker="x", color=ORANGE, ms=5, mew=1.0, zorder=5)
-        on = d["on_i"][(d["on_i"] >= z0) & (d["on_i"] <= z1)]
-        if n != 1:
-            lz.vlines(on, 0, 1, color=BLUE if n == 8 else "0.15", lw=1.0)
-            if on.size:
-                hits.append(str(n))
-    lz.add_patch(Rectangle((z0, 0.1), z1 - z0, 0.8, fc="0.9", ec="none", zorder=0))
-    lz.set_ylim(0, 1)
-    lz.grid(False)
-    lz.set_yticks([])
-    for s in ("left", "bottom"):
-        lz.spines[s].set_visible(False)
-    lz.tick_params(bottom=False, labelbottom=False)
-    # which runs slowed down in this window, next to the tag (at 9 pt the note does not fit between the ticks)
-    note = f" slowdowns ({', '.join(sorted(set(hits), key=int))} ranks)" if hits else ""
-    lz.set_title(rf"\textbf{{(b.{j + 1})}}{note}", loc="left")
-    ax.set_xlim(z0, z1)
-    ax.set_ylim(*YLIM)
-    ax.set_xlabel(r"$t_{\mathrm{int}}$ (s)")
-Z[0].set_ylabel(r"$u$ (mm)")
+z0, z1 = ZOOMS[0]
+ax = s_z.add_subplot(s_z.add_gridspec(1, 1)[0])
+for k in ORDER:
+    n, c = RUNS[k][2], RUNS[k][3]
+    d = data[k]
+    m = (d["ti"] >= z0 - 1) & (d["ti"] <= z1 + 1)
+    ax.plot(d["ti"][m], d["u"][m], color=c, lw=1.1 if n in (1, 8) else 0.9)
+    if n == 1 and d["ti"][-1] <= z1:
+        ax.plot(d["ti"][-1], d["u"][-1], marker="x", color=ORANGE, ms=5, mew=1.0, zorder=5)
+ax.set_xlim(z0, z1)
+ax.set_ylim(*YLIM)
+ax.set_xlabel(r"$t_{\mathrm{int}}$ (s)")
+ax.set_ylabel(r"$u$ (mm)")
+tag(ax, "(b.1)")
+KR = {RUNS[k][2]: k for k in range(5)}
+P8 = (236.6, float(np.interp(236.6, data[KR[8]]["ti"], data[KR[8]]["u"])))
+PG = (238.3, float(np.interp(238.3, data[KR[24]]["ti"], data[KR[24]]["u"])))
 LABELS = True
 if LABELS:
-    label(Z[0], "serial", (242.1, 106), (238.5, 165), ORANGE)
-    label(Z[0], "8 ranks", (217.0, 38), (214.5, 150), BLUE)
-    label(Z[0], "4, 16, 24 ranks", (226.8, -40), (221.5, -165), GRAY)
+    label(ax, "serial", (242.1, 106), (240.0, 165), ORANGE)
+    label(ax, "8 ranks", P8, (P8[0] - 1.2, 150), BLUE)
+    label(ax, "4, 16, 24 ranks", PG, (PG[0] - 1.0, -165), GRAY)
 
 # ---------------- (c) delay behind real time ----------------
 C = broken_pair(s_c, s_c.add_gridspec(1, 1)[0])
