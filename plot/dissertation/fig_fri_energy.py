@@ -64,11 +64,14 @@ def slowdowns(stem):
 prs.configure_font()
 fig, ax = plt.subplots(figsize=(6.0, 2.6), layout="constrained")
 ends = []
+zoom = []  # (tau, E, color) of the runs that reach the solitary wave
 for tid, cfg, lab in CASES:
     r = R.BY_ID[tid]
     tau, E, _ = energy(r[2], 0.0)
     c, mk = CFG[cfg] if cfg else ("0.6", None)
     ax.plot(tau, E, color=c, lw=1.0 if cfg else 0.7, zorder=3 if cfg else 2)
+    if tau[-1] > T_SOL + 30:
+        zoom.append((tid, tau, E, c))
     if cfg:
         ax.plot(tau[-1], E[-1], marker=mk, ms=4.6, color=c, mfc="white" if r[8] == "incomplete" else c, mew=0.9,
                 ls="none", zorder=4)
@@ -85,7 +88,23 @@ for x, y, c, lab in ends:
 ax.text(ref_end[0] + 6, ref_end[1] - 0.45, "F03, F05\n(0-1 slowdowns)", ha="left", va="center", color="0.45", linespacing=0.95)
 ax.axhline(0, color="0.5", lw=0.5, zorder=1)
 ax.axvline(T_SOL, color="0.35", lw=0.6, ls=(0, (4, 2)), zorder=1)
-ax.text(T_SOL + 4, 0.04, "solitary wave", transform=ax.get_xaxis_transform(), ha="left", va="bottom", color="0.35")
+# inset: the change in E across the solitary wave, relative to 10 s before its peak
+ins = ax.inset_axes([0.63, 0.24, 0.29, 0.38])
+for tid, tau, E, c in zoom:
+    kz = (tau >= T_SOL - 10) & (tau <= T_SOL + 30)
+    ins.plot(tau[kz], 1e3 * (E[kz] - np.interp(T_SOL - 10, tau, E)), color=c, lw=0.9)
+ins.axhline(0, color="0.6", lw=0.4)
+ins.axvline(T_SOL, color="0.35", lw=0.6, ls=(0, (4, 2)))
+ins.set_xlim(T_SOL - 10, T_SOL + 30)
+ins.set_xticks([T_SOL - 10, T_SOL, T_SOL + 20])
+ins.set_xticklabels([f"{T_SOL - 10:.0f}", f"{T_SOL:.0f}", f"{T_SOL + 20:.0f}"])
+ins.set_ylabel(r"$\Delta E$ (J)", labelpad=1)
+ins.grid(True)
+for s_ in ("top", "right"):
+    ins.spines[s_].set_visible(True)
+ax.indicate_inset([T_SOL - 10, 0.95, 40, 0.3], ins, edgecolor="0.5", lw=0.5)
+ax.text(T_SOL - 4, 0.10, "solitary\nwave", transform=ax.get_xaxis_transform(), ha="right", va="center", color="0.35",
+        linespacing=0.95)
 ax.set_xlim(0, 540)
 ax.set_xticks(range(0, 451, 50))
 ax.spines["bottom"].set_bounds(0, 460)
