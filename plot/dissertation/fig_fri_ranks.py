@@ -2,8 +2,8 @@
 
 Moderate, large, and extra-large models; RTHS tests (filled) and lunch dry runs without actuator motion (open:
 OpenSees, OpenFresco, and the rate transition running, actuator disconnected).
-(a) host latency per dt_sim window after start-up, relative to dt_sim: marker = mean, capped bar = 1st to 99th
-    percentiles; dashed line = slowdown threshold 0.8 dt_sim
+(a) host latency per dt_sim window after start-up, relative to dt_sim: marker = mean, faint box = interquartile range,
+    capped bar = 1st to 99th percentiles; dashed line = slowdown threshold 0.8 dt_sim
 (b) slowdown episodes after start-up per minute of laboratory time (model scale), symlog axis
 Dotted vertical line: 24 physical cores (8 performance + 16 efficiency) of the host processor.
 Key above both panels (models; RTHS test vs dry run); uniform 9 pt font; bold panel tags; constrained layout (style of fig_fri_capacity.py).
@@ -45,6 +45,8 @@ for name, c, mk, ids in SER:
         pts.append((x, lat.mean(), rate))
         ax_a.errorbar(x, 0.5 * (p1 + p99), yerr=0.5 * (p99 - p1), fmt="none", ecolor=c, elinewidth=0.6, capsize=2.2,
                       capthick=0.6, alpha=0.6, zorder=2)
+        q1, q3 = np.percentile(lat, [25, 75])
+        ax_a.add_patch(plt.Rectangle((x - 0.45, q1), 0.9, max(q3 - q1, 0.006), fc=c, ec="none", alpha=0.22, zorder=3))
         for ax, y in ((ax_a, lat.mean()), (ax_b, rate)):
             ax.plot(x, y, marker=mk, ms=4.6, color=c, mfc="white" if dry else c, mew=0.9, ls="none", zorder=4)
         print(f"{tid} {name:24} {r[7]:2d} ranks {'dry' if dry else 'RTHS'}: latency/dt {lat.mean():.2f} "
@@ -68,6 +70,7 @@ blank = plt.Line2D([], [], ls="none")
 order = [(hs[0], SER[0][0]), (hs[3], "RTHS test"), (hs[1], SER[1][0]), (hs[4], "dry run"), (hs[2], SER[2][0]),
          (blank, "")]  # legend fills column-wise: models on the first row, test type on the second
 fig.legend([h for h, _ in order], [l for _, l in order], loc="outside upper center", ncol=3, frameon=False,
+           title=r"GPU MKR-$\alpha$, cuDSS",
            handletextpad=0.3, columnspacing=1.4)
 for ax, tg in ((ax_a, "(a)"), (ax_b, "(b)")):
     ax.axvline(24, color="0.55", lw=0.6, ls=":", zorder=0)
