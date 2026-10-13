@@ -6,9 +6,11 @@ laboratory clock, as fig_wed_force.py; dashed lines at +-0.1 F_y,eq (47.7 kN).
 (a)-(d) one row per model, with slowdown lanes above the force: (a) baseline, F05 (GPU, 8) and F22 (GPU, serial, NC);
     (b) moderate, F06 (GPU, 8), F08 (CPU + MUMPS, NC), F07 (CPU + ProfileSPD, NC); (c) large, F11 (GPU, 24) and F15
     (CPU MKR-alpha + cuDSS solves, 20); (d) extra-large, F13 (GPU, 24)
-(e) the isolated slowdown of F11 at the strongest pulse and the force transient it produced (tick = onset)
+(e) the isolated slowdown of F11 at the strongest pulse against F12 (same model, no slowdown), each aligned at the
+    arrival of the same integration step (t_s = slowdown onset in F11)
 (f) solitary-wave pulse of the completed GPU tests on the four models, aligned at each peak (tau = 0)
-Configuration colors and markers as fig_fri_capacity.py; uniform 9 pt font; bold panel tags; constrained layout.
+No per-row legends: lane labels = test and ranks, configuration from the marker key (open = NC), as
+fig_fri_capacity.py; uniform 9 pt font; bold panel tags; constrained layout.
 """
 import sys
 from pathlib import Path
@@ -37,8 +39,8 @@ ROWS = [("Baseline, 2,028 DOFs", [("F05", "gpu", "0.55", r"F05, GPU, 8"),
                                ("F15", "cpucudss", "#2166AC", r"F15, CPU + cuDSS solves, 20")]),
         ("Extra-large, 5,484 DOFs", [("F13", "gpu", "#000000", r"F13, GPU, 24")])]
 ZORD = {"F05": 1, "F22": 3, "F06": 3, "F07": 1, "F08": 2, "F11": 3, "F15": 2, "F13": 3}
-SOL = [("F05", "baseline", "0.0"), ("F06", "moderate", "#8C510A"), ("F09", "large", "#2166AC"),
-       ("F13", "extra-large", "0.55")]
+SOL = [("F05", "baseline", "0.0"), ("F06", "moderate", "0.25"), ("F09", "large", "0.45"),
+       ("F13", "extra-large", "0.65")]
 YL = 140.0
 
 
@@ -61,7 +63,7 @@ def force(tid, t_end):
 
 
 prs.configure_font()
-ids = sorted({t for _, rr in ROWS for t, *_ in rr} | {t for t, *_ in SOL} | {"F11"})
+ids = sorted({t for _, rr in ROWS for t, *_ in rr} | {t for t, *_ in SOL} | {"F11", "F12"})
 D = {tid: R.load(tid) for tid in ids}
 F = {tid: force(tid, D[tid]["t"][-1]) for tid in ids}
 
@@ -85,7 +87,7 @@ for r_, (title, rows) in enumerate(ROWS):
         fa.plot(t, f, color=c, lw=0.5, zorder=ZORD[tid], label=lab)
         print(f"{tid}: |F| max {np.abs(f).max():.1f} kN, earthquake phase (lab < 300 s) {np.abs(f[t < 300]).max():.1f}")
     la.set_yticks(range(len(rows)))
-    la.set_yticklabels([lab.split(",")[0] for _, _, _, lab in rows])
+    la.set_yticklabels([f"{tid}, {lab.split(', ')[2]}" for tid, _, _, lab in rows])
     for tl, (_, _, c, _) in zip(la.get_yticklabels(), rows):
         tl.set_color(c)
     la.set_ylim(len(rows) - 0.5, -0.5)
@@ -97,11 +99,9 @@ for r_, (title, rows) in enumerate(ROWS):
     for yv in (F_REF, -F_REF):
         fa.axhline(yv, color="0.35", lw=0.6, ls=(0, (4, 2)), zorder=0)
     fa.text(472, -F_REF - 3, r"$-0.1F_{y,\mathrm{eq}}$", ha="right", va="top", color="0.35")
-    fa.set_ylim(-YL, YL + 50)
+    fa.set_ylim(-YL, YL)
     fa.set_xlim(0, 475)
     fa.set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
-    lg = fa.legend(loc="upper left", bbox_to_anchor=(0.26, 1.0), frameon=True, handlelength=1.2, ncol=1, borderaxespad=0.1, labelspacing=0.15, framealpha=1.0)
-    lg.get_frame().set(facecolor="white", edgecolor="none")
     if r_ == len(ROWS) - 1:
         fa.set_xlabel(r"Laboratory time, $\sqrt{\lambda_L}\,t$ (s)")
     else:
@@ -110,34 +110,45 @@ for r_, (title, rows) in enumerate(ROWS):
         fa.annotate("solitary wave", (347, -78), xytext=(300, -105), ha="right", va="center", color="0.35",
                     arrowprops=dict(arrowstyle="-", color="0.5", lw=0.6, shrinkA=1, shrinkB=2))
 
+KEY = [("gpu", r"GPU MKR-$\alpha$, cuDSS"), ("pspd", r"CPU MKR-$\alpha$, ProfileSPD"), ("mumps", r"CPU MKR-$\alpha$, MUMPS"),
+       ("cpucudss", r"CPU MKR-$\alpha$, cuDSS solves")]
+h = [plt.Line2D([], [], marker=CFG[k][1], color=CFG[k][0], ls="none", ms=4.6) for k, _ in KEY]
+h.append(plt.Line2D([], [], marker="o", color="0.3", mfc="white", mew=0.8, ls="none", ms=4.6))
+s_top.legend(h, [lab for _, lab in KEY] + ["not completed (NC)"], loc="outside upper center", ncol=3, frameon=False,
+             handletextpad=0.3, columnspacing=1.2)
+
 bc, bd = s_bot.subplots(1, 2)
 d = D["F11"]
 t, f = F["F11"]
-on = d["on"][d["on"] > d["t_su"]] * R.SQL
-tp = t[np.argmax(np.abs(f))]
-k = (t > tp - 0.6) & (t < tp + 1.4)
-bc.plot(t[k] - tp, f[k], color="0.0", lw=0.8)
-for x in on[np.abs(on - tp) < 1.5]:
-    bc.axvline(x - tp, color="#FF8C00", lw=1.0, zorder=0)
-    bc.text(x - tp + 0.03, 0.97, "slowdown", transform=bc.get_xaxis_transform(), ha="left", va="top", color="#B85C00")
-bc.set_xlim(-0.6, 1.4)
-bc.set_xlabel(r"$\sqrt{\lambda_L}\,(t - t_{\mathrm{peak}})$ (s)")
+tp = t[np.argmax(np.abs(f))] / R.SQL  # strongest transient (model-scale laboratory clock)
+x0 = d["on"][d["on"] <= tp][-1]  # onset of the slowdown that produced it
+ti0 = d["to_int"](x0)  # integration time carried by that step
+for tid, c, lw, lab in (("F12", "0.6", 1.1, "F12, 20, no slowdown"), ("F11", "0.0", 0.8, "F11, 24, slowdown")):
+    t, f = F[tid]
+    xs = x0 if tid == "F11" else np.interp(ti0, D[tid]["ti_k"], D[tid]["tk"])  # same step in the other test
+    x = t - xs * R.SQL
+    k = (x > -0.5) & (x < 1.0)
+    bc.plot(x[k], f[k], color=c, lw=lw, label=lab)
+bc.set_xlim(-0.5, 1.0)
+bc.set_xlabel(r"$\sqrt{\lambda_L}\,(t - t_{\mathrm{s}})$ (s)")
 bc.set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
 bc.set_title(r"\textbf{(e)} isolated slowdown, F11 in (c)", loc="left")
-print(f"F11 transient peak {f[np.argmax(np.abs(f))]:.1f} kN at {tp:.2f} s")
+bc.text(0.05, 104, "F11, 24 (slowdown)", ha="left", va="center", color="0.0")
+bc.text(0.55, -16, "F12, 20 (no slowdown)", ha="left", va="top", color="0.45")
+print(f"F11 slowdown onset t_int {ti0:.2f} s")
 for tid, name, c in SOL:
     t, f = F[tid]
     w = (t > 335) & (t < 365)
     t0 = t[w][np.argmax(np.abs(f[w]))]
-    kk = (t > t0 - 1.5) & (t < t0 + 3.0)
+    kk = (t > t0 - 1.0) & (t < t0 + 1.0)
     bd.plot(t[kk] - t0, f[kk], color=c, lw=0.8, label=f"{tid}, {name}")
     print(f"{tid} solitary peak {f[w][np.argmax(np.abs(f[w]))]:.1f} kN")
-bd.set_xlim(-1.5, 3.0)
+bd.set_xlim(-1.0, 1.0)
 bd.sharey(bc)
 bc.set_ylim(-100, 120)
 bd.tick_params(labelleft=False)
 bd.set_xlabel(r"$\sqrt{\lambda_L}\,(t - t_{\mathrm{peak}})$ (s)")
-bd.legend(loc="upper right", frameon=False, handlelength=1.2, ncol=2, columnspacing=0.8)
+bd.text(0.08, -62, "F05, F06, F09, F13\n(four models)", ha="left", va="center", color="0.35", linespacing=0.95)
 bd.set_title(r"\textbf{(f)} solitary wave", loc="left")
 for ax in (bc, bd):
     ax.axhline(0, color="0.85", lw=0.4, zorder=0)
