@@ -193,15 +193,18 @@ C[0].set_ylim(-1, 22)
 C[0].set_ylabel("Delay,\nlaboratory (s)")
 C[1].set_xlabel(r"Laboratory time, $\sqrt{\lambda_L}\,t$ (s)")
 tag(C[0], "(c)")
-label(C[1], "serial", (250, np.interp(250, data[0]["tk"], data[0]["lag"])), (215, 19), ORANGE)
-ins = C[1].inset_axes([0.52, 0.40, 0.31, 0.52])
+label(C[1], f"serial: {data[0]['lag'][-1]:.1f} s", (250, np.interp(250, data[0]["tk"], data[0]["lag"])), (215, 19),
+      ORANGE)  # delay at the stop
+ins = C[1].inset_axes([0.46, 0.40, 0.31, 0.52])
 for k in (1, 3, 4, 2):
     d = data[k]
     ins.plot(d["tk"], d["lag"], color=RUNS[k][3], lw=1.0)
 lag_end = {RUNS[k][2]: np.interp(SEG[1][1], data[k]["tk"], data[k]["lag"]) for k in (1, 2, 3, 4)}
 blend = mtransforms.blended_transform_factory(ins.transAxes, ins.transData)
-for lab, y, c in (("24 ranks", lag_end[24], GRAY), ("16 ranks", lag_end[16] + 0.025, GRAY),
-                  ("4, 8 ranks", 0.5 * (lag_end[4] + lag_end[8]) - 0.025, "0.25")):
+# delay at the right edge of the inset (420 s), as the curves end there
+for lab, y, c in ((f"24 ranks: {lag_end[24]:.2f} s", lag_end[24], GRAY),
+                  (f"16 ranks: {lag_end[16]:.2f} s", lag_end[16] + 0.025, GRAY),
+                  (f"4, 8 ranks: {lag_end[4]:.2f}, {lag_end[8]:.2f} s", 0.5 * (lag_end[4] + lag_end[8]) - 0.025, "0.25")):
     ins.text(1.03, y, lab, transform=blend, ha="left", va="center", color=c)
 ins.set_xlim(0, SEG[1][1])
 ins.set_ylim(0, 0.35)
