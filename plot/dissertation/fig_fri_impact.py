@@ -127,8 +127,8 @@ prs.configure_font()
 CROP = {"wide": (0.12, 0.86), "close": (0.0, 0.78)}  # kept fraction of the frame height (top, bottom)
 BLUE = "#0072B2"
 H_WATER = 2.4  # m, prototype water depth above the mudline
-fig = plt.figure(figsize=(6.0, 8.0), layout="constrained")
-gs = fig.add_gridspec(2, 2, height_ratios=[1.3, 1.35])
+fig = plt.figure(figsize=(6.0, 7.0), layout="constrained")
+gs = fig.add_gridspec(2, 2, height_ratios=[1.1, 1.35])
 
 
 def tag_in(ax, text, dark=True):
@@ -196,11 +196,7 @@ ax_c.text(0.5 * (xg0 + xc), ydim_c + 0.35, f"+{1e3 * ux[k_imp][top]:.0f} mm", ha
           color="0.15", zorder=7, bbox=dict(fc="white", ec="none", alpha=0.8, pad=0.4))
 tag_in(ax_c, r"\textbf{(c)}", dark=False)
 tag_in(ax_d, r"\textbf{(d)}", dark=False)
-ax_c.text(0.0, 0.955, f"at the peak force, amplified {AMP:.0f}" + r"$\times$", transform=ax_c.transAxes,
-          ha="left", va="top", fontsize=7, color="0.3")
-ax_d.text(0.0, 0.955, f"grey: before the wave ({AMP:.0f}" + r"$\times$" + ")\n"
-          f"red: + change by the wave ({AMP_W:.0f}" + r"$\times$" + ")", transform=ax_d.transAxes,
-          ha="left", va="top", fontsize=7, color="0.3", linespacing=1.15)
+# amplification factors and colors are given in the caption (Ch. 6)
 SHOW_E = False  # (e) pier-base moment-rotation inset; off: it competed with (c) and (d) (see fig_fri_hinge.py)
 if SHOW_E:
     # (e) pier-base zero-length section, moment against rotation, placed after the layout is fixed

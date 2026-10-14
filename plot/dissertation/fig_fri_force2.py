@@ -67,11 +67,11 @@ ids = sorted({t for _, rr in ROWS for t, *_ in rr} | {t for t, *_ in SOL} | {"F1
 D = {tid: R.load(tid) for tid in ids}
 F = {tid: force(tid, D[tid]["t"][-1]) for tid in ids}
 
-fig = plt.figure(figsize=(6.0, 8.8), layout="constrained")
+fig = plt.figure(figsize=(6.0, 7.0), layout="constrained")
 s_top, s_bot = fig.subfigures(2, 1, height_ratios=[3.6, 1.0])
 hr = []
 for _, rows in ROWS:
-    hr += [0.11 * len(rows) + 0.04, 0.72]
+    hr += [0.15 * len(rows) + 0.06, 0.62]
 gs = s_top.add_gridspec(2 * len(ROWS), 1, height_ratios=hr)
 for r_, (title, rows) in enumerate(ROWS):
     la = s_top.add_subplot(gs[2 * r_])

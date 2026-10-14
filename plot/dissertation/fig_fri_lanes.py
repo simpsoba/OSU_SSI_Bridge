@@ -73,7 +73,7 @@ imp = [D[t]["to_int"](impact_lab(R.BY_ID[t], D[t]["t"][-1])) for t in ids if D[t
 t_imp = float(np.nanmedian(imp))
 print(f"solitary-wave impact t_int: median {t_imp:.1f} s, range {np.nanmin(imp):.1f}-{np.nanmax(imp):.1f} s")
 
-fig = plt.figure(figsize=(6.0, 7.4), layout="constrained")
+fig = plt.figure(figsize=(6.0, 7.1), layout="constrained")
 sa, sb = fig.subfigures(2, 1, height_ratios=[2.2, 1.0])
 hx, ax = sa.subplots(2, 1, sharex=True, gridspec_kw=dict(height_ratios=[0.32, 1.75]))
 zr = np.load(MAT_EXTRACT_DIR / f"{R.BY_ID['F05'][1]}.npz", allow_pickle=True)["meaSigOS_data"]
