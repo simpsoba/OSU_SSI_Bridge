@@ -5,9 +5,10 @@ tracking (0.25-s RMS of target - measured above 2 mm model). Integration time fr
 target k at t_int = (k + alpha_f) dt_int. Delay = laboratory time of each target minus k dt_sim (laboratory s).
 (a)         slowdown lane (one row per run, test ID in the free space) and u on real time, sqrt(lambda_L) t
 (b)         u on integration time; (b.1) zoom on the last cycles before the serial stop
-(c)         delay of the received targets behind hard real time; inset for the parallel runs
+(c)         delay behind real time after start-up, prototype-scaled laboratory s, symlog axis (as fig_fri_lanes.py)
 Bold panel tags, no titles or legends (direct labels), uniform font, constrained layout.
 """
+import os
 import sys
 from pathlib import Path
 
@@ -33,6 +34,7 @@ RUNS = [("W04", "0819_GusBridge_Serial_H0p5_T7p746_reg_Trial02", 1, ORANGE),
         ("W02", "0819_GusBridge_Parallel8_H0p5_T7p746_reg", 8, BLUE),
         ("W05", "0819_GusBridge_Parallel16_H0p5_T7p746_reg_Trial02", 16, GRAY),
         ("W07", "0819_GusBridge_Parallel24_H0p5_T7p746_reg", 24, GRAY)]
+WITH_STARTUP = os.environ.get("DELAY_STARTUP", "0") == "1"  # include the start-up offset in (c)
 ORDER = [1, 3, 4, 2, 0]  # grays, 8 ranks, then serial on top
 SEG = [(0, 170), (170, 420)]
 WR = [1, 3.4]
@@ -64,6 +66,12 @@ def load(stem):
     win = t[1:][(cnt[1:] == 1) & (cnt[:-1] != 1)]
     win = win[win >= tk[0]]
     lag = (win - win[0]) - DT_SIM * np.arange(win.size)
+    k0 = 1 if tk[1] - tk[0] < 3e-3 else 0  # second start-up handshake flag
+    if WITH_STARTUP:  # from the first target, start-up offset included
+        su = win >= tk[k0]
+    else:  # after the three start-up intervals, as fig_fri_lanes.py
+        su = win >= tk[k0 + 3]
+    win, lag = win[su], (lag[su] - lag[su][0]) * SQL  # delay, prototype-scaled laboratory s
     on = t[1:][(typ[1:] == 2) & (typ[:-1] != 2)]
     err = z["tarSigOS_data"][:, 0] - me[:, 0]
     rms = np.sqrt(np.convolve(err ** 2, np.ones(512) / 512, mode="same"))
@@ -95,7 +103,7 @@ prs.configure_font()
 data = [load(r[1]) for r in RUNS]
 
 fig = plt.figure(figsize=(6.0, 6.6), layout="constrained")
-s_a, s_b, s_z, s_c = fig.subfigures(4, 1, height_ratios=[1.85, 1.15, 1.25, 1.15])
+s_a, s_b, s_z, s_c = fig.subfigures(4, 1, height_ratios=[1.85, 1.15, 1.25, 1.45])
 
 # ---------------- (a) lane + u on real time ----------------
 ga = s_a.add_gridspec(2, 1, height_ratios=[0.95, 1.6], hspace=0.05)
@@ -183,35 +191,40 @@ if LABELS:
     label(ax, "8 ranks", P8, (P8[0] - 1.2, 150), BLUE)
     label(ax, "4, 16, 24 ranks", PG, (PG[0] - 1.0, -165), GRAY)
 
-# ---------------- (c) delay behind real time ----------------
+# ---------------- (c) delay behind real time (symlog, as fig_fri_lanes.py) ----------------
 C = broken_pair(s_c, s_c.add_gridspec(1, 1)[0])
 for ax in C:
     for k in ORDER:
         d = data[k]
         ax.plot(d["tk"], d["lag"], color=RUNS[k][3], lw=1.1)
-C[0].set_ylim(-1, 22)
-C[0].set_ylabel("Delay,\nlaboratory (s)")
+    ax.set_yscale("symlog", linthresh=0.01, linscale=0.4)
+    ax.set_ylim(-0.014, 60)  # room below zero for the label of the runs with no delay
+C[0].set_yticks([0, 0.01, 0.1, 1, 10])
+C[0].set_yticklabels(["0", "0.01", "0.1", "1", "10"])
+C[0].set_ylabel("Delay behind\nreal time (s)")
 C[1].set_xlabel(r"Laboratory time, $\sqrt{\lambda_L}\,t$ (s)")
 tag(C[0], "(c)")
-label(C[1], f"serial: {data[0]['lag'][-1]:.1f} s", (250, np.interp(250, data[0]["tk"], data[0]["lag"])), (215, 19),
-      ORANGE)  # delay at the stop
-ins = C[1].inset_axes([0.46, 0.40, 0.31, 0.52])
-for k in (1, 3, 4, 2):
-    d = data[k]
-    ins.plot(d["tk"], d["lag"], color=RUNS[k][3], lw=1.0)
-lag_end = {RUNS[k][2]: np.interp(SEG[1][1], data[k]["tk"], data[k]["lag"]) for k in (1, 2, 3, 4)}
-blend = mtransforms.blended_transform_factory(ins.transAxes, ins.transData)
-# delay at the right edge of the inset (420 s), as the curves end there
-for lab, y, c in ((f"24 ranks: {lag_end[24]:.2f} s", lag_end[24], GRAY),
-                  (f"16 ranks: {lag_end[16]:.2f} s", lag_end[16] + 0.025, GRAY),
-                  (f"4, 8 ranks: {lag_end[4]:.2f}, {lag_end[8]:.2f} s", 0.5 * (lag_end[4] + lag_end[8]) - 0.025, "0.25")):
-    ins.text(1.03, y, lab, transform=blend, ha="left", va="center", color=c)
-ins.set_xlim(0, SEG[1][1])
-ins.set_ylim(0, 0.35)
-ins.set_xticks([0, 200, 400])
-ins.grid(True)
-for s in ("top", "right"):
-    ins.spines[s].set_visible(True)
+x_end = SEG[1][1]
+d0 = data[0]
+C[1].plot(d0["tk"][-1], d0["lag"][-1], marker="x", color=ORANGE, ms=5, mew=1.0, zorder=5)
+C[1].text(d0["tk"][-1] + 4, d0["lag"][-1], f"serial: {d0['lag'][-1]:.0f} s", ha="left", va="center", color=ORANGE)
+end = {RUNS[k][2]: float(np.interp(x_end, data[k]["tk"], data[k]["lag"])) for k in (1, 2, 3, 4)}
+print("delay at", x_end, "s:", {n: round(v, 3) for n, v in end.items()}, "; serial at its stop", round(d0["lag"][-1], 2))
+# labels at the right edge, one per distinct level (runs within a factor of 1.6 share a label)
+grp = []
+for n in sorted(end, key=lambda n: end[n]):
+    v = end[n]
+    if grp and (v < 0.005 and grp[-1][1] < 0.005 or 0 < grp[-1][1] and v / grp[-1][1] < 1.6):
+        grp[-1][0].append(n)
+    else:
+        grp.append([[n], v])
+for ns, v in grp:
+    vals = ", ".join(f"{end[n]:.2g}" if end[n] >= 0.005 else "0" for n in ns)
+    vals = "0" if all(end[n] < 0.005 for n in ns) else vals
+    c = "0.25" if 8 in ns else GRAY
+    zero = all(end[n] < 0.005 for n in ns)
+    C[1].text(x_end - 3, -0.0015 if zero else v, f"{', '.join(str(n) for n in ns)} ranks: {vals} s", ha="right",
+              va="top" if zero else "bottom", color=c)
 
 # "Slowdowns" centred over both lane segments, on the baseline of the (a) tag
 fig.canvas.draw()

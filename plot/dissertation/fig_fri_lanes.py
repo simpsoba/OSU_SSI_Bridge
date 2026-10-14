@@ -12,6 +12,7 @@ read-only on data).
 Configurations, colors, and markers as fig_fri_capacity.py. Uniform 9 pt font; bold panel tags; constrained layout.
 Soil-formulation variants are not shown.
 """
+import os
 import sys
 from pathlib import Path
 
@@ -29,6 +30,7 @@ sys.path.insert(0, str(R.ROOT / "plot"))
 import PlotResponseSpectrum as prs  # noqa: E402
 
 OUT = Path(sys.argv[1])
+WITH_STARTUP = os.environ.get("DELAY_STARTUP", "0") == "1"  # include the start-up offset in (c)
 CFG = {"pspd": ("#C0390B", r"CPU MKR-$\alpha$, ProfileSPD", "s"),
        "mumps": ("#8C510A", r"CPU MKR-$\alpha$, MUMPS", "D"),
        "cpucudss": ("#2166AC", r"CPU MKR-$\alpha$, cuDSS solves", "^"),
@@ -36,13 +38,13 @@ CFG = {"pspd": ("#C0390B", r"CPU MKR-$\alpha$, ProfileSPD", "s"),
 from lab_paths import MAT_EXTRACT_DIR  # noqa: E402
 
 
-def window_delay(tid, t_su):
+def window_delay(tid, t_su, t0):
     """Delay behind real time from the window starts (model s), start-up offset removed."""
     st = np.load(MAT_EXTRACT_DIR / f"{R.BY_ID[tid][1]}.npz", allow_pickle=True)["stateOS_data"]
     t, cnt = st[:, -1], np.rint(st[:, 1]).astype(int)
     win = t[1:][(cnt[1:] == 1) & (cnt[:-1] != 1)]
     lag = (win - win[0]) - R.DT_SIM * np.arange(win.size)
-    k = win >= t_su
+    k = win >= (t0 if WITH_STARTUP else t_su)
     return win[k], lag[k] - lag[k][0]
 GROUPS = [("Baseline", [("F03", "pspd"), ("F04", "pspd"), ("F26", "mumps"), ("F22", "gpu"), ("F05", "gpu"),
                         ("F27", "gpu")]),
@@ -139,7 +141,7 @@ bx = sb.subplots()
 for tid, cfg in DELAY:
     d = D[tid]
     c = CFG[cfg][0]
-    tw, lw_ = window_delay(tid, d["t_su"])
+    tw, lw_ = window_delay(tid, d["t_su"], d["tk"][0])
     gr = lw_ * R.SQL
     bx.plot(tw * R.SQL, gr, color=c, lw=1.0)
     xe, ye = tw[-1] * R.SQL, gr[-1]
