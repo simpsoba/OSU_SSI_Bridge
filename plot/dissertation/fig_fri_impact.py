@@ -5,7 +5,8 @@ solitary wave.
 (a) wide view, video 2026-08-21-11h24m at 8.611 s (Test F10)
 (b) close-up, video 2026-08-21-09h56m at 2:57.0, mirrored so that the wave travels in +x
 (e) optional (SHOW_E): pier-base moment-rotation inset between (c) and (d); off by default
-Layout 2 x 2: photos on top, model panels below without axes (5 m scale bar), cropped just below the pile tips.
+Layout 1 x 4: the two uncropped frames, then the model panels without axes (5 m scale bar), cropped just below
+the pile tips.
 (c) deformed near-field model of Test F30 (r-17, all-node recorders) at the peak load-cell force of the solitary wave,
     displacements amplified AMP; undeformed mesh in light grey
 (d) post-earthquake state just before the wave (T_PRE before the peak force, amplified AMP) in light grey, and the
@@ -124,11 +125,14 @@ print(f"{TEST}: peak force {f_imp:.1f} kN at t_int = {t_imp:.2f} s; pre-wave sta
       f"pre-wave pier-top offset {1e3 * ux[k_pre, top]:.1f} mm")
 
 prs.configure_font()
-CROP = {"wide": (0.12, 0.86), "close": (0.0, 0.78)}  # kept fraction of the frame height (top, bottom)
+CROP = {"wide": (0.0, 1.0), "close": (0.0, 1.0)}  # full frames (portrait, 9:16)
 BLUE = "#0072B2"
 H_WATER = 2.4  # m, prototype water depth above the mudline
-fig = plt.figure(figsize=(6.0, 7.0), layout="constrained")
-gs = fig.add_gridspec(2, 2, height_ratios=[1.1, 1.35])
+# one row: the two uncropped portrait frames, then the two (schematic) model panels, widths by aspect ratio
+Y_LIM = (-21.0, 15.5)
+W_MODEL = (float(mesh["X0"].max() - mesh["X0"].min()) + 3.0) / (Y_LIM[1] - Y_LIM[0])
+fig = plt.figure(figsize=(6.0, 2.95), layout="constrained")
+gs = fig.add_gridspec(1, 4, width_ratios=[9 / 16, 9 / 16, W_MODEL, W_MODEL])
 
 
 def tag_in(ax, text, dark=True):
@@ -147,8 +151,8 @@ for j, (name, tf, flip, tag) in enumerate(FRAMES):
     ax.imshow(img[h0:h1])
     ax.set_axis_off()
     tag_in(ax, rf"\textbf{{({'ab'[j]})}}")
-ax_c = fig.add_subplot(gs[1, 0])
-ax_d = fig.add_subplot(gs[1, 1], sharex=ax_c, sharey=ax_c)
+ax_c = fig.add_subplot(gs[0, 2])
+ax_d = fig.add_subplot(gs[0, 3], sharex=ax_c, sharey=ax_c)
 zeros = np.zeros_like(ux[0])
 draw(ax_c, mesh, zeros, zeros, 0.0, grey=True, under=True)
 draw(ax_c, mesh, ux[k_imp], uy[k_imp], AMP)
@@ -156,7 +160,7 @@ draw(ax_d, mesh, ux[k_pre], uy[k_pre], AMP, grey=True, under=True)
 draw(ax_d, mesh, ux[k_pre] + (AMP_W / AMP) * du_x, uy[k_pre] + (AMP_W / AMP) * du_y, AMP, face="light")
 for ax in (ax_c, ax_d):
     ax.autoscale_view()
-    ax.set_ylim(-21.0, 15.5)  # cropped just below the pile tips; room for the labels above the deck
+    ax.set_ylim(*Y_LIM)  # cropped just below the pile tips; room for the labels above the deck
     ax.set_aspect("equal")
     ax.set_axis_off()
 x0, x1 = ax_c.get_xlim()
@@ -182,7 +186,7 @@ for xx, yy in ((xg, yg), (xr, yr)):
     ax_d.plot([xx, xx], [yy + 0.25, ydim + 0.4], color="0.35", lw=0.5, zorder=7)
 ax_d.annotate("", (xr, ydim), (xg, ydim), arrowprops=dict(arrowstyle="<|-|>,head_length=0.3,head_width=0.15",
                                                           color="0.2", lw=0.7, shrinkA=0, shrinkB=0), zorder=7)
-ax_d.text(0.5 * (xg + xr), ydim + 0.35, f"+{1e3 * du_x[top]:.1f} mm (wave)", ha="center", va="bottom", fontsize=7,
+ax_d.text(0.5 * (xg + xr), ydim + 0.35, f"+{1e3 * du_x[top]:.1f} mm", ha="center", va="bottom", fontsize=7,
           color="0.15", zorder=7, bbox=dict(fc="white", ec="none", alpha=0.8, pad=0.4))
 # (c): same dimension, undeformed (grey) to deformed at the peak force (red), true size in mm
 xg0, yg0 = mesh["X0"][top], mesh["Y0"][top]

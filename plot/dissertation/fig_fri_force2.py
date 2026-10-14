@@ -41,7 +41,7 @@ ROWS = [("Baseline, 2,028 DOFs", [("F05", "gpu", "0.55", r"F05, GPU, 8"),
 ZORD = {"F05": 1, "F22": 3, "F06": 3, "F07": 1, "F08": 2, "F11": 3, "F15": 2, "F13": 3}
 SOL = [("F05", "baseline", "0.0"), ("F06", "moderate", "0.25"), ("F09", "large", "0.45"),
        ("F13", "extra-large", "0.65")]
-YL = 140.0
+YL = 100.0  # the largest spikes (110-133 kN, quoted in the text) are clipped
 
 
 def fy_eq_kn():
@@ -109,7 +109,7 @@ for r_, (title, rows) in enumerate(ROWS):
     else:
         fa.tick_params(labelbottom=False)
     if r_ == 0:
-        fa.annotate("solitary wave", (347, -78), xytext=(300, -105), ha="right", va="center", color="0.35",
+        fa.annotate("solitary wave", (347, -60), xytext=(300, -72), ha="right", va="center", color="0.35",
                     arrowprops=dict(arrowstyle="-", color="0.5", lw=0.6, shrinkA=1, shrinkB=2))
 
 KEY = [("gpu", r"GPU MKR-$\alpha$, cuDSS"), ("pspd", r"CPU MKR-$\alpha$, ProfileSPD"), ("mumps", r"CPU MKR-$\alpha$, MUMPS"),
