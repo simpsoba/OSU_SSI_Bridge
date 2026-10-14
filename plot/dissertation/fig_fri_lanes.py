@@ -146,7 +146,7 @@ for tid, cfg in DELAY:
     bx.plot(xe, ye, marker=CFG[cfg][2], ms=4.2, color=c, mfc=c if d["complete"] else "white", mew=0.9,
             ls="none", zorder=4)
     print(f"{tid}: delay growth {gr[-1]:.3f} s (prototype), smallest step {1e3 * np.diff(gr).min():.2f} ms")
-    lab = DLAB[tid] + (", NC" if not d["complete"] else "")
+    lab = DLAB[tid] + (", NC" if not d["complete"] else "") + f": {max(ye, 0.0):.2g} s"  # final delay (log axis)
     bx.annotate(lab, (xe, ye), xytext=(6, DY.get(tid, 0)), textcoords="offset points", color=c, va="center")
 bx.set_yscale("symlog", linthresh=0.01, linscale=0.4)
 bx.set_yticks([0, 0.01, 0.1, 1, 10])
