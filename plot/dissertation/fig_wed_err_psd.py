@@ -31,7 +31,7 @@ OUT = Path(sys.argv[1])
 ORANGE, BLACK, GRAY = "#C0390B", "#000000", "#8C8C8C"
 COL = {1: ORANGE, 4: GRAY, 8: BLACK, 16: GRAY, 24: GRAY}
 F_WAVE = 1 / 12.0
-REFS = [(F_WAVE, r"$f_w$"), (0.477, r"$f_1$"), (2.870, r"$f_2$"), (12.0, r"$f_{\mathrm{osc}}$"),
+REFS = [(F_WAVE, r"$f_w$"), (0.477, r"$f_1$"), (2.975, r"$f_4$"), (12.0, r"$f_{\mathrm{osc}}$"),
         (60.0 / SQL, r"$f_{\mathrm{mains}}$")]
 XLIM = (0.02, 100.0)
 

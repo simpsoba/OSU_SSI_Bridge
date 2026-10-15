@@ -73,7 +73,7 @@ for col, (kt, kx) in enumerate((("tf", "F"), ("tu", "u"))):
         ax.loglog(f[1:], P[1:], color=c, ls=ls, lw=0.7, label=lab, zorder=3 if tid == "F03" else 2)
 for ax in A.flat:
     ax.set_xlim(*XLIM)
-    for x0 in (1 / 12.0, 0.477, 2.870, 12.0, 60.0 / SQL):
+    for x0 in (1 / 12.0, 0.477, 2.975, 12.0, 60.0 / SQL):
         ax.axvline(x0, color="0.35", lw=0.5, ls=(0, (3, 2)), zorder=0)
 for r in range(2):
     A[r, 0].set_ylabel(r"PSD of $\lambda_L^3 f_p$ (kN$^2$/Hz)")
