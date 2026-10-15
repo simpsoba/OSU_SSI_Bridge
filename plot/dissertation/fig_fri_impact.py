@@ -7,11 +7,12 @@ solitary wave.
 (e) optional (SHOW_E): pier-base moment-rotation inset between (c) and (d); off by default
 Layout 1 x 4: the two uncropped frames, then the model panels without axes (5 m scale bar), cropped just below
 the pile tips.
-(c) deformed near-field model of Test F30 (r-17, all-node recorders) at the peak load-cell force of the solitary wave,
+(c) deformed near-field model of a representative test, F27 (r-04 16:25, all-node recorders, the largest wave response;
+    its one slowdown near the wave is a single 0.49 ms sample 5.2 s after the peak force), at the peak load-cell force,
     displacements amplified AMP; undeformed mesh in light grey
 (d) post-earthquake state just before the wave (T_PRE before the peak force, amplified AMP) in light grey, and the
     change induced by the wave, u(t_w) - u(t_pre), added on top with amplification AMP_W, where t_w is the time of the
-    largest wave-induced pier-top displacement within WIN_W after the peak force
+    largest wave-induced deck-top displacement in the push direction of the wave within WIN_W after the peak force
 Frames are extracted with the ffmpeg bundled with imageio-ffmpeg into out/friday/impact_frames (cached).
 """
 import shutil
@@ -39,8 +40,8 @@ import PlotResponseSpectrum as prs  # noqa: E402
 OUT = Path(sys.argv[1])
 VID = Path(r"G:\Shared drives\Simpson team\Test Data\2026-OSU-SSI-Bridge\Videos")
 FRAMES = [("2026-08-21-11h24m.MOV", 8.611, False, "wide"), ("2026-08-21-09h56m.mov", 177.0, True, "close")]
-DUMP = R.DATA / "r-17_20260821_1649_Storm_Wave"
-TEST = "F30"
+DUMP = R.DATA / "r-04_20260821_1625_Storm_Wave"
+TEST = "F27"
 AMP, AMP_W = 20.0, 400.0
 T_PRE, WIN_W = 2.0, 4.0  # s, prototype integration time
 RED, PURPLE = "#C0390B", "#6A3D9A"
@@ -112,17 +113,17 @@ t_imp, f_imp = impact_t_int()
 mesh, t, ux, uy = model()
 k_imp = int(np.argmin(np.abs(t - t_imp)))
 k_pre = int(np.argmin(np.abs(t - (t_imp - T_PRE))))
-# pier-top node: highest structural node at x ~ 0 (top of the pier, below the deck frame)
+# deck-top node: highest structural node at x ~ 0 (centre of the deck frame, 9.08 m; the pier top is at 7.25 m)
 ij = mesh["ij_s"]
 snodes = np.unique(ij) if len(ij) else np.arange(mesh["X0"].size)
 top = snodes[np.argmax(np.where(np.abs(mesh["X0"][snodes]) < 0.05, mesh["Y0"][snodes], -np.inf))]
 win = np.flatnonzero((t >= t_imp) & (t <= t_imp + WIN_W))
-k_w = win[np.argmax(np.abs(ux[win, top] - ux[k_pre, top]))]
+k_w = win[np.argmax(ux[win, top] - ux[k_pre, top])]  # push direction of the wave, not the rebound swing
 du_x, du_y = ux[k_w] - ux[k_pre], uy[k_w] - uy[k_pre]
 print(f"{TEST}: peak force {f_imp:.1f} kN at t_int = {t_imp:.2f} s; pre-wave state at {t[k_pre]:.2f} s; "
-      f"largest wave-induced pier-top change {1e3 * du_x[top]:+.2f} mm at {t[k_w]:.2f} s "
+      f"largest wave-induced deck-top change {1e3 * du_x[top]:+.2f} mm at {t[k_w]:.2f} s "
       f"(node at y = {mesh['Y0'][top]:.2f} m); max |du| over the mesh {1e3 * np.abs(du_x).max():.2f} mm; "
-      f"pre-wave pier-top offset {1e3 * ux[k_pre, top]:.1f} mm")
+      f"pre-wave deck-top offset {1e3 * ux[k_pre, top]:.1f} mm")
 
 prs.configure_font()
 CROP = {"wide": (0.0, 1.0), "close": (0.0, 1.0)}  # full frames (portrait, 9:16)

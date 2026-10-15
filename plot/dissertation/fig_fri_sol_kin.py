@@ -1,4 +1,5 @@
-"""Solitary wave on the physical subassembly, F30 as fig_fri_impact.py (dissertation Ch. 6; read-only on data).
+"""Solitary wave on the physical subassembly, representative test F27 as fig_fri_impact.py (largest wave response;
+dissertation Ch. 6; read-only on data).
 
 (a) interface force against the measured displacement from 5 s before to 30 s after the peak load-cell force; circle =
     peak force; arrows at half the peak force, beside the curve, show the sense of time
@@ -26,7 +27,7 @@ sys.path.insert(0, str(R.ROOT / "plot"))
 import PlotResponseSpectrum as prs  # noqa: E402
 
 OUT = Path(sys.argv[1])
-TID = sys.argv[2] if len(sys.argv) > 2 else "F30"
+TID = sys.argv[2] if len(sys.argv) > 2 else "F27"
 BLUE = "#0072B2"
 stem = R.BY_ID[TID][1]
 me = np.load(R.MAT_EXTRACT_DIR / f"{stem}.npz", allow_pickle=True)["meaSigOS_data"]
