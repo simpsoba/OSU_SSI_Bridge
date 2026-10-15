@@ -6,7 +6,7 @@ Three contiguous 150-s windows: earthquake (0-150 s; 5-95 % Arias 56-139 s), lon
 (150-300 s; the FKSH19 NS record ends at 300 s), free vibration and solitary wave (300-450 s; peak near 349 s); labels: earthquake, coda, solitary wave. Welch with the same Hann segments (40 s, 75 % overlap, segment means
 removed) in every window, so the curves share resolution and averaging; whole record (light grey) for reference.
 Direct labels instead of a legend; uniform 9 pt font.
-Reference lines as fig_wed_psd.py: f_1, f_4 (fundamental and pier modes of the numerical model, eigen mesh0/mesh19), f_osc (transfer-system oscillation), f_mains; dotted:
+Reference lines as fig_wed_psd.py: f_1, f_4 (fundamental and pier modes of the numerical model, eigen mesh0/mesh19), f_osc (nominal load-transfer band 15.5-18.1 Hz, Seki et al. 2026), f_mains; dotted:
 first mode during strong shaking (0.336 Hz = 0.70 f_1, minimum of the 40-s sliding dominant frequency); shaded:
 0.1-0.3 Hz long-period content of the FKSH19 NS ground motion.
 """
@@ -51,10 +51,11 @@ def psd(t, x, w0, w1):
     return welch(x[m], fs=fs, window="hann", nperseg=n, noverlap=3 * n // 4, detrend="constant")
 
 F1_SOFT = 0.336 / 0.477  # dominant frequency during strong shaking (40-s windows, 80-120 s) over f_1
-REFS = [(0.336, rf"${F1_SOFT:.2f}f_1$"), (0.477, r"$f_1$"), (2.975, r"$f_4$"), (12.0, r"$f_{\mathrm{osc}}$"), (60.0 / R.SQL, r"$f_{\mathrm{mains}}$")]
+REFS = [(0.336, rf"${F1_SOFT:.2f}f_1$"), (0.477, r"$f_1$"), (2.975, r"$f_4$"), (16.75, r"$f_{\mathrm{osc}}$"), (60.0 / R.SQL, r"$f_{\mathrm{mains}}$")]
 
 
 def ref_labels(ax):
+    ax.axvspan(15.5, 18.1, color="0.9", lw=0, zorder=-1)  # nominal load-transfer system band (Seki et al. 2026)
     for x0, _ in REFS:  # dotted: the softened first mode during strong shaking; dashed: nominal frequencies
         ax.axvline(x0, color="0.35", lw=0.6 if x0 < 0.4 else 0.5, ls=(0, (1, 1.5)) if x0 < 0.4 else (0, (3, 2)), zorder=0)
     ax.axvspan(0.1, 0.3, color="#DCE6F0", lw=0, zorder=-1)  # long-period ground motion (FKSH19 NS record coda)

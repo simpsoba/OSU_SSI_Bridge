@@ -80,7 +80,7 @@ for c, (kt, kx, unit) in enumerate((("tf", "F", "kN"), ("tu", "u", "mm"))):
     A[1, c].set_ylabel(f"ESD of {sym} ({unit}$^2$" + r"$\cdot$s/Hz)")
 for ax in A.flat:
     ax.set_xlim(0.025, 100)
-    for x0 in (1 / 12.0, 0.477, 2.975, 12.0, 60.0 / R.SQL):
+    for x0 in (1 / 12.0, 0.477, 2.975, 16.75, 60.0 / R.SQL):
         ax.axvline(x0, color="0.35", lw=0.5, ls=(0, (3, 2)), zorder=0)
 for ax in A[1]:
     ax.set_xlabel("Real-time frequency, prototype (Hz)")

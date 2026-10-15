@@ -32,7 +32,7 @@ RUNS = [("W04", "0819_GusBridge_Serial_H0p5_T7p746_reg_Trial02", 1, ORANGE),
         ("W07", "0819_GusBridge_Parallel24_H0p5_T7p746_reg", 24, GRAY)]
 F_WAVE = 1 / 12.0
 REFS = [(F_WAVE, r"$f_w$"), (2 * F_WAVE, r"$2f_w$"), (3 * F_WAVE, r"$3f_w$"), (4 * F_WAVE, r"$4f_w$"),
-        (5 * F_WAVE, r"$5f_w$"), (0.477, r"$f_1$"), (2.975, r"$f_4$"), (12.0, r"$f_{\mathrm{osc}}$"),
+        (5 * F_WAVE, r"$5f_w$"), (0.477, r"$f_1$"), (2.975, r"$f_4$"), (16.75, r"$f_{\mathrm{osc}}$"),
         (60.0 / SQL, r"$f_{\mathrm{mains}}$")]
 XLIM = (0.02, 100.0)
 
@@ -59,6 +59,7 @@ def psd(t, x, w1, nseg):
 
 
 def ref_labels(ax):
+    ax.axvspan(15.5, 18.1, color="0.9", lw=0, zorder=-1)  # nominal load-transfer system band (Seki et al. 2026)
     for x0, _ in REFS:
         ax.axvline(x0, color="0.35", lw=0.5, ls=(0, (3, 2)), zorder=0)
     items = sorted(REFS, key=lambda it: it[0])

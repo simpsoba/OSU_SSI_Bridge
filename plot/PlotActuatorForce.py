@@ -17,7 +17,7 @@ Dual axes: prototype force, model via /λ³.
 
 Source: dump ``ServerSetup_daqFrc.out`` (OpenSees $t_{\mathrm{int}}$, N).
 Recorded daqForce is the experimental-element resisting force; plots use
-F = −daqForce (external force on the numerical substructure).
+F = +daqForce (measured resisting force of the physical subassembly, lambda_L^3 f_p; as the dissertation figures).
 Several Test IDs in one call share one F axis (max |F| over each full record).
 """
 
@@ -541,10 +541,10 @@ def detect_wave_start_proto_s(
 
 def load_daq_force_kn(dump_path: Path) -> tuple[np.ndarray, np.ndarray] | None:
     """
-    Actuator force history as an external load on the numerical model.
+    Interface force history, lambda_L^3 f_p (prototype kN).
 
     Reads OpenFresco ``daqForce`` (experimental resisting force) and returns
-    F = −daqForce so plotted F is the force applied to the numerical side.
+    F = +daqForce, the sign used in the dissertation figures.
 
     Args:    dump_path  LOCAL opensees_data/<DumpFolder>
     Returns: (t_proto_s, F_proto_kN) or None
@@ -559,8 +559,8 @@ def load_daq_force_kn(dump_path: Path) -> tuple[np.ndarray, np.ndarray] | None:
     if data.size == 0 or data.shape[1] < 2:
         return None
     t = np.asarray(data[:, 0], dtype=float)
-    # daqForce = resisting; F_ext on numerical = −daqForce
-    f_kn = -np.asarray(data[:, 1], dtype=float) * N_TO_KN
+    # daqForce = resisting force of the physical subassembly (lambda_L^3 f_p)
+    f_kn = np.asarray(data[:, 1], dtype=float) * N_TO_KN
     return t, f_kn
 
 
@@ -659,7 +659,7 @@ def _write_force_figure(
             f_kn,
             color=COLOR_FRC,
             lw=LW_FRC,
-            label=r"$-F_{\mathrm{daq}}$ (on numerical)",
+            label=r"$\lambda_L^3 f_p$ (daqForce)",
             zorder=5,
         )
         n_ex = mark_force_exceedances(ax, t_x, f_kn, F_LIM_PROTO_KN)

@@ -373,6 +373,30 @@ def midrun_cum_slow(
     return cum, np.asarray(ons, dtype=float)
 
 
+def startup_end_lab_s(mat_name: str) -> float | None:
+    """
+    End of the three start-up intervals, tk[k0+3] (lab s), as plot/dissertation/fri_runs.py.
+
+    tk are the new-target flags (stateOS column 2 rising); k0 = 1 when the first two flags are
+    the OpenFresco handshake pair (< 3 ms apart).
+
+    Args:    mat_name
+    Returns: lab s, or None without stateOS / enough targets
+    """
+    try:
+        z = np.load(MAT_EXTRACT_DIR / f"{Path(mat_name).stem}.npz", allow_pickle=True)
+        st = np.asarray(z["stateOS_data"], dtype=float)
+        t = np.asarray(z["stateOS_time"], dtype=float)
+    except (OSError, KeyError):
+        return None
+    s1 = np.rint(st[:, 2])
+    tk = t[1:][(s1[1:] > 0) & (s1[:-1] <= 0)]
+    if tk.size < 5:
+        return None
+    k0 = 1 if tk[1] - tk[0] < 3e-3 else 0
+    return float(tk[k0 + 3])
+
+
 def slowdown_lab_onsets(mat_name: str) -> list[float]:
     """
     Lab times at the start of each mid-run typeConv3==2 episode.
@@ -383,12 +407,14 @@ def slowdown_lab_onsets(mat_name: str) -> list[float]:
     pair = load_type_conv3(mat_name)
     if pair is None:
         return []
-    try:
-        _k, t_ex = lab_clock_offset_s(mat_name)
-    except RuntimeError:
-        return []
+    t_su = startup_end_lab_s(mat_name)  # after start-up, as the dissertation counts
+    if t_su is None:
+        try:
+            _k, t_su = lab_clock_offset_s(mat_name)
+        except RuntimeError:
+            return []
     t_lab, tc3 = pair
-    _cum, ons = midrun_cum_slow(t_lab, tc3, t_ex)
+    _cum, ons = midrun_cum_slow(t_lab, tc3, t_su)
     return [float(x) for x in ons]
 
 

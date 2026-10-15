@@ -13,7 +13,7 @@ Figure 1–2 (OpenSees domain \(t\)): structure + SSI recorder PSDs
 Figure 3 (``psd_tar_com_mea_lab_vs_pier_os.png``): tar/com/mea on lab \(t\) vs
 pier \(u_x\) on \(t_{\mathrm{int}}\) (each native grid; lab \(f\) → proto /√λ).
 
-Figure 4 (``psd_frc_actuator.png``): \(-F_{\mathrm{daq}}\) on \(t_{\mathrm{int}}\)
+Figure 4 (``psd_frc_actuator.png``): \(\lambda_L^3 f_p\) on \(t_{\mathrm{int}}\)
 only (uniform recorder dt; no map / resample).
 
 Columns = analysis windows (Wed: pre-EQ hydro | D5–95 | post-EQ + wave;
@@ -774,7 +774,7 @@ def write_plot(test_id: str, *, font_scale: float = DEFAULT_FONT_SCALE_PSD) -> i
         print(f"PlotHydroSpectra: {test_id} no pier_hinge_defo — skip θ row")
     series_struct.append(
         (
-            r"$-F_{\mathrm{daq}}$ (on numerical)",
+            r"$\lambda_L^3 f_p$ (daqForce)",
             t_f,
             f_kn,
             r"(kN$^2$/Hz) proto",
@@ -986,7 +986,7 @@ def write_force_psd(
     f_wave = (1.0 / t_wave_period) if t_wave_period else None
     series = [
         (
-            r"$-F_{\mathrm{daq}}$ (on numerical)",
+            r"$\lambda_L^3 f_p$ (daqForce)",
             t_f,
             f_kn,
             r"(kN$^2$/Hz) proto",
