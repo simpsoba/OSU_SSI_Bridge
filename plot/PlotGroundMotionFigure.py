@@ -128,7 +128,7 @@ def plot_gm_figure(
     ax_vel.set_ylabel(r"$\dot{u}_g(t)$ (cm/s)")
 
     ax_dsp.plot(t, disp_cm, color=LINE_COLOR, lw=LINE_LW_TH)
-    ax_dsp.set_ylabel(r"$u_g(t)$ (cm)")
+    ax_dsp.set_ylabel(r"$u_{\mathrm{g}}(t)$ (cm)")
     # Panel tag in the xlabel so constrained layout budgets the bottom margin.
     ax_dsp.set_xlabel(r"Time, $t$ (s)" + "\n" + r"\textbf{(a)}")
     ax_dsp.set_xlim(0.0, 300.0)
@@ -155,7 +155,7 @@ def plot_gm_figure(
     Sa_plot = np.concatenate([[pga_g], Sa_g[mask]])
     ax_sa.plot(T_plot, Sa_plot, color=LINE_COLOR, lw=LINE_LW_SA)
     ax_sa.set_xlabel(r"Period, $T_n$ (s)" + "\n" + r"\textbf{(b)}")
-    ax_sa.set_ylabel(r"Spectral acceleration, $S_a$ ($g$)")
+    ax_sa.set_ylabel(r"Spectral acceleration, $S_{\mathrm{a}}$ ($g$)")
     ax_sa.set_xlim(0.0, T_SPEC_MAX)
     sa_ymax = nice_ceil(float(np.nanmax(Sa_plot)))
     ax_sa.set_ylim(0.0, sa_ymax)
@@ -172,7 +172,7 @@ def plot_gm_figure(
     ax_sa.text(
         0.08,
         0.04 * sa_ymax,
-        rf"$S_a(T_1) = {sa_t1:.3f}\,g$",
+        rf"$S_{{\mathrm{{a}}}}(T_1) = {sa_t1:.3f}\,g$",
         ha="left",
         va="bottom",
         color="#555555",

@@ -131,7 +131,7 @@ for i in range(3):
 for i, sgn in ((0, 1), (2, -1)):  # 0.1 F_y,eq reference in the outer force bands
     for j in range(2):
         AX[i][j].axhline(sgn * F_REF, color="0.25", lw=0.7, ls=(0, (5, 3)), zorder=0)
-AX[0][1].text(418, F_REF + 3, r"$0.1F_{y,\mathrm{eq}}$", ha="right", va="bottom", color="0.25")
+AX[0][1].text(418, F_REF + 3, r"$0.1F_{\mathrm{y,eq}}$", ha="right", va="bottom", color="0.25")
 AX[0][0].set_yticks([50, 100])
 AX[1][0].set_yticks([-10, 0, 10])
 AX[2][0].set_yticks([-100, -50])
@@ -141,8 +141,8 @@ for i, ys in enumerate(((0,), (0, 1), (1,))):
         mark(AX[i][0], 0.0, y, 0.025, 0.05 * HRY[1] / HRY[i])
 for j, x in ((0, 1.0), (1, 0.0)):
     mark(AX[2][j], x, 0.0, 0.036 * (1 if j == 0 else WRX[0] / WRX[1]), 0.12)
-AX[1][0].set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
-AX[2][1].set_xlabel(r"Laboratory time, $\sqrt{\lambda_L}\,t$ (s)")
+AX[1][0].set_ylabel(r"$\lambda_{\mathrm{L}}^3 f_{\mathrm{p}}$ (kN)")
+AX[2][1].set_xlabel(r"Laboratory time, $\sqrt{\lambda_{\mathrm{L}}}\,t$ (s)")
 label(AX[0][1], "serial", (250, 70), (290, 80), ORANGE)
 label(AX[1][1], "8 ranks", (330, 3.0), (340, 9.5), BLUE)
 label(AX[1][1], "4, 16, 24 ranks", (395, -3.5), (355, -9.5), GRAY)
@@ -203,8 +203,8 @@ for j, ((z0, z1), yl, ks) in enumerate(ZOOMS):
     lz.set_title(rf"\textbf{{(b.{j + 1})}}{note}", loc="left")
     ax.set_xlim(z0, z1)
     ax.set_ylim(*yl)
-    ax.set_xlabel(r"$\sqrt{\lambda_L}\,t$ (s)")
-Z[0].set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
+    ax.set_xlabel(r"$\sqrt{\lambda_{\mathrm{L}}}\,t$ (s)")
+Z[0].set_ylabel(r"$\lambda_{\mathrm{L}}^3 f_{\mathrm{p}}$ (kN)")
 Z[1].set_xticks([216.5, 217.0])
 Z[1].set_yticks([-10, 0, 10])
 Z[2].set_xticks([263.0, 263.5])
@@ -217,7 +217,7 @@ for j, ((t0, t1), nc) in enumerate(zip(MEAS, (2, 4, 4))):
     for tt in (t0, t1):
         ax.plot([tt, tt], [yv(tt), ya], color="0.3", lw=0.5)
     ax.annotate("", (t0, ya), (t1, ya), arrowprops=dict(arrowstyle="<->", color="0.3", lw=0.7, shrinkA=0, shrinkB=0))
-    lab = rf"${nc}/f_w$ = {t1 - t0:.1f} s" if j == 0 else rf"${nc}/f_{{\mathrm{{osc}}}}$ = {t1 - t0:.3f} s"
+    lab = rf"${nc}/f_{{\mathrm{{w}}}}$ = {t1 - t0:.1f} s" if j == 0 else rf"${nc}/f_{{\mathrm{{osc}}}}$ = {t1 - t0:.3f} s"
     xc = min(max(0.5 * (t0 + t1), z0_ + 0.24 * (z1_ - z0_)), z1_ - 0.24 * (z1_ - z0_))
     ax.text(xc, ya + 0.02 * (yl[1] - yl[0]), lab, ha="center", va="bottom", color="0.2", zorder=6,
             bbox=dict(fc="white", ec="none", alpha=0.9, pad=0.5))

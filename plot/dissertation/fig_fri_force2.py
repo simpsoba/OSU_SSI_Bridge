@@ -100,12 +100,12 @@ for r_, (title, rows) in enumerate(ROWS):
     la.set_title(rf"\textbf{{({'abcd'[r_]})}} {title}", loc="left")
     for yv in (F_REF, -F_REF):
         fa.axhline(yv, color="0.35", lw=0.6, ls=(0, (4, 2)), zorder=0)
-    fa.text(472, -F_REF - 3, r"$-0.1F_{y,\mathrm{eq}}$", ha="right", va="top", color="0.35")
+    fa.text(472, -F_REF - 3, r"$-0.1F_{\mathrm{y,eq}}$", ha="right", va="top", color="0.35")
     fa.set_ylim(-YL, YL)
     fa.set_xlim(0, 475)
-    fa.set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
+    fa.set_ylabel(r"$\lambda_{\mathrm{L}}^3 f_{\mathrm{p}}$ (kN)")
     if r_ == len(ROWS) - 1:
-        fa.set_xlabel(r"Laboratory time, $\sqrt{\lambda_L}\,t$ (s)")
+        fa.set_xlabel(r"Laboratory time, $\sqrt{\lambda_{\mathrm{L}}}\,t$ (s)")
     else:
         fa.tick_params(labelbottom=False)
     if r_ == 0:
@@ -132,8 +132,8 @@ for tid, c, lw, ls, z in (("F12", "0.5", 1.0, (0, (3, 1.5)), 3), ("F11", "0.0", 
     k = (x > -0.5) & (x < 1.0)
     bc.plot(x[k], f[k], color=c, lw=lw, ls=ls, zorder=z)
 bc.set_xlim(-0.5, 0.5)
-bc.set_xlabel(r"Time from the slowdown onset, $\sqrt{\lambda_L}\,\tau$ (s)")
-bc.set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
+bc.set_xlabel(r"Time from the slowdown onset, $\sqrt{\lambda_{\mathrm{L}}}\,\tau$ (s)")
+bc.set_ylabel(r"$\lambda_{\mathrm{L}}^3 f_{\mathrm{p}}$ (kN)")
 bc.set_title(r"\textbf{(e)} isolated slowdown, F11 in (c)", loc="left")
 bc.text(0.05, 104, "F11, 24 (slowdown)", ha="left", va="center", color="0.0")
 bc.text(-0.46, -18, "F12, 20 (no slowdown)", ha="left", va="top", color="0.45")
@@ -149,7 +149,7 @@ bd.set_xlim(-0.5, 0.5)
 bd.sharey(bc)
 bc.set_ylim(-100, 120)
 bd.tick_params(labelleft=False)
-bd.set_xlabel(r"Time from the peak force, $\sqrt{\lambda_L}\,\tau$ (s)")
+bd.set_xlabel(r"Time from the peak force, $\sqrt{\lambda_{\mathrm{L}}}\,\tau$ (s)")
 bd.text(0.06, -62, "F05, F06, F09, F13\n(four models)", ha="left", va="center", color="0.35", linespacing=0.95)
 bd.set_title(r"\textbf{(f)} solitary wave", loc="left")
 for ax in (bc, bd):

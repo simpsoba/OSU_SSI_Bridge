@@ -104,7 +104,7 @@ for c, (kt, kx, unit) in enumerate((("tf", "F", "kN"), ("tu", "u", "mm"))):
         ax.text(np.sqrt(0.1 * 0.3), 0.03, "long-period\nband", transform=ax.get_xaxis_transform(), ha="center",
                 va="bottom", color="#3B5B7A", linespacing=0.95)
     ax.set_xlabel("Real-time frequency, prototype (Hz)")
-    sym = r"$\lambda_L^3 f_p$" if kx == "F" else r"$u$"
+    sym = r"$\lambda_{\mathrm{L}}^3 f_{\mathrm{p}}$" if kx == "F" else r"$u$"
     ax.set_ylabel(f"PSD of {sym} ({unit}$^2$/Hz)")
     ax.set_title(rf"\textbf{{({'ab'[c]})}} {'force' if kx == 'F' else 'displacement'}", loc="left", pad=42)
 fig.savefig(OUT.with_suffix(".png"), dpi=200)

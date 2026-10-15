@@ -71,8 +71,8 @@ la.set_ylabel("Slowdowns", fontsize=7)
 la.set_title(r"\textbf{(a)}", loc="left")
 fa.set_xlim(0, 485)
 fa.set_ylim(-145, 145)
-fa.set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
-fa.set_xlabel(r"Laboratory time, $\sqrt{\lambda_L}\,t$ (s)")
+fa.set_ylabel(r"$\lambda_{\mathrm{L}}^3 f_{\mathrm{p}}$ (kN)")
+fa.set_xlabel(r"Laboratory time, $\sqrt{\lambda_{\mathrm{L}}}\,t$ (s)")
 for tid, xy, xyt in (("F07", (118, 105), (150, 125)), ("F08", (110, -124), (150, -132)),
                      ("F15", (44, -52), (150, -75)), ("F06", (347, -78), (380, -110))):
     r = R.BY_ID[tid]
@@ -91,8 +91,8 @@ for tid, c, name in SOL:
     b1.plot(t[k] - tp_, f[k], color=c, lw=0.8, label=f"{tid} {name}")
 b1.legend(loc="lower right", frameon=False, fontsize=6, handlelength=1.0)
 b1.set_xlim(-1.5, 3.0)
-b1.set_xlabel(r"Time from the peak, $\sqrt{\lambda_L}\,\tau$ (s)")
-b1.set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
+b1.set_xlabel(r"Time from the peak, $\sqrt{\lambda_{\mathrm{L}}}\,\tau$ (s)")
+b1.set_ylabel(r"$\lambda_{\mathrm{L}}^3 f_{\mathrm{p}}$ (kN)")
 b1.set_title(r"\textbf{(b.1)}", loc="left")
 d = D["F11"]
 t, f = F["F11"]
@@ -104,7 +104,7 @@ for x in on[np.abs(on - tp) < 1.0]:
     b2.axvline(x, color="#FF8C00", lw=0.8, zorder=0)
 b2.text(0.97, 0.05, "F11 GPU (large, 24 ranks)\norange: slowdown onset", transform=b2.transAxes, ha="right",
         va="bottom", fontsize=6.5)
-b2.set_xlabel(r"$\sqrt{\lambda_L}\,t$ (s)")
+b2.set_xlabel(r"$\sqrt{\lambda_{\mathrm{L}}}\,t$ (s)")
 b2.set_title(r"\textbf{(b.2)}", loc="left")
 print(f"F11 peak {f[np.argmax(np.abs(f))]:.1f} kN at {tp:.2f} s; slowdown onsets nearby {np.round(on[np.abs(on - tp) < 1], 3)}")
 for tid, c, name in SOL:

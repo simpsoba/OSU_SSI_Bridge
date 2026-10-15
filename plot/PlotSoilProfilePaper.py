@@ -247,7 +247,7 @@ def xlabel_with_tag(*lines: str) -> str:
     """
     Multi-line x-label via usetex shortstack (last line usually the panel tag).
 
-    Args:    lines  e.g. r"Shear modulus,", r"$G_r$ (MPa)", r"\textbf{(a)}"
+    Args:    lines  e.g. r"Shear modulus,", r"$G_{\mathrm{r}}$ (MPa)", r"\textbf{(a)}"
     Returns: LaTeX string for ax.set_xlabel
     """
     return r"\shortstack{" + r"\\".join(lines) + "}"
@@ -354,7 +354,7 @@ def plot_soil_props_paper(
     mark_units(ax_a, spans, label=True, soft_x=soft_Gr + 8.0)
     style_depth(ax_a, ylabel=True)
     ax_a.set_xlabel(
-        xlabel_with_tag(r"Shear modulus,", r"$G_r$ (MPa)", r"\textbf{(a)}")
+        xlabel_with_tag(r"Shear modulus,", r"$G_{\mathrm{r}}$ (MPa)", r"\textbf{(a)}")
     )
     gr_xmax = set_xlim0(ax_a, float(np.nanmax(Gr_MPa)))
     draw_pile_group_faded(ax_a, springs)
@@ -365,7 +365,7 @@ def plot_soil_props_paper(
         Br_GPa, zB, color=LINE_COLOR, lw=LINE_LW, ls=(0, (4, 2)),
         solid_capstyle="butt", zorder=3,
     )
-    ax_a2.set_xlabel(xlabel_with_tag(r"Bulk modulus,", r"$B_r$ (GPa)"))
+    ax_a2.set_xlabel(xlabel_with_tag(r"Bulk modulus,", r"$B_{\mathrm{r}}$ (GPa)"))
     br_xmax = gr_xmax / 20.0
     br_step = br_xmax / N_X_INTERVALS
     ax_a2.set_xlim(0.0, br_xmax)
@@ -380,7 +380,7 @@ def plot_soil_props_paper(
     ax_b.plot(su_kPa, zS, color=LINE_COLOR, lw=LINE_LW, solid_capstyle="butt", zorder=3)
     style_depth(ax_b, ylabel=False)
     ax_b.set_xlabel(
-        xlabel_with_tag(r"Undrained strength,", r"$s_u$ (kPa)", r"\textbf{(b)}")
+        xlabel_with_tag(r"Undrained strength,", r"$s_{\mathrm{u}}$ (kPa)", r"\textbf{(b)}")
     )
     set_xlim0(ax_b, float(np.nanmax(su_kPa)))
 

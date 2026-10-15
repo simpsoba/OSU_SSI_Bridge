@@ -115,11 +115,11 @@ ax_b.annotate("", (tc[0], y_ar), (tc[-1], y_ar),
               arrowprops=dict(arrowstyle="<->", color="0.25", lw=0.6, shrinkA=0, shrinkB=0))
 for x0 in (tc[0], tc[-1]):
     ax_b.plot([x0, x0], [y_ar - 0.5, y_ar + 0.5], color="0.25", lw=0.6)
-lab_T = (rf"{n_c}T_w" if n_c > 1 else "T_w")
+lab_T = (rf"{n_c}T_{{\mathrm{{w}}}}" if n_c > 1 else r"T_{\mathrm{w}}")
 ax_b.text(0.5 * (tc[0] + tc[-1]), y_ar + 0.25, rf"${lab_T}$ = {tc[-1] - tc[0]:.1f} s", ha="center", va="bottom",
           color="0.25", bbox=dict(fc="white", ec="none", pad=0.6))
 ax_b.set_ylim(-4.5, 5.6)
-ax_b.set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
+ax_b.set_ylabel(r"$\lambda_{\mathrm{L}}^3 f_{\mathrm{p}}$ (kN)")
 ax_b.tick_params(labelbottom=False)
 tag(ax_b, "(b)")
 kz = (th >= ZOOM[0]) & (th <= ZOOM[1])
@@ -163,7 +163,7 @@ A[2].plot(xx, mm * xx + f0, color=RED, lw=1.4)
 A[2].annotate(rf"$m\ddot u$, $m$ = {mm:.1f} t", (0.85 * xx[1], mm * 0.85 * xx[1] + f0), xytext=(0.05, 0.93),
               textcoords="axes fraction", color=RED, ha="left", va="top",
               arrowprops=dict(arrowstyle="-", color=RED, lw=0.6, shrinkA=1, shrinkB=1))
-A[0].set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
+A[0].set_ylabel(r"$\lambda_{\mathrm{L}}^3 f_{\mathrm{p}}$ (kN)")
 order = ["before (waves only)", "during the earthquake", "after"]
 s2f.legend([plt.Line2D([], [], color=PHASE_COL[n], lw=1.6) for n in order],
            ["before the earthquake (waves only)", "during the earthquake", "after the earthquake"],

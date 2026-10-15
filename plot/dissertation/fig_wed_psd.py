@@ -31,8 +31,8 @@ RUNS = [("W04", "0819_GusBridge_Serial_H0p5_T7p746_reg_Trial02", 1, ORANGE),
         ("W05", "0819_GusBridge_Parallel16_H0p5_T7p746_reg_Trial02", 16, GRAY),
         ("W07", "0819_GusBridge_Parallel24_H0p5_T7p746_reg", 24, GRAY)]
 F_WAVE = 1 / 12.0
-REFS = [(F_WAVE, r"$f_w$"), (2 * F_WAVE, r"$2f_w$"), (3 * F_WAVE, r"$3f_w$"), (4 * F_WAVE, r"$4f_w$"),
-        (5 * F_WAVE, r"$5f_w$"), (0.477, r"$f_1$"), (2.975, r"$f_4$"), (16.75, r"$f_{\mathrm{osc}}$"),
+REFS = [(F_WAVE, r"$f_{\mathrm{w}}$"), (2 * F_WAVE, r"$2f_{\mathrm{w}}$"), (3 * F_WAVE, r"$3f_{\mathrm{w}}$"), (4 * F_WAVE, r"$4f_{\mathrm{w}}$"),
+        (5 * F_WAVE, r"$5f_{\mathrm{w}}$"), (0.477, r"$f_1$"), (2.975, r"$f_4$"), (16.75, r"$f_{\mathrm{osc}}$"),
         (60.0 / SQL, r"$f_{\mathrm{mains}}$")]
 XLIM = (0.02, 100.0)
 
@@ -94,7 +94,7 @@ def tag(ax, s):
 
 
 fig, A = plt.subplots(1, 2, figsize=(6.0, 2.7), layout="constrained")
-for row, (kt, kx, ylab, ylim) in enumerate((("tf", "F", r"PSD of $\lambda_L^3 f_p$ (kN$^2$/Hz)", (1e-8, 1e2)),
+for row, (kt, kx, ylab, ylim) in enumerate((("tf", "F", r"PSD of $\lambda_{\mathrm{L}}^3 f_{\mathrm{p}}$ (kN$^2$/Hz)", (1e-8, 1e2)),
                                              ("tu", "u", r"PSD of $u$ (mm$^2$/Hz)", (1e-9, 1e5)))):
     ax = A[row]
     for k in [0, 1, 3, 4, 2]:

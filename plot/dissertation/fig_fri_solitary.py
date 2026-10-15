@@ -59,7 +59,7 @@ for tid, name, c in MESH:
     az.plot(x["ti"][k], x["u"][k], color=c, lw=0.9)
 aa.set_xlim(0, 440)
 aa.set_xlabel(r"Integration time, $t_{\mathrm{int}}$ (s)")
-aa.set_ylabel(r"$\lambda_L u_m$ (mm)")
+aa.set_ylabel(r"$\lambda_{\mathrm{L}} u_{\mathrm{m}}$ (mm)")
 aa.legend(loc="upper right", frameon=False, fontsize=6.5, handlelength=1.2)
 aa.add_patch(plt.Rectangle((88, -170), 12, 360, fc="none", ec="0.4", lw=0.5, ls="--"))
 aa.set_title(r"\textbf{(a)} GPU MKR-$\alpha$, four models", loc="left")
@@ -82,15 +82,15 @@ for tid, name, c in [CPU] + MESH:
     print(f"{tid}: impact at lab {x['t_imp'] * R.SQL:.1f} s (t_int {np.interp(x['t_imp'], x['t'], x['ti']):.1f}); "
           f"peak force {pk:.1f} kN; displacement p-p 30 s before {np.ptp(ub):.1f} mm, 30 s after {np.ptp(ua):.1f} mm, "
           f"mean before {ub.mean():.1f} after {ua.mean():.1f} mm")
-b1.set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
+b1.set_ylabel(r"$\lambda_{\mathrm{L}}^3 f_{\mathrm{p}}$ (kN)")
 b1.set_xlim(-1.5, 3.0)
-b1.set_xlabel(r"$\sqrt{\lambda_L}\,\tau$ (s)")
+b1.set_xlabel(r"$\sqrt{\lambda_{\mathrm{L}}}\,\tau$ (s)")
 b1.set_title(r"\textbf{(b.1)} Solitary wave", loc="left")
 b2.legend(loc="upper right", frameon=False, fontsize=6.5, handlelength=1.2, ncol=2)
 b2.set_title(r"\textbf{(b.2)} Aligned at the peak force ($\tau = 0$)", loc="left")
-b2.set_ylabel(r"$\lambda_L u_m$ (mm)")
+b2.set_ylabel(r"$\lambda_{\mathrm{L}} u_{\mathrm{m}}$ (mm)")
 b2.set_ylim(60, 75)
-b2.set_xlabel(r"Time from the peak force, $\sqrt{\lambda_L}\,\tau$ (s)")
+b2.set_xlabel(r"Time from the peak force, $\sqrt{\lambda_{\mathrm{L}}}\,\tau$ (s)")
 b2.set_xlim(-40, 70)
 for ax in (b1, b2):
     ax.axvline(0, color="0.5", lw=0.5, ls=":")

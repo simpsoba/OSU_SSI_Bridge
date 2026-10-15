@@ -143,9 +143,9 @@ EXP = {"color": "#ec2a10", "len": 1.55, "h": 0.34, "lw": 1.2}
 # (a) one-line; (b) arrow only; (d) formula by arrow, name under it inside axes.
 FP_ARROW = {"len": 0.95, "gap": 0.06, "lw": 1.35, "head": 10.0,
             "label_dx": 0.08, "label_dy": 0.28, "name_dx": 1.65}
-FP_TXT = r"Physical subassembly force, $\lambda_L^{3}\mathbf{f}_{p}$"
+FP_TXT = r"Physical subassembly force, $\lambda_{\mathrm{L}}^{3}\mathbf{f}_{\mathrm{p}}$"
 FP_TXT_NAME = "Physical subassembly\nforce"
-FP_TXT_MATH = r"$\lambda_L^{3}\mathbf{f}_{p}$"
+FP_TXT_MATH = r"$\lambda_{\mathrm{L}}^{3}\mathbf{f}_{\mathrm{p}}$"
 # force_fp_label modes: "full" | "two" | "none"
 
 

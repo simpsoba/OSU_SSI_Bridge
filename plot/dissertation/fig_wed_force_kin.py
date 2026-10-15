@@ -115,7 +115,7 @@ def make(test, out):
     ax.annotate(rf"$m\ddot u$, $m$ = {m:.1f} t", (0.85 * xx[1], m * 0.85 * xx[1] + f0), xytext=(0.05, 0.93),
                 textcoords="axes fraction", color=RED, ha="left", va="top",
                 arrowprops=dict(arrowstyle="-", color=RED, lw=0.6, shrinkA=1, shrinkB=1))
-    A[row, 0].set_ylabel(r"$\lambda_L^3 f_p$ (kN)")
+    A[row, 0].set_ylabel(r"$\lambda_{\mathrm{L}}^3 f_{\mathrm{p}}$ (kN)")
     order = [n for n in ("before (waves only)", "during the earthquake", "after", "solitary wave") if n in handles]
     fig.legend([handles[n] for n in order], order, loc="outside upper center", ncol=4, frameon=False, handlelength=1.5,
                columnspacing=1.2)

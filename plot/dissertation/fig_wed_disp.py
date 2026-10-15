@@ -157,7 +157,7 @@ def draw(ax_pair, key, lw):
 
 draw(A, "t", 0.8)
 A[0].set_ylabel(r"$u$ (mm)")
-A[1].set_xlabel(r"Laboratory time, $\sqrt{\lambda_L}\,t$ (s)")
+A[1].set_xlabel(r"Laboratory time, $\sqrt{\lambda_{\mathrm{L}}}\,t$ (s)")
 label(A[1], "serial", (271.5, -150), (290, -150), ORANGE)
 label(A[1], "8 ranks", (330, 85), (340, 165), BLUE)
 label(A[1], "4, 16, 24 ranks", (395, 62), (330, -120), GRAY)
@@ -208,7 +208,7 @@ for ax in C:
 C[0].set_yticks([0, 0.01, 0.1, 1, 10])
 C[0].set_yticklabels(["0", "0.01", "0.1", "1", "10"])
 C[0].set_ylabel("Delay behind\nreal time (s)")
-C[1].set_xlabel(r"Laboratory time, $\sqrt{\lambda_L}\,t$ (s)")
+C[1].set_xlabel(r"Laboratory time, $\sqrt{\lambda_{\mathrm{L}}}\,t$ (s)")
 tag(C[0], "(c)")
 x_end = SEG[1][1]
 d0 = data[0]
