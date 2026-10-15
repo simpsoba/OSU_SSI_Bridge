@@ -100,7 +100,9 @@ for r_, (title, rows) in enumerate(ROWS):
     la.set_title(rf"\textbf{{({'abcd'[r_]})}} {title}", loc="left")
     for yv in (F_REF, -F_REF):
         fa.axhline(yv, color="0.35", lw=0.6, ls=(0, (4, 2)), zorder=0)
-    fa.text(472, -F_REF - 3, r"$-0.1F_{\mathrm{y,eq}}$", ha="right", va="top", color="0.35")
+    if r_ == 0:  # one label for the dashed lines, above the upper one at the right edge of the axes
+        fa.text(0.995, F_REF + 4, r"$\pm 0.1F_{\mathrm{y,eq}}$", ha="right", va="bottom", color="0.35",
+                transform=fa.get_yaxis_transform())
     fa.set_ylim(-YL, YL)
     fa.set_xlim(0, 475)
     fa.set_ylabel(r"$\lambda_{\mathrm{L}}^3 f_{\mathrm{p}}$ (kN)")
