@@ -2,24 +2,25 @@
 """
 Goals
 -----
-Pairwise FFT PSD overlays within each physical-model compare group.
+Pairwise Welch PSD overlays within each physical-model compare group.
 
 Same interim reference as PlotEQComparePairs (fewest typeConv3→2 in GM
 D5–95). One figure per non-ref dump:
 
   psd_ux_pair_<Test>.png
 
-Five rows on a shared prototype-Hz axis (Hann FFT; lab \(f\) → proto via /√λ):
+Five rows on a shared prototype-Hz axis (Welch, 40 s prototype Hann segments as the
+dissertation figures; lab \(f\) → proto via /√λ):
   tarSig / comSig / meaSig  — lab \(t\)
   pier \(u_x\) / ctrlDisp   — \(t_{\mathrm{int}}\)
 
-Layout: FFT window history | PSD (all groups).
+Layout: PSD window history | PSD (all groups).
 
 Window:
   Friday / campaign — GM D5–95 (OS proto; lab via atTarget map)
   Wed0819 — fair end from shortest OS progress
   \(T^\star=\min(t_{\mathrm{end}}^{\mathrm{OS}}-\mathrm{gmStart})\):
-  pier / ctrlDisp FFT on OS \([0,\mathrm{gmStart}+T^\star]\);
+  pier / ctrlDisp PSD on OS \([0,\mathrm{gmStart}+T^\star]\);
   tar/com/mea on lab \([0,t_{\mathrm{lab}}^\star]\) with \(t_{\mathrm{lab}}^\star\)
   = atTarget map of that OS cut (ctrlDisp↔stateOS handshakes).
 
@@ -70,15 +71,13 @@ from PlotEQComparePairs import (
 from PlotEQCompareRuns import apply_paper_style, resolve_run_path, run_duration, run_to_mat_name
 from PlotHydroSpectra import (
     F_MIN_PROTO_HZ,
-    _fft_proto_hz,
+    _psd_proto_hz,
     _load_os_disp_proto_mm,
     add_dual_freq_xaxis,
     load_pier_ux_mm,
     mark_freq_guides,
     pier_f1_hz,
     pier_f4_hz,
-    pier_f5_hz,
-    ssi_guide_freqs,
 )
 from PlotActuatorForce import scale_paper_fonts
 
@@ -89,8 +88,8 @@ usage: python plot/PlotEQComparePSD.py [runDir ...]
   runDir    one or more dump folders
   output    LOCAL/plots/compare/<Mesh>/<variant>/pairs/psd_ux_pair_<Test>.png
   clocks    tar/com/mea = lab $t$; pier/ctrlDisp = $t_{\mathrm{int}}$
-  layout    history (FFT window) | PSD
-  fft       Hann periodogram, mean kept, no resample
+  layout    history (PSD window) | PSD
+  psd       Welch, 40 s prototype Hann segments, 75% overlap, means removed
   Fri       D5-95 on $t_{\mathrm{int}}$; lab cuts via atTarget map
   Wed       fair end: T*=min(t_end_OS-gmStart); pier/ctrl on $t_{\mathrm{int}}$;
             lab [0, atTarget(cut)] via handshake map
@@ -203,7 +202,7 @@ def _fair_windows(
     | None
 ):
     """
-    Fair FFT windows from shortest OS post-gmStart progress.
+    Fair PSD windows from shortest OS post-gmStart progress.
 
     Pier: [0, gmStart+T★] on OS t.
     Lab: [0, atTarget(gmStart+T★)] via handshake map.
@@ -289,8 +288,6 @@ def plot_psd_pair(
 
     f_pier = pier_f1_hz(test_other or test_ref)
     f_mode4 = pier_f4_hz(test_other or test_ref)
-    f_mode5 = pier_f5_hz(test_other or test_ref)
-    f_ssi = ssi_guide_freqs(test_other or test_ref)
 
     apply_paper_style()
     scale_paper_fonts(FONT_SCALE)
@@ -299,7 +296,7 @@ def plot_psd_pair(
     plt.rcParams["figure.titlesize"] = label_fs * 1.15
 
     n_row = len(ROW_SPECS)
-    # History (FFT window) | PSD for every group.
+    # History (PSD window) | PSD for every group.
     n_col = 2
     fig_w = 12.8
     fig, axes = plt.subplots(
@@ -341,7 +338,7 @@ def plot_psd_pair(
         got_r = got_o = None
         if series_r is not None:
             t_r, y_r = series_r
-            got_r = _fft_proto_hz(t_r, y_r, win_r[0], win_r[1], lab_clock=use_lab)
+            got_r = _psd_proto_hz(t_r, y_r, win_r[0], win_r[1], lab_clock=use_lab)
             m = (t_r >= win_r[0]) & (t_r <= win_r[1]) & np.isfinite(y_r)
             if np.any(m):
                 ax_hist.plot(
@@ -354,7 +351,7 @@ def plot_psd_pair(
                 )
         if series_o is not None:
             t_o, y_o = series_o
-            got_o = _fft_proto_hz(t_o, y_o, win_o[0], win_o[1], lab_clock=use_lab)
+            got_o = _psd_proto_hz(t_o, y_o, win_o[0], win_o[1], lab_clock=use_lab)
             m = (t_o >= win_o[0]) & (t_o <= win_o[1]) & np.isfinite(y_o)
             if np.any(m):
                 ax_hist.plot(
@@ -390,8 +387,8 @@ def plot_psd_pair(
                 frameon=True,
                 fontsize=float(plt.rcParams["legend.fontsize"]),
             )
-            ax_hist.set_title(r"FFT window", fontsize=label_fs)
-            ax_psd.set_title(r"FFT PSD", fontsize=label_fs)
+            ax_hist.set_title(r"PSD window", fontsize=label_fs)
+            ax_psd.set_title(r"Welch PSD", fontsize=label_fs)
             ax_hist.legend(
                 loc="upper right",
                 frameon=True,
@@ -415,14 +412,12 @@ def plot_psd_pair(
                 f_wave=None,
                 f_pier=f_pier,
                 f_mode4=f_mode4,
-                f_mode5=f_mode5,
-                f_ssi=f_ssi,
                 f_max=f_max_guide,
                 with_labels=(i == 0),
             )
             ax_psd.set_xlim(F_MIN_PROTO_HZ, f_hi_all)
 
-    # History xlim = FFT window (lab rows share lab window; OS rows share OS).
+    # History xlim = PSD window (lab rows share lab window; OS rows share OS).
     i_last_lab = i_last_os = -1
     for i, (_k, _n, lab_clock) in enumerate(ROW_SPECS):
         ax_h = axes[i, 0]
@@ -450,7 +445,7 @@ def plot_psd_pair(
     tag_r = test_ref or pair_file_slug(ref.name)
     tag_o = test_other or pair_file_slug(other.name)
     fig.suptitle(
-        rf"FFT PSD {win_label}  ·  ref {tag_r} (grey) vs {tag_o} (navy)"
+        rf"Welch PSD {win_label}  ·  ref {tag_r} (grey) vs {tag_o} (navy)"
         r"  ·  lab $t$ / $t_{\mathrm{int}}$"
     )
     out.parent.mkdir(parents=True, exist_ok=True)

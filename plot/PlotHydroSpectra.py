@@ -2,8 +2,9 @@
 """
 Goals
 -----
-Raw Hann FFT periodograms (one FFT per analysis window; mean kept; no Welch,
-no resample / interpolate).
+Welch PSDs as the dissertation figures (plot/dissertation/fig_fri_psd_phases.py): Hann
+segments of 40 s prototype time, 75 % overlap, segment means removed, density scaling;
+no resample / interpolate.
 
 Figure 1–2 (OpenSees domain \(t\)): structure + SSI recorder PSDs
 (``psd_pier_ux_M_theta_F.png``, ``psd_pileM_py_soil.png``).
@@ -17,7 +18,9 @@ only (uniform recorder dt; no map / resample).
 Columns = analysis windows (Wed: pre-EQ hydro | D5–95 | post-EQ + wave;
 Fri: D5–95 | post-EQ free vib | wave) in the same time unit as each series.
 
-Mode guides from ``plot/out/eigen/mesh<soilMesh>/``.
+Mode guides: eigenfrequencies f_1 and f_4 (fundamental and pier modes) of the numerical
+model, from ``plot/out/eigen/mesh<soilMesh>/``. Higher soil modes (e.g. the 7.99 Hz
+pair) have no interface participation and no Welch peak, so they are not marked.
 
   python plot/PlotHydroSpectra.py W05 F05
   python plot/PlotHydroSpectra.py --lab-vs-pier-os F06
@@ -33,7 +36,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.signal import periodogram
+from scipy.signal import welch
 
 from PlotActuatorForce import (
     DEFAULT_FONT_SCALE,
@@ -78,16 +81,10 @@ COLOR_PY = "#E65100"
 COLOR_SOIL = "#5D4037"
 COLOR_FW = "#C62828"
 COLOR_F1 = "#2E7D32"
-COLOR_SSI = "#6A1B9A"
 COLOR_FACT = "#6D4C41"
 DEFAULT_PIER_T1_S = 2.09577  # gravity+holdPier eigen (mesh 0 and 19)
 DEFAULT_PIER_T4_S = 0.3361
-DEFAULT_PIER_T5_S = 0.3035
-# Soil/SSI poles that show up in pier ux / soil γ PSDs (see modal_analysis/).
-DEFAULT_SSI_F_LO_HZ = 7.9878  # degenerate pair; mesh −2…4
-DEFAULT_SSI_F_HI_HZ = 8.8326  # mesh0 m29; nearest eigen used per mesh
-SSI_F_LO_TARGET_HZ = 7.988
-SSI_F_HI_TARGET_HZ = 8.83
+TSEG_PROTO_S = 40.0  # Welch segment, prototype s (as the dissertation PSD figures)
 # Per-mesh archive from DumpEigenModes.tcl (avoids re-running eigen for PSD guides).
 EIGEN_DIR = Path(__file__).resolve().parent / "out" / "eigen"
 EIGEN_JSON_FALLBACK = Path(__file__).resolve().parent / "eigen_modes.json"
@@ -387,81 +384,34 @@ def pier_f4_hz(test_id: str) -> float:
     return 1.0 / _eigen_period_s(4, DEFAULT_PIER_T4_S, mesh=mesh)
 
 
-def pier_f5_hz(test_id: str) -> float:
-    """Mode-5 frequency for this run's mesh (Hz proto)."""
-    mesh = soil_mesh_id(test_id)
-    return 1.0 / _eigen_period_s(5, DEFAULT_PIER_T5_S, mesh=mesh)
-
-
-def _eigen_freqs_hz(mesh: int | None) -> list[float]:
-    """All archived eigen frequencies (Hz) for a mesh, empty if missing."""
-    path = eigen_json_path(mesh)
-    if not path.is_file():
-        return []
-    try:
-        import json
-
-        data = json.loads(path.read_text(encoding="utf-8"))
-        out: list[float] = []
-        for m in data.get("modes_meta") or []:
-            f = float(m["f"])
-            if f > 0.0:
-                out.append(f)
-        return out
-    except (OSError, ValueError, KeyError, TypeError):
-        return []
-
-
-def ssi_guide_freqs(test_id: str) -> tuple[float, float]:
-    """
-    Soil/SSI guide frequencies for the ~8 Hz PSD bumps.
-
-    Lower pole is the mesh-locked degenerate pair near 7.99 Hz. Upper pole is
-    the nearest archived eigenmode to ~8.83 Hz (mesh0 m29 / mesh19 m30).
-
-    Args:    test_id
-    Returns: (f_SSI, f'_SSI) in Hz prototype
-    """
-    freqs = _eigen_freqs_hz(soil_mesh_id(test_id))
-    if not freqs:
-        return DEFAULT_SSI_F_LO_HZ, DEFAULT_SSI_F_HI_HZ
-    f_lo = min(freqs, key=lambda f: abs(f - SSI_F_LO_TARGET_HZ))
-    # Prefer the upper twin; do not re-pick the 7.99 Hz pair.
-    upper = [f for f in freqs if f >= 8.4]
-    if upper:
-        f_hi = min(upper, key=lambda f: abs(f - SSI_F_HI_TARGET_HZ))
-    else:
-        f_hi = min(freqs, key=lambda f: abs(f - SSI_F_HI_TARGET_HZ))
-    return float(f_lo), float(f_hi)
-
-
-def fft_psd(
+def welch_psd(
     y: np.ndarray,
     dt: float,
+    tseg: float,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    One-sided raw FFT periodogram (full record, Hann taper).
+    One-sided Welch PSD, as the dissertation figures.
 
-    One FFT of the entire record — mean kept, no Welch segment averaging.
-    Hann reduces spectral leakage from finite windows. Δf = 1/(N·dt).
-    Density scaling (SciPy corrects for window power): units of y²/Hz.
+    Hann segments of ``tseg`` seconds (whole window if shorter), 75 % overlap,
+    segment means removed, density scaling: units of y²/Hz, Δf = 1/tseg.
 
-    Args:    y  series; dt  sampling interval (s)
+    Args:    y  series; dt  sampling interval (s); tseg  segment length (s, same clock as dt)
     Returns: (f_Hz, PSD)
     """
     y = np.asarray(y, dtype=float)
     if y.size < 64 or not np.isfinite(dt) or dt <= 0.0:
         return np.asarray([]), np.asarray([])
-    f_hz, pxx = periodogram(
+    n = min(int(round(tseg / dt)), y.size)
+    return welch(
         y,
         fs=1.0 / dt,
         window="hann",
-        nfft=None,
-        detrend=False,
+        nperseg=n,
+        noverlap=3 * n // 4,
+        detrend="constant",
         return_onesided=True,
         scaling="density",
     )
-    return f_hz, pxx
 
 
 def add_dual_freq_xaxis(ax, *, label: bool = True) -> None:
@@ -492,18 +442,15 @@ def mark_freq_guides(
     f_wave: float | None,
     f_pier: float | None,
     f_mode4: float | None,
-    f_mode5: float | None,
-    f_ssi: tuple[float, float] | None,
     f_max: float,
     with_labels: bool,
 ) -> None:
     """
-    Vertical guides (prototype Hz): wave + superharmonics, pier f1 / f4 / f5,
-    soil/SSI poles near 8 Hz, and the Seki transfer-system band.
+    Vertical guides (prototype Hz): wave + superharmonics, the eigenfrequencies f1 and f4
+    (fundamental and pier modes) of the numerical model, and the Seki transfer-system band.
 
-    f4 matches the ~3 Hz peaks in pier ux / actuator F; f5 marks the nearby
-    structural/SSI mode. f_SSI / f'_SSI mark the soil-domain poles that show
-    up as the twin pier-ux bumps near 8–9 Hz (stronger in soil γ / p-y).
+    The measured pier-mode peak sits slightly below f4 during strong shaking (about 2.85 Hz,
+    softening); the guides mark the numerical model, not the peaks.
     """
     # Actuation / transfer system (Seki et al. 2026): 24–28 Hz model.
     f_lo = F_ACT_MODEL_HZ[0] / TIME_SCALE_FROUDE
@@ -557,33 +504,6 @@ def mark_freq_guides(
             alpha=0.75,
             label=(rf"$f_4$" if with_labels else None),
         )
-    if f_mode5 is not None and 0.0 < f_mode5 < f_max:
-        ax.axvline(
-            f_mode5,
-            color=COLOR_F1,
-            ls=":",
-            lw=1.0,
-            alpha=0.65,
-            label=(rf"$f_5$" if with_labels else None),
-        )
-    if f_ssi is not None:
-        for k, (f_s, ls) in enumerate(
-            ((f_ssi[0], "-"), (f_ssi[1], "--"))
-        ):
-            if not (0.0 < f_s < f_max):
-                continue
-            if with_labels:
-                lab = rf"$f_\mathrm{{SSI}}$" if k == 0 else rf"$f'_\mathrm{{SSI}}$"
-            else:
-                lab = None
-            ax.axvline(
-                f_s,
-                color=COLOR_SSI,
-                ls=ls,
-                lw=1.15 if k == 0 else 1.05,
-                alpha=0.85,
-                label=lab,
-            )
 
 
 def add_dual_psd_yaxis(ax, scale_to_model: float, ylabel: str) -> None:
@@ -654,14 +574,12 @@ def save_psd_figure(
     f_wave: float | None,
     f_pier: float | None,
     f_mode4: float | None,
-    f_mode5: float | None,
-    f_ssi: tuple[float, float] | None,
     t_wave_label: float | None,
     font_scale: float,
     title_extra: str = "",
 ) -> None:
     """
-    Write one OpenSees-domain PSD grid PNG (Hann FFT, no resample).
+    Write one OpenSees-domain PSD grid PNG (Welch, no resample).
 
     series items: (sname, t_os, y, ylab_p, ylab_m, s2m, color)
     """
@@ -687,7 +605,7 @@ def save_psd_figure(
     for i_sig, (sname, t, y, ylab_p, ylab_m, s2m, color) in enumerate(series):
         for j_win, (wname, t0, t1) in enumerate(windows):
             ax = axes[i_sig, j_win]
-            got = _fft_proto_hz(t, y, t0, t1, lab_clock=False)
+            got = _psd_proto_hz(t, y, t0, t1, lab_clock=False)
             if got is None:
                 ax.text(0.5, 0.5, "short", transform=ax.transAxes, ha="center")
             else:
@@ -698,8 +616,6 @@ def save_psd_figure(
                     f_wave=f_wave,
                     f_pier=f_pier,
                     f_mode4=f_mode4,
-                    f_mode5=f_mode5,
-                    f_ssi=f_ssi,
                     f_max=f_hi * 1.05,
                     with_labels=(i_sig == 0 and j_win == n_win - 1),
                 )
@@ -737,7 +653,7 @@ def save_psd_figure(
         run_title(test_id)
         + mesh_bit
         + title_extra
-        + r"  ·  FFT PSD ($t_{\mathrm{int}}$)"
+        + r"  ·  Welch PSD ($t_{\mathrm{int}}$)"
         + (
             rf"  ·  wave start $t={t_wave_label:.1f}$ s"
             if t_wave_label is not None
@@ -801,13 +717,10 @@ def write_plot(test_id: str, *, font_scale: float = DEFAULT_FONT_SCALE_PSD) -> i
     f_wave = (1.0 / t_wave_period) if t_wave_period else None
     f_pier = pier_f1_hz(test_id)
     f_mode4 = pier_f4_hz(test_id)
-    f_mode5 = pier_f5_hz(test_id)
-    f_ssi = ssi_guide_freqs(test_id)
     mesh = soil_mesh_id(test_id)
     print(
         f"PlotHydroSpectra: {test_id}  mesh={mesh}  "
-        f"f1={f_pier:.4f}  f4={f_mode4:.4f}  f5={f_mode5:.4f}  "
-        f"f_SSI={f_ssi[0]:.3f}  f'_SSI={f_ssi[1]:.3f} Hz  "
+        f"f1={f_pier:.4f}  f4={f_mode4:.4f} Hz  "
         f"eigen={eigen_json_path(mesh).name}"
     )
 
@@ -867,8 +780,6 @@ def write_plot(test_id: str, *, font_scale: float = DEFAULT_FONT_SCALE_PSD) -> i
         f_wave=f_wave,
         f_pier=f_pier,
         f_mode4=f_mode4,
-        f_mode5=f_mode5,
-        f_ssi=f_ssi,
         t_wave_label=t_wave_label,
         font_scale=font_scale,
     )
@@ -922,8 +833,6 @@ def write_plot(test_id: str, *, font_scale: float = DEFAULT_FONT_SCALE_PSD) -> i
             f_wave=f_wave,
             f_pier=f_pier,
             f_mode4=f_mode4,
-            f_mode5=f_mode5,
-            f_ssi=f_ssi,
             t_wave_label=t_wave_label,
             font_scale=font_scale,
             title_extra="  ·  SSI",
@@ -956,7 +865,7 @@ def _window_uniform_dt(
     return yy, dt
 
 
-def _fft_proto_hz(
+def _psd_proto_hz(
     t: np.ndarray,
     y: np.ndarray,
     t0: float,
@@ -965,7 +874,7 @@ def _fft_proto_hz(
     lab_clock: bool,
 ) -> tuple[np.ndarray, np.ndarray, float] | None:
     """
-    Hann FFT periodogram on the native sample grid (no resample / interp).
+    Welch PSD on the native sample grid (no resample / interp); 40 s prototype segments.
 
     Args:    t,y  series; t0,t1  window; lab_clock  True → t is lab Time
              (convert f → proto via /√λ); False → OpenSees / proto t
@@ -976,12 +885,12 @@ def _fft_proto_hz(
         return None
     yu, dt_use = got
     if lab_clock:
-        f_lab, pxx_lab = fft_psd(yu, dt_use)
+        f_lab, pxx_lab = welch_psd(yu, dt_use, TSEG_PROTO_S / TIME_SCALE_FROUDE)
         f_hz = f_lab / TIME_SCALE_FROUDE
         pxx = pxx_lab * TIME_SCALE_FROUDE
         nyquist = 0.5 / (dt_use * TIME_SCALE_FROUDE)
     else:
-        f_hz, pxx = fft_psd(yu, dt_use)
+        f_hz, pxx = welch_psd(yu, dt_use, TSEG_PROTO_S)
         nyquist = 0.5 / dt_use
     m = (f_hz > 0.0) & (pxx > 0.0) & np.isfinite(pxx)
     if not np.any(m):
@@ -1020,7 +929,7 @@ def write_force_psd(
     test_id: str, *, font_scale: float = DEFAULT_FONT_SCALE_PSD
 ) -> int:
     """
-    Actuator force Hann PSD on $t_{\mathrm{int}}$ only (no map).
+    Actuator force Welch PSD on $t_{\mathrm{int}}$ only (no map).
 
     Writes ``psd_frc_actuator.png``. Windows match structure/SSI PSDs.
     """
@@ -1081,8 +990,6 @@ def write_force_psd(
         f_wave=f_wave,
         f_pier=pier_f1_hz(test_id),
         f_mode4=pier_f4_hz(test_id),
-        f_mode5=pier_f5_hz(test_id),
-        f_ssi=ssi_guide_freqs(test_id),
         t_wave_label=t_wave_label,
         font_scale=font_scale,
         title_extra=r"  ·  actuator force",
@@ -1097,7 +1004,7 @@ def write_lab_vs_pier_domain_psd(
     PSD overlay: tar / com / mea on lab $t$ vs pier UX on $t_{\mathrm{int}}$.
 
     Writes ``psd_tar_com_mea_lab_vs_pier_os.png``. Freq axis = prototype Hz
-    (lab FFT via /√λ; pier FFT on OpenSees t). Hann FFT on each native grid
+    (lab PSD via /√λ; pier PSD on OpenSees t). Welch on each native grid
     only — no resample / interpolate.
     """
     apply_paper_style()
@@ -1180,8 +1087,6 @@ def write_lab_vs_pier_domain_psd(
     f_wave = (1.0 / t_wave_period) if t_wave_period else None
     f_pier = pier_f1_hz(test_id)
     f_mode4 = pier_f4_hz(test_id)
-    f_mode5 = pier_f5_hz(test_id)
-    f_ssi = ssi_guide_freqs(test_id)
 
     fig_w = max(4.4 * n_win, 11.0)
     fig_h = 4.2 * (0.7 + 0.3 * font_scale)
@@ -1202,13 +1107,13 @@ def write_lab_vs_pier_domain_psd(
         _wn, t0_lab, t1_lab = windows_lab[j]
         f_hi = F_MAX_PROTO_HZ
         for label, t, u, color in lab_series:
-            got = _fft_proto_hz(t, u, t0_lab, t1_lab, lab_clock=True)
+            got = _psd_proto_hz(t, u, t0_lab, t1_lab, lab_clock=True)
             if got is None:
                 continue
             f_hz, pxx, f_hi_i = got
             ax.loglog(f_hz, pxx, color=color, lw=1.15, label=label, zorder=3)
             f_hi = min(f_hi, f_hi_i)
-        got_p = _fft_proto_hz(t_pier_os, u_pier, t0_os, t1_os, lab_clock=False)
+        got_p = _psd_proto_hz(t_pier_os, u_pier, t0_os, t1_os, lab_clock=False)
         if got_p is not None:
             f_hz, pxx, f_hi_i = got_p
             ax.loglog(
@@ -1225,8 +1130,6 @@ def write_lab_vs_pier_domain_psd(
             f_wave=f_wave,
             f_pier=f_pier,
             f_mode4=f_mode4,
-            f_mode5=f_mode5,
-            f_ssi=f_ssi,
             f_max=f_hi * 1.05,
             with_labels=(j == n_win - 1),
         )
@@ -1259,7 +1162,7 @@ def write_lab_vs_pier_domain_psd(
     fig.suptitle(
         run_title(test_id)
         + mesh_bit
-        + r"  ·  FFT PSD: tar/com/mea (lab $t$) vs pier ($t_{\mathrm{int}}$)"
+        + r"  ·  Welch PSD: tar/com/mea (lab $t$) vs pier ($t_{\mathrm{int}}$)"
     )
     out = test_os_plots_dir(test_id) / OUT_NAME_LAB_VS_PIER
     out.parent.mkdir(parents=True, exist_ok=True)
