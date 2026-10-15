@@ -31,6 +31,12 @@ import PlotResponseSpectrum as prs  # noqa: E402
 
 OUT = Path(sys.argv[1])
 WITH_STARTUP = os.environ.get("DELAY_STARTUP", "0") == "1"  # include the start-up offset in (c)
+def fmt_delay(v):
+    """Delay label at 0.1 ms resolution: 0 below 0.05 ms, 4 decimals below 1 s, else 0.1 s."""
+    if v < 5e-5:
+        return "0"
+    return f"{v:.4f}" if v < 1.0 else f"{v:.1f}"
+
 CFG = {"pspd": ("#C0390B", r"CPU MKR-$\alpha$, ProfileSPD", "s"),
        "mumps": ("#8C510A", r"CPU MKR-$\alpha$, MUMPS", "D"),
        "cpucudss": ("#2166AC", r"CPU MKR-$\alpha$, cuDSS solves", "^"),
@@ -147,8 +153,8 @@ for tid, cfg in DELAY:
     xe, ye = tw[-1] * R.SQL, gr[-1]
     bx.plot(xe, ye, marker=CFG[cfg][2], ms=4.2, color=c, mfc=c if d["complete"] else "white", mew=0.9,
             ls="none", zorder=4)
-    print(f"{tid}: delay growth {gr[-1]:.3f} s (prototype), smallest step {1e3 * np.diff(gr).min():.2f} ms")
-    lab = DLAB[tid] + (", NC" if not d["complete"] else "") + f": {max(ye, 0.0):.2g} s"  # final delay (log axis)
+    print(f"{tid}: delay growth {gr[-1]:.5f} s (prototype), smallest step {1e3 * np.diff(gr).min():.2f} ms")
+    lab = DLAB[tid] + (", NC" if not d["complete"] else "") + f": {fmt_delay(max(ye, 0.0))} s"  # final delay (log axis)
     bx.annotate(lab, (xe, ye), xytext=(6, DY.get(tid, 0)), textcoords="offset points", color=c, va="center")
 bx.set_yscale("symlog", linthresh=0.01, linscale=0.4)
 bx.set_yticks([0, 0.01, 0.1, 1, 10])

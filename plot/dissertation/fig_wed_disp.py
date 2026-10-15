@@ -35,6 +35,12 @@ RUNS = [("W04", "0819_GusBridge_Serial_H0p5_T7p746_reg_Trial02", 1, ORANGE),
         ("W05", "0819_GusBridge_Parallel16_H0p5_T7p746_reg_Trial02", 16, GRAY),
         ("W07", "0819_GusBridge_Parallel24_H0p5_T7p746_reg", 24, GRAY)]
 WITH_STARTUP = os.environ.get("DELAY_STARTUP", "0") == "1"  # include the start-up offset in (c)
+def fmt_delay(v):
+    """Delay label at 0.1 ms resolution: 0 below 0.05 ms, 4 decimals below 1 s, else 0.1 s."""
+    if v < 5e-5:
+        return "0"
+    return f"{v:.4f}" if v < 1.0 else f"{v:.1f}"
+
 ORDER = [1, 3, 4, 2, 0]  # grays, 8 ranks, then serial on top
 SEG = [(0, 170), (170, 420)]
 WR = [1, 3.4]
@@ -207,22 +213,22 @@ tag(C[0], "(c)")
 x_end = SEG[1][1]
 d0 = data[0]
 C[1].plot(d0["tk"][-1], d0["lag"][-1], marker="x", color=ORANGE, ms=5, mew=1.0, zorder=5)
-C[1].text(d0["tk"][-1] + 4, d0["lag"][-1], f"serial: {d0['lag'][-1]:.0f} s", ha="left", va="center", color=ORANGE)
+C[1].text(d0["tk"][-1] + 4, d0["lag"][-1], f"serial: {fmt_delay(d0['lag'][-1])} s", ha="left", va="center", color=ORANGE)
 end = {RUNS[k][2]: float(np.interp(x_end, data[k]["tk"], data[k]["lag"])) for k in (1, 2, 3, 4)}
-print("delay at", x_end, "s:", {n: round(v, 3) for n, v in end.items()}, "; serial at its stop", round(d0["lag"][-1], 2))
+print("delay at", x_end, "s:", {n: round(v, 5) for n, v in end.items()}, "; serial at its stop", round(d0["lag"][-1], 2))
 # labels at the right edge, one per distinct level (runs within a factor of 1.6 share a label)
 grp = []
 for n in sorted(end, key=lambda n: end[n]):
     v = end[n]
-    if grp and (v < 0.005 and grp[-1][1] < 0.005 or 0 < grp[-1][1] and v / grp[-1][1] < 1.6):
+    if grp and (v < 5e-5 and grp[-1][1] < 5e-5 or 0 < grp[-1][1] and v / grp[-1][1] < 1.6):
         grp[-1][0].append(n)
     else:
         grp.append([[n], v])
 for ns, v in grp:
-    vals = ", ".join(f"{end[n]:.2g}" if end[n] >= 0.005 else "0" for n in ns)
-    vals = "0" if all(end[n] < 0.005 for n in ns) else vals
+    vals = ", ".join(fmt_delay(end[n]) for n in ns)
+    vals = "0" if all(end[n] < 5e-5 for n in ns) else vals
     c = "0.25" if 8 in ns else GRAY
-    zero = all(end[n] < 0.005 for n in ns)
+    zero = all(end[n] < 5e-5 for n in ns)
     C[1].text(x_end - 3, -0.0015 if zero else v, f"{', '.join(str(n) for n in ns)} ranks: {vals} s", ha="right",
               va="top" if zero else "bottom", color=c)
 
