@@ -31,6 +31,7 @@ CASES = [("F07", "pspd", "F07, 8, NC"), ("F08", "mumps", "F08, 8, NC"), ("F22", 
 TAU_MAX = 480.0  # whole record (the incomplete runs end near 125 s)
 T_SOL = 348.0  # solitary-wave peak, t_int (F03, F05: no slowdowns there)
 WIN = 0.3  # s of integration time after each slowdown onset
+E_Y = 19.8  # kJ, M_y theta_y of the pier base hinge (same section as Wednesday; fig_wed_energy2.my_theta_y())
 
 
 def rd(p):
@@ -91,6 +92,8 @@ ax.set_xticks(range(0, 451, 50))
 ax.spines["bottom"].set_bounds(0, 460)
 ax.set_xlabel(r"Time from the start of the earthquake, $t_{\mathrm{int}} - t_{\mathrm{EQ}}$ (s)")
 ax.set_ylabel(r"$E$ (kJ)")
+sec = ax.secondary_yaxis("right", functions=(lambda e: e / E_Y, lambda r: r * E_Y))
+sec.set_ylabel(r"$E/(M_y\theta_y)$")
 fig.savefig(OUT.with_suffix(".png"), dpi=200)
 fig.savefig(OUT.with_suffix(".pdf"))
 print("wrote", OUT.with_suffix(".png"))
