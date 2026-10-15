@@ -110,12 +110,13 @@ bd.set_title(r"\textbf{(b.1)}", loc="left")
 cx = sc.subplots()
 for tid in ["F07", "F08", "F22", "F06", "F05"]:
     d = U[tid]["d"]
-    gr = (d["lag"] - d["lag"][3]) * R.SQL
-    cx.plot(d["tk"][3:] * R.SQL, gr[3:], color=COL[tid] if tid != "F22" else "#7f2704", lw=0.9,
+    tw, lw_ = R.window_delay(tid, d["t_su"], d["tk"][0])
+    gr = lw_ * R.SQL
+    cx.plot(tw * R.SQL, gr, color=COL[tid] if tid != "F22" else "#7f2704", lw=0.9,
             ls=(0, (3, 1.5)) if tid == "F22" else "-")
-    cx.annotate(tid, (d["tk"][-1] * R.SQL, gr[-1]), xytext=(3, 0), textcoords="offset points", fontsize=6.5,
+    cx.annotate(tid, (tw[-1] * R.SQL, gr[-1]), xytext=(3, 0), textcoords="offset points", fontsize=6.5,
                 va="center", color=COL[tid] if tid != "F22" else "#7f2704")
-    print(f"{tid}: delay growth at end {gr[-1]:.2f} s (prototype), record {d['tk'][-1] * R.SQL:.0f} s")
+    print(f"{tid}: delay growth at end {gr[-1]:.2f} s (prototype), record {tw[-1] * R.SQL:.0f} s")
 cx.set_xlim(0, 480)
 cx.set_ylim(-0.3, 6.5)
 cx.set_xlabel(r"Laboratory time, $\sqrt{\lambda_L}\,t$ (s)")

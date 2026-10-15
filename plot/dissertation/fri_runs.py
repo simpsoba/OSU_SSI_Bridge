@@ -103,19 +103,30 @@ def load(tid):
         off = np.append(off, t[-1])
     dur = off[:on.size] - on
     t_su = tk[3] if tk.size > 3 else t[-1]  # end of the three start-up intervals
-    lag = (tk - tk[0]) - DT_SIM * np.arange(tk.size)  # delay of each target behind hard real time (model s)
     ti_k = np.arange(tk.size) * DT_SIM * SQL  # integration time carried by each target (prototype s)
     use = typ != -1
-    return dict(r=r, t=t, typ=typ, tk=tk, iv=np.diff(tk), lat=lat, on=on, dur=dur, t_su=t_su, lag=lag, ti_k=ti_k,
+    return dict(r=r, t=t, typ=typ, tk=tk, iv=np.diff(tk), lat=lat, on=on, dur=dur, t_su=t_su, ti_k=ti_k,
                 frac={c: 100 * np.mean(typ[use] == c) for c in (0, 1, 2)},
                 n_slow=int(np.sum(on > t_su)), n_slow_su=int(np.sum(on <= t_su)),
                 to_int=lambda x: np.interp(x, tk, ti_k), complete=(r[8] not in ("incomplete", "dry")))
 
 
+def window_delay(tid, t_su, t0, with_startup=False):
+    """Delay behind real time from the dt_sim window starts (count == 1), model s, rebased at the end of start-up
+    (t_su, after the three start-up intervals) or, with_startup, at the first target t0. Multiply by SQL for the
+    prototype-scaled clock. Window starts carry no host-latency jitter, unlike the target arrivals."""
+    st = np.load(MAT_EXTRACT_DIR / f"{BY_ID[tid][1]}.npz", allow_pickle=True)["stateOS_data"]
+    t, cnt = st[:, -1], np.rint(st[:, 1]).astype(int)
+    win = t[1:][(cnt[1:] == 1) & (cnt[:-1] != 1)]
+    lag = (win - win[0]) - DT_SIM * np.arange(win.size)
+    k = win >= (t0 if with_startup else t_su)
+    return win[k], lag[k] - lag[k][0]
+
+
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
     print(f"{'test':4} {'model':12} {'DOF':>5} {'config':30} {'lab_s':>6} {'t_int':>6} {'mean_iv':>7} {'lat_mean':>8}"
-          f" {'lat_p50':>7} {'lat_p99':>7} {'extrap':>6} {'slow%':>6} {'n_slow':>6} {'+su':>3} {'slow_s':>7} {'lag_end':>7}")
+          f" {'lat_p50':>7} {'lat_p99':>7} {'extrap':>6} {'slow%':>6} {'n_slow':>6} {'+su':>3} {'slow_s':>7} {'delay':>7}")
     for r in RUNS + DRY:
         d = load(r[0])
         lat = d["lat"][3:] * 1e3
@@ -123,4 +134,4 @@ if __name__ == "__main__":
         print(f"{r[0]:4} {r[3]:12} {r[4]:5d} {label(r):30} {d['t'][-1]:6.1f} {d['ti_k'][-1]:6.1f} "
               f"{1e3 * d['iv'][3:].mean():7.3f} {lat.mean():8.2f} {np.median(lat):7.2f} {np.percentile(lat, 99):7.2f} "
               f"{d['frac'][1]:6.1f} {d['frac'][2]:6.2f} {d['n_slow']:6d} {d['n_slow_su']:3d} {d['dur'].sum():7.2f} "
-              f"{d['lag'][-1]:7.2f}")
+              f"{window_delay(r[0], d['t_su'], d['tk'][0])[1][-1] * SQL:7.4f}")  # prototype s, after start-up

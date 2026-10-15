@@ -85,7 +85,7 @@ def load(stem):
     me = me[: (max(bad[0] - 256, 0) if bad.size else me.shape[0])]
     t_end = me[-1, -1]
     to_int = lambda x: (np.interp(x, tk, np.arange(tk.size)) + ALPHA_F) * DT_SIM * SQL
-    on = on[(on > 0.7) & (on <= t_end)]
+    on = on[(on > tk[k0 + 3]) & (on <= t_end)]  # after start-up
     kk = win <= t_end
     return dict(t=me[:, -1] * SQL, ti=to_int(me[:, -1]), u=me[:, 0] * LAM * 1e3, tk=win[kk] * SQL, lag=lag[kk],
                 on=on * SQL, on_i=to_int(on), t_end=t_end * SQL, ti_end=to_int(t_end))

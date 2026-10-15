@@ -1,7 +1,7 @@
 """Control error of the Wednesday runs by phase (dissertation Ch. 6; read-only on data).
 
 Phases on integrator time t_int (prototype): before EQ < 150 s (waves only); during 150 s to the Arias 95%
-time (289.1 s; Arias 5% at 206.0 s); after > 289.1 s. 1-rank record cut where its actuator stops tracking.
+time (289.1 s; Arias 5% at 206.0 s); after > 289.1 s. Serial record cut where its actuator stops tracking.
 NRMSE = RMS(y - x) / (max x - min x) within the phase (Chae et al. 2013 / Dong et al. 2015 convention), x the
 reference, y measured. The dissertation reports NRMSE_cm (x = command). Delays: least-squares shift (see xdelay),
 model scale.

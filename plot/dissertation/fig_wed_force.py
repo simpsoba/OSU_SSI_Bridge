@@ -65,12 +65,15 @@ def load(mat):
     st, me, tar, raw = m.stateOS.data, m.meaSigOS.data, m.tarSigOS.data, m.topLRaw.data
     tl, ty = st[:, -1], np.rint(st[:, 0]).astype(int)
     on = tl[1:][(ty[1:] == 2) & (ty[:-1] != 2)]
+    s1 = np.rint(st[:, 2])
+    tk = tl[1:][(s1[1:] > 0) & (s1[:-1] <= 0)]  # new-target flags
+    k0 = 1 if tk[1] - tk[0] < 3e-3 else 0  # second start-up handshake flag
     err = tar[:, 0] - me[:, 0]
     rms = np.sqrt(np.convolve(err ** 2, np.ones(512) / 512, mode="same"))
     bad = np.flatnonzero((rms > 2e-3) & (me[:, -1] > 50.0))
     t_end = me[max(bad[0] - 256, 0), -1] if bad.size else me[-1, -1]
     k = raw[:, -1] <= t_end
-    return dict(t=raw[k, -1] * SQL, F=-LAM ** 3 * raw[k, 0] / 1e3, on=on[on > 0.7] * SQL, t_end=t_end * SQL)
+    return dict(t=raw[k, -1] * SQL, F=-LAM ** 3 * raw[k, 0] / 1e3, on=on[on > tk[k0 + 3]] * SQL, t_end=t_end * SQL)
 
 
 def mark(ax, x, y, dx, dy):

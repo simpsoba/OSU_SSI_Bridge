@@ -213,6 +213,6 @@ fig.savefig(OUT.with_suffix(".png"), dpi=200)
 fig.savefig(OUT.with_suffix(".pdf"))
 for n, d in H.items():
     t, th, M = d["hinge"]
-    print(f"{n:>2} ranks: E(243.6) = {d['E'][-1]:6.2f} kJ = {d['E'][-1] / E_Y:+.2f} M_y theta_y; "
+    print(f"{'serial' if n == 1 else f'{n:>2} ranks'}: E(243.6) = {d['E'][-1]:6.2f} kJ = {d['E'][-1] / E_Y:+.2f} M_y theta_y; "
           f"max |theta| {np.abs(th[(t >= T0) & (t <= T1)]).max():.1f} mrad")
 print("wrote", OUT.with_suffix(".png"))

@@ -2,9 +2,10 @@
 """
 Goals
 -----
-Welch PSDs as the dissertation figures (plot/dissertation/fig_fri_psd_phases.py): Hann
-segments of 40 s prototype time, 75 % overlap, segment means removed, density scaling;
-no resample / interpolate.
+Welch PSDs as the dissertation figures, Hann segments, segment means removed, density scaling;
+no resample / interpolate. Friday (EQ then solitary wave): 40 s prototype segments, 75 % overlap
+(plot/dissertation/fig_fri_psd_phases.py). Wednesday (periodic waves): three segments with 50 %
+overlap tiling each window, which resolves the wave harmonics n f_w (plot/dissertation/fig_wed_psd.py).
 
 Figure 1–2 (OpenSees domain \(t\)): structure + SSI recorder PSDs
 (``psd_pier_ux_M_theta_F.png``, ``psd_pileM_py_soil.png``).
@@ -87,7 +88,7 @@ DEFAULT_PIER_T4_S = 0.3361
 TSEG_PROTO_S = 40.0  # Welch segment, prototype s (as the dissertation PSD figures)
 # Per-mesh archive from DumpEigenModes.tcl (avoids re-running eigen for PSD guides).
 EIGEN_DIR = Path(__file__).resolve().parent / "out" / "eigen"
-EIGEN_JSON_FALLBACK = Path(__file__).resolve().parent / "eigen_modes.json"
+EIGEN_JSON_FALLBACK = Path(__file__).resolve().parent / "out" / "eigen" / "mesh0" / "eigen_modes.json"  # baseline
 # Dense 3×N grid: keep near paper base (actuator force uses 1.75 for 1-row figs).
 DEFAULT_FONT_SCALE_PSD = 1.15
 F_MAX_PROTO_HZ = 100.0
@@ -384,30 +385,42 @@ def pier_f4_hz(test_id: str) -> float:
     return 1.0 / _eigen_period_s(4, DEFAULT_PIER_T4_S, mesh=mesh)
 
 
+def is_wed(test_id: str | None) -> bool:
+    """Wednesday (periodic-wave) runs use the tiled Welch segmentation."""
+    return bool(test_id) and str(test_id).upper().startswith("W")
+
+
 def welch_psd(
     y: np.ndarray,
     dt: float,
-    tseg: float,
+    tseg: float | None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     One-sided Welch PSD, as the dissertation figures.
 
-    Hann segments of ``tseg`` seconds (whole window if shorter), 75 % overlap,
-    segment means removed, density scaling: units of y²/Hz, Δf = 1/tseg.
+    Hann segments of ``tseg`` seconds (whole window if shorter) with 75 % overlap, or, with
+    ``tseg=None``, three segments with 50 % overlap tiling the window (Wednesday periodic waves);
+    segment means removed, density scaling: units of y²/Hz.
 
-    Args:    y  series; dt  sampling interval (s); tseg  segment length (s, same clock as dt)
+    Args:    y  series; dt  sampling interval (s); tseg  segment length (s, same clock as dt) or None
     Returns: (f_Hz, PSD)
     """
     y = np.asarray(y, dtype=float)
     if y.size < 64 or not np.isfinite(dt) or dt <= 0.0:
         return np.asarray([]), np.asarray([])
-    n = min(int(round(tseg / dt)), y.size)
+    if tseg is None:
+        n = y.size // 2
+        n -= n % 2
+        nov = n // 2
+    else:
+        n = min(int(round(tseg / dt)), y.size)
+        nov = 3 * n // 4
     return welch(
         y,
         fs=1.0 / dt,
         window="hann",
         nperseg=n,
-        noverlap=3 * n // 4,
+        noverlap=nov,
         detrend="constant",
         return_onesided=True,
         scaling="density",
@@ -605,7 +618,7 @@ def save_psd_figure(
     for i_sig, (sname, t, y, ylab_p, ylab_m, s2m, color) in enumerate(series):
         for j_win, (wname, t0, t1) in enumerate(windows):
             ax = axes[i_sig, j_win]
-            got = _psd_proto_hz(t, y, t0, t1, lab_clock=False)
+            got = _psd_proto_hz(t, y, t0, t1, lab_clock=False, tiled=is_wed(test_id))
             if got is None:
                 ax.text(0.5, 0.5, "short", transform=ax.transAxes, ha="center")
             else:
@@ -872,11 +885,12 @@ def _psd_proto_hz(
     t1: float,
     *,
     lab_clock: bool,
+    tiled: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, float] | None:
     """
     Welch PSD on the native sample grid (no resample / interp); 40 s prototype segments.
 
-    Args:    t,y  series; t0,t1  window; lab_clock  True → t is lab Time
+    Args:    t,y  series; t0,t1  window; tiled  Wednesday segmentation; lab_clock  True → t is lab Time
              (convert f → proto via /√λ); False → OpenSees / proto t
     Returns: (f_proto_Hz, Pxx_proto, f_hi) or None
     """
@@ -885,12 +899,12 @@ def _psd_proto_hz(
         return None
     yu, dt_use = got
     if lab_clock:
-        f_lab, pxx_lab = welch_psd(yu, dt_use, TSEG_PROTO_S / TIME_SCALE_FROUDE)
+        f_lab, pxx_lab = welch_psd(yu, dt_use, None if tiled else TSEG_PROTO_S / TIME_SCALE_FROUDE)
         f_hz = f_lab / TIME_SCALE_FROUDE
         pxx = pxx_lab * TIME_SCALE_FROUDE
         nyquist = 0.5 / (dt_use * TIME_SCALE_FROUDE)
     else:
-        f_hz, pxx = welch_psd(yu, dt_use, TSEG_PROTO_S)
+        f_hz, pxx = welch_psd(yu, dt_use, None if tiled else TSEG_PROTO_S)
         nyquist = 0.5 / dt_use
     m = (f_hz > 0.0) & (pxx > 0.0) & np.isfinite(pxx)
     if not np.any(m):
@@ -1107,13 +1121,13 @@ def write_lab_vs_pier_domain_psd(
         _wn, t0_lab, t1_lab = windows_lab[j]
         f_hi = F_MAX_PROTO_HZ
         for label, t, u, color in lab_series:
-            got = _psd_proto_hz(t, u, t0_lab, t1_lab, lab_clock=True)
+            got = _psd_proto_hz(t, u, t0_lab, t1_lab, lab_clock=True, tiled=is_wed(test_id))
             if got is None:
                 continue
             f_hz, pxx, f_hi_i = got
             ax.loglog(f_hz, pxx, color=color, lw=1.15, label=label, zorder=3)
             f_hi = min(f_hi, f_hi_i)
-        got_p = _psd_proto_hz(t_pier_os, u_pier, t0_os, t1_os, lab_clock=False)
+        got_p = _psd_proto_hz(t_pier_os, u_pier, t0_os, t1_os, lab_clock=False, tiled=is_wed(test_id))
         if got_p is not None:
             f_hz, pxx, f_hi_i = got_p
             ax.loglog(

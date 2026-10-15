@@ -22,7 +22,7 @@ Wednesday 2026-08-19 runs W04 (1 rank), W06 (4), W02 (8), W05 (16), and W07 (24)
 | `fig_wed_waves.py` | `prelim_wave_check` | W05 (no slowdowns): hybrid vs offline (no waves) pier top; force and pier-top motion under waves before the earthquake; force vs measured u, u-dot, u-ddot by phase with the inertia fit |
 | `fig_wed_err_psd.py` | `prelim_control_error` | PSD of command - measured; measured vs command |
 | `fig_wed_force_kin.py` | `prelim_force_kinematics` (standalone; its row is now panels (d)-(f) of `prelim_wave_check`) | W05 interface force vs measured u, u-dot, u-ddot (20 Hz low-pass), with the inertia fit F = m u-ddot |
-| `fig_wed_energy2.py` | `prelim_interface_energy` | energy across the interface; offline 1 vs 8 ranks; hysteresis of pier base, pile, p-y spring |
+| `fig_wed_energy2.py` | `prelim_interface_energy` | energy across the interface; offline serial vs 8 ranks; hysteresis of pier base, pile, p-y spring |
 
 Helpers: `ctrl_error_wed.py` (run list, phases, loaders; prints NRMSE and delays by phase when run),
 `wed_timing_stats.py` (new-target times, states, tracking cut), `host_time.py` (host latency per window).
@@ -30,7 +30,7 @@ Helpers: `ctrl_error_wed.py` (run list, phases, loaders; prints NRMSE and delays
 Data: `LOCAL/mat_extract/*.npz` and `OSU_SSI_BRIDGE_DATA/Simulink/*.mat` (via `plot/lab_paths.py`),
 `OSU_SSI_BRIDGE_DATA/<run>/` OpenSees recorders, and the offline rank-check runs in
 `C:\Users\garaujor\OpenSees_Runs\OSU_SSI_Bridge_rankcheck\rankcheck\out_np{1,8}` (energy figure, panel b).
-Definitions are in each script's docstring (tracking cut of the 1-rank run, phases, latency, k_el, PSD windows).
+Definitions are in each script's docstring (tracking cut of the serial run, phases, latency, k_el, PSD windows).
 
 ## Main campaign (Friday 2026-08-21; drafts, not yet in the chapter)
 
@@ -47,7 +47,7 @@ writes them to `out/friday`.
 | `fig_fri_ranks.py` | `fri_rank_sweep` | GPU rank sweeps of the moderate, large, and extra-large models, wet tests and lunch dry runs |
 | `fig_fri_formulation.py` | `fri_formulation` | elastic / stiff / soft SSPQuad and Quad-PIMY soil on the baseline model: latency over time, slowdowns |
 | `fig_fri_force.py` | `fri_interface_force` | hold-induced force transients vs the solitary-wave impact |
-| `fig_fri_disp.py` | `fri_interface_displacement` | slowdowns in the displacement history: lab-clock lag (moderate, CPU vs GPU) and GPU 1 vs 8 ranks on integration time |
+| `fig_fri_disp.py` | `fri_interface_displacement` | slowdowns in the displacement history: lab-clock lag (moderate, CPU vs GPU) and GPU serial vs 8 ranks on integration time |
 | `fig_fri_solitary.py` | `fri_solitary_mesh` | displacement across the four meshes (GPU); solitary-wave pulse and the free vibration it re-excites |
 
 Helper: `fri_runs.py` (run list with configuration, dry runs, timing loader; prints a stats table when run).

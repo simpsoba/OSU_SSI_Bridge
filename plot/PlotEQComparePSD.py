@@ -72,6 +72,7 @@ from PlotEQCompareRuns import apply_paper_style, resolve_run_path, run_duration,
 from PlotHydroSpectra import (
     F_MIN_PROTO_HZ,
     _psd_proto_hz,
+    is_wed,
     _load_os_disp_proto_mm,
     add_dual_freq_xaxis,
     load_pier_ux_mm,
@@ -89,7 +90,7 @@ usage: python plot/PlotEQComparePSD.py [runDir ...]
   output    LOCAL/plots/compare/<Mesh>/<variant>/pairs/psd_ux_pair_<Test>.png
   clocks    tar/com/mea = lab $t$; pier/ctrlDisp = $t_{\mathrm{int}}$
   layout    history (PSD window) | PSD
-  psd       Welch, 40 s prototype Hann segments, 75% overlap, means removed
+  psd       Welch, Hann, means removed: Fri 40 s prototype segments, 75% overlap; Wed 3 segments, 50% overlap
   Fri       D5-95 on $t_{\mathrm{int}}$; lab cuts via atTarget map
   Wed       fair end: T*=min(t_end_OS-gmStart); pier/ctrl on $t_{\mathrm{int}}$;
             lab [0, atTarget(cut)] via handshake map
@@ -338,7 +339,7 @@ def plot_psd_pair(
         got_r = got_o = None
         if series_r is not None:
             t_r, y_r = series_r
-            got_r = _psd_proto_hz(t_r, y_r, win_r[0], win_r[1], lab_clock=use_lab)
+            got_r = _psd_proto_hz(t_r, y_r, win_r[0], win_r[1], lab_clock=use_lab, tiled=is_wed(test_other or test_ref))
             m = (t_r >= win_r[0]) & (t_r <= win_r[1]) & np.isfinite(y_r)
             if np.any(m):
                 ax_hist.plot(
@@ -351,7 +352,7 @@ def plot_psd_pair(
                 )
         if series_o is not None:
             t_o, y_o = series_o
-            got_o = _psd_proto_hz(t_o, y_o, win_o[0], win_o[1], lab_clock=use_lab)
+            got_o = _psd_proto_hz(t_o, y_o, win_o[0], win_o[1], lab_clock=use_lab, tiled=is_wed(test_other or test_ref))
             m = (t_o >= win_o[0]) & (t_o <= win_o[1]) & np.isfinite(y_o)
             if np.any(m):
                 ax_hist.plot(
