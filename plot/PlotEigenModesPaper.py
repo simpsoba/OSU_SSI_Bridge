@@ -115,14 +115,14 @@ PANELS_FULL = (
     (5, "d", "full"),
     (25, "e", "full"),
 )
-# Zoom-only row: (a,b,c) | (d,e). Letters follow mode number.
+# Zoom-only row: (a)-(d), equal gaps. Letters follow mode number. Mode 25 (a mesh-locked
+# surface soil mode, no interface participation) dropped for the dissertation (2026-10-14).
 # Order matches _panel_boxes_full_grid.
 PANELS_FULL_GRID = (
     (1, "a", "near"),
     (2, "b", "near"),
     (4, "c", "near"),
     (5, "d", "near"),
-    (25, "e", "near"),
 )
 LAYOUTS = ("stack", "column", "full", "full_grid")
 DEFAULT_LAYOUT = "full_grid"
@@ -839,7 +839,7 @@ def _panel_boxes_full(
 
 
 def _panel_boxes_full_grid(
-    fig_w: float, dy: float, dx_near: float, dx_full: float
+    fig_w: float, dy: float, dx_near: float, dx_full: float, n_panels: int = 5
 ) -> tuple[float, list[tuple[float, float, float, float]]]:
     """
     Zoom-only layout (PANELS_FULL_GRID order):
@@ -856,10 +856,11 @@ def _panel_boxes_full_grid(
     mb = mt = 0.02
     gap_x = 0.025
     gap_g = 0.04  # gap between the (a–c) and (d–e) groups
-    n = 5
+    n = n_panels
+    grouped = n == 5  # (a-c) | (d-e) with a wider group gap; otherwise equal gaps
     aspect_n = dy / dx_near
     # One group gap + (n-1) panel gaps, but group gap replaces the mid panel gap
-    usable = fig_w - ml - mr - (n - 2) * gap_x - gap_g
+    usable = fig_w - ml - mr - ((n - 2) * gap_x + gap_g if grouped else (n - 1) * gap_x)
     w_near = usable / n
     h_near = w_near * aspect_n
     fig_h = mb + mt + h_near
@@ -869,7 +870,7 @@ def _panel_boxes_full_grid(
     x = ml
     for k in range(n):
         boxes.append((x, y, w_near, h_near))
-        if k == 2:
+        if grouped and k == 2:
             x += w_near + gap_g
         else:
             x += w_near + gap_x
@@ -924,7 +925,7 @@ def build_figure(
     elif layout == "full":
         fig_h, panel_boxes = _panel_boxes_full(fig_w, dy, dx_full, n_panels=len(panels))
     elif layout == "full_grid":
-        fig_h, panel_boxes = _panel_boxes_full_grid(fig_w, dy, dx_near, dx_full)
+        fig_h, panel_boxes = _panel_boxes_full_grid(fig_w, dy, dx_near, dx_full, n_panels=len(panels))
     else:
         fig_h, panel_boxes = _panel_boxes_column(fig_w, dy, dx_near, dx_full)
 
